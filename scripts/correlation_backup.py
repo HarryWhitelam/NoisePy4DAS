@@ -65,7 +65,7 @@ def get_minute_data(tdms_array, channels, start_time, timestamps, sps):
     
     current_time = 0
     tdms_t_size = tdms_array[0].get_data(channels[0], channels[1]).shape[0]
-    minute_data = np.empty(60 * sps, floor((cha2-cha1+1)/spatial_ratio))
+    minute_data = np.empty((tdms_t_size * 6, floor((cha2-cha1+1)/spatial_ratio)))
     
     if type(start_time) is datetime:
         tdms_array = get_time_subset(tdms_array, start_time, timestamps, tpf=tdms_t_size/sps, tolerance=30)   # tpf = time per file
@@ -121,7 +121,6 @@ def plot_correlation(corr, cmap_param='bwr'):
     t_start = task_t0 - timedelta(minutes=n_minute)
     plt.savefig(f'./results/figures/{task_t0}_{n_minute}-mins_{cha1}:{cha2}__{cmap_param}.png')
 
-
 file_path = "../../scratch/DAS_data/Second_Survey_UTC_20240119_151907.161.tdms"
 tdms_file = TdmsReader(file_path)
 tdms_file._read_properties()
@@ -144,7 +143,7 @@ t_end = t_start + time_delta
 
 sps                = properties.get('SamplingFrequency[Hz]')        # current sampling rate (Hz)
 samp_freq          = 100                                            # target sampling rate (Hz)
-target_spatial_res = 1                                              # target spatial resolution (m)
+target_spatial_res = 0.25                                             # target spatial resolution (m)
 spatial_ratio      = int(target_spatial_res/spatial_res)
 freqmin            = 1                                              # pre filtering frequency bandwidth
 freqmax            = 49.9                                           # note this cannot exceed Nquist freq
@@ -159,8 +158,8 @@ maxlag             = 8                 # lags of cross-correlation to save (sec)
 # criteria for data selection
 max_over_std       = 10                # threshold to remove window of bad signals: set it to 10*9 if prefer not to remove them
 
-cc_len             = 60                # correlate length in second
-step               = 60                # stepping length in second
+cc_len             = 180               # correlate length in second
+step               = 90                # stepping length in second
 
 cha1, cha2         = 4000, 5999        # USE ONLY FOR CHANNEL SUBSET SELECTION (repeated later)
 
@@ -209,10 +208,9 @@ print(f'{len(timestamps)} files available from {timestamps[0]} to {timestamps[-1
 tdms_array = [x for y, x in sorted(zip(np.array(timestamps), tdms_array))]
 
 # each task is one minute
-n_minute = 30
+n_minute = 120
 pbar = tqdm(range(n_minute))
 t_query = 0; t_compute = 0
-
 for imin in pbar:
     t0 = time.time()
     pbar.set_description(f"Processing {task_t0}")
