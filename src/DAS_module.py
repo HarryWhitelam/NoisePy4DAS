@@ -71,6 +71,7 @@ def preprocess_raw_make_stat(tdata,prepro_para):
     # check the consistency of 2D matrix for each time series
     npts,nsta = tdata.shape
     if npts!=npts_chunk or nsta!=nchan:
+        print(f"{npts}: {npts_chunk}; {nsta}: {nchan}")
         raise ValueError('data size not consistent between provided input files')
     tdata = tdata.T
 
