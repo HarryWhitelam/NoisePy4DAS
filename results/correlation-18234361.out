@@ -1,3 +1,0 @@
-Shape of corr_full: (1601, 2001000); shape of stack_full: (1, 2001000)
-240 files available from 2024-01-19 15:19:07.161785 to 2024-01-19 17:18:37.161787
-4088.86 seconds in data query, 60651.63 seconds in xcorr computing

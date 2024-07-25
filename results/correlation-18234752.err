@@ -1,5 +1,0 @@
-  0%|          | 0/30 [00:00<?, ?it/s]Processing 2024-01-19 15:19:07:   0%|          | 0/30 [00:00<?, ?it/s]Processing 2024-01-19 15:19:07:   0%|          | 0/30 [00:08<?, ?it/s]
-Traceback (most recent call last):
-  File "scripts/correlation.py", line 255, in <module>
-    corr_full[:, iS + receiver_lst - sta[iiS]] += corr.T
-IndexError: index 125920 is out of bounds for axis 1 with size 125250

@@ -7,7 +7,7 @@ sys.path.append("./DASstore")
 
 import os
 import time
-from math import floor
+from math import floor, ceil
 from datetime import datetime, timedelta
 from dateutil.parser import parse
 from bisect import bisect_left
@@ -65,7 +65,7 @@ def get_minute_data(tdms_array, channels, start_time, timestamps, sps):
     
     current_time = 0
     tdms_t_size = tdms_array[0].get_data(channels[0], channels[1]).shape[0]
-    minute_data = np.empty(60 * sps, floor((cha2-cha1+1)/spatial_ratio))
+    minute_data = np.empty((int(60 * sps), floor((cha2-cha1+1)/spatial_ratio)))
     
     if type(start_time) is datetime:
         tdms_array = get_time_subset(tdms_array, start_time, timestamps, tpf=tdms_t_size/sps, tolerance=30)   # tpf = time per file
@@ -80,10 +80,11 @@ def get_minute_data(tdms_array, channels, start_time, timestamps, sps):
     return minute_data
 
 def plot_das_data(data):
+
     plt.figure(figsize = (12, 5), dpi = 150)
     plt.imshow(data, aspect = 'auto', 
                cmap = 'RdBu', vmax = 1.5, vmin = -1.5, origin='lower')
-    _=plt.xticks(np.linspace(cha1, cha2, 9) - cha1, 
+    _=plt.xticks(np.linspace(cha1, effective_cha2, 9) - cha1, 
                   [int(i) for i in np.linspace(cha1, cha2, 9)], fontsize = 12)
     _=plt.yticks(np.linspace(0, 60000, 7), 
                   [int(i) for i in np.linspace(0, 60, 7)], fontsize = 12)
@@ -99,12 +100,15 @@ def plot_das_data(data):
     plt.colorbar(pad = 0.1)
     
 def plot_correlation(corr, cmap_param='bwr'):
+    print((np.linspace(cha1, cha2, 4) - cha1)/4)
+    print(np.linspace(cha1, cha2, 4))
+
     plt.figure(figsize = (12, 5), dpi = 150)
 
-    plt.imshow(corr[:, :(cha2 - cha1)].T, aspect = 'auto', cmap = cmap_param, 
+    plt.imshow(corr[:, :(effective_cha2 - cha1)].T, aspect = 'auto', cmap = cmap_param, 
             vmax = 2e-2, vmin = -2e-2, origin = 'lower', interpolation=None)
 
-    _ =plt.yticks(np.linspace(cha1, cha2, 4) - cha1, 
+    _ =plt.yticks((np.linspace(cha1, cha2, 4) - cha1)/spatial_ratio, 
                 [int(i) for i in np.linspace(cha1, cha2, 4)], fontsize = 12)
     plt.ylabel("Channel number", fontsize = 16)
     _ = plt.xticks(np.arange(0, 1601, 200), (np.arange(0, 801, 100) - 400)/50, fontsize = 12)
@@ -119,10 +123,11 @@ def plot_correlation(corr, cmap_param='bwr'):
     
     # follow convention of: {timestamp}_{t length}_{channels}.png
     t_start = task_t0 - timedelta(minutes=n_minute)
-    plt.savefig(f'./results/figures/{task_t0}_{n_minute}-mins_{cha1}:{cha2}__{cmap_param}.png')
+    plt.savefig(f'./results/figures/{t_start}_{n_minute}-mins_f{freqmin}:{freqmax}__{cha1}:{cha2}_{target_spatial_res}.png')
 
 
-file_path = "../../scratch/DAS_data/Second_Survey_UTC_20240119_151907.161.tdms"
+# file_path = "../../scratch/DAS_data/Second_Survey_UTC_20240119_151907.161.tdms"
+file_path = "../../../../gpfs/data/DAS_data/Data/Second_Survey_UTC_20240119_151907.161.tdms"
 tdms_file = TdmsReader(file_path)
 tdms_file._read_properties()
 
@@ -132,7 +137,6 @@ cha1, cha2 = 0, n_channels
 properties = tdms_file.get_properties()
 
 # print(properties)
-
 cha_spacing = properties.get('SpatialResolution[m]') * properties.get('Fibre Length Multiplier')
 start_dist, stop_dist = properties.get('Start Distance (m)'), properties.get('Stop Distance (m)')
 sps = properties.get('SamplingFrequency[Hz]')
@@ -146,6 +150,7 @@ sps                = properties.get('SamplingFrequency[Hz]')        # current sa
 samp_freq          = 100                                            # target sampling rate (Hz)
 target_spatial_res = 1                                              # target spatial resolution (m)
 spatial_ratio      = int(target_spatial_res/spatial_res)
+
 freqmin            = 1                                              # pre filtering frequency bandwidth
 freqmax            = 49.9                                           # note this cannot exceed Nquist freq
 
@@ -157,14 +162,15 @@ smoothspect_N      = 100               # moving window length to smooth spectrum
 maxlag             = 8                 # lags of cross-correlation to save (sec)
 
 # criteria for data selection
-max_over_std       = 10                # threshold to remove window of bad signals: set it to 10*9 if prefer not to remove them
+max_over_std       = 20                # threshold to remove window of bad signals: set it to 10*9 if prefer not to remove them
 
 cc_len             = 60                # correlate length in second
 step               = 60                # stepping length in second
 
-cha1, cha2         = 4000, 5999        # USE ONLY FOR CHANNEL SUBSET SELECTION (repeated later)
+cha1, cha2         = 2000, 7999        # USE ONLY FOR CHANNEL SUBSET SELECTION (repeated later)
+effective_cha2     = floor(cha1 + (cha2 - cha1) / spatial_ratio)
 
-cha_list = np.array(range(cha1, cha2+1, spatial_ratio))
+cha_list = np.array(range(cha1, effective_cha2 + 1))
 nsta = len(cha_list)
 n_pair = int((nsta+1)*nsta/2)
 n_lag = maxlag * samp_freq * 2 + 1
@@ -194,7 +200,8 @@ print(f"Shape of corr_full: {corr_full.shape}; shape of stack_full: {stack_full.
 task_t0 = datetime(year = 2024, month = 1, day = 19, 
                    hour = 15, minute = 19, second = 7, microsecond = 0)
 
-dir_path = "../../scratch/DAS_data/"
+# dir_path = "../../scratch/DAS_data/"
+dir_path = "../../../../gpfs/data/DAS_data/Data/"
 tdms_array = np.empty(len(os.listdir(dir_path)), TdmsReader)
 timestamps = np.empty(len(tdms_array), dtype=datetime)
 
@@ -209,7 +216,7 @@ print(f'{len(timestamps)} files available from {timestamps[0]} to {timestamps[-1
 tdms_array = [x for y, x in sorted(zip(np.array(timestamps), tdms_array))]
 
 # each task is one minute
-n_minute = 30
+n_minute = 120
 pbar = tqdm(range(n_minute))
 t_query = 0; t_compute = 0
 
@@ -223,6 +230,7 @@ for imin in pbar:
     t1 = time.time()
     # perform pre-processing
     trace_stdS, dataS = DAS_module.preprocess_raw_make_stat(tdata, prepro_para)
+    # print(f'Processed data shape: {trace_stdS.shape}')
 
     # do normalization if needed
     white_spect = DAS_module.noise_processing(dataS, prepro_para)
@@ -250,8 +258,10 @@ for imin in pbar:
         tsta = sta[iiS:]
         receiver_lst = tsta[tindx]
 
-        iS = int((cha2*2 - cha1 - sta[iiS] + 1) * (sta[iiS] - cha1) / 2)
+        iS = int((effective_cha2*2 - cha1 - sta[iiS] + 1) * (sta[iiS] - cha1) / 2)
 
+        # print(f'iiS: {iiS}; iS: {iS}; sta[iiS]: {sta[iiS]}; corr_full idx: {iS + receiver_lst - sta[iiS]}')
+        # print(f'iiS: {iiS}; iS: {iS}; sta[iiS]: {sta[iiS]}')
         # stacking one minute
         corr_full[:, iS + receiver_lst - sta[iiS]] += corr.T
         stack_full[:, iS + receiver_lst - sta[iiS]] += 1
