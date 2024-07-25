@@ -7,7 +7,7 @@ sys.path.append("./DASstore")
 
 import os
 import time
-from math import floor
+from math import floor, ceil
 from datetime import datetime, timedelta
 from dateutil.parser import parse
 from bisect import bisect_left
@@ -60,12 +60,12 @@ def get_time_subset(tdms_array, start_time, timestamps, tpf, delta=timedelta(sec
     return tdms_array[start_idx:end_idx+1]
 
 # returns a minute of data
+# currently CAN NOT HANDLE TDMS > 30 SECONDS - I THINK (it'll just clip the rest of the file, it can probably handle exactly 60s of data)
 def get_minute_data(tdms_array, channels, start_time, timestamps, sps):
     # make it so that if start_time is not a timestamp, the first minute in the array is returned
-    
     current_time = 0
     tdms_t_size = tdms_array[0].get_data(channels[0], channels[1]).shape[0]
-    minute_data = np.empty((tdms_t_size * 6, floor((cha2-cha1+1)/spatial_ratio)))
+    minute_data = np.empty(60 * sps, floor((cha2-cha1+1)/spatial_ratio))
     
     if type(start_time) is datetime:
         tdms_array = get_time_subset(tdms_array, start_time, timestamps, tpf=tdms_t_size/sps, tolerance=30)   # tpf = time per file
@@ -101,11 +101,11 @@ def plot_das_data(data):
 def plot_correlation(corr, cmap_param='bwr'):
     plt.figure(figsize = (12, 5), dpi = 150)
 
-    plt.imshow(corr[:, :(cha2 - cha1)].T, aspect = 'auto', cmap = cmap_param, 
-            vmax = 2e-2, vmin = -2e-2, origin = 'lower', interpolation=None)
+    plt.imshow(corr[:, :(effective_cha2 - cha1)].T, aspect = 'auto', cmap = cmap_param, 
+               vmax = 2e-2, vmin = -2e-2, origin = 'lower', interpolation=None)
 
-    _ =plt.yticks(np.linspace(cha1, cha2, 4) - cha1, 
-                [int(i) for i in np.linspace(cha1, cha2, 4)], fontsize = 12)
+    _ = plt.yticks(np.linspace(cha1, cha2, 4) - cha1, 
+                   [int(i) for i in np.linspace(cha1, cha2, 4)], fontsize = 12)
     plt.ylabel("Channel number", fontsize = 16)
     _ = plt.xticks(np.arange(0, 1601, 200), (np.arange(0, 801, 100) - 400)/50, fontsize = 12)
     plt.xlabel("Time lag (sec)", fontsize = 16)
@@ -132,7 +132,6 @@ cha1, cha2 = 0, n_channels
 properties = tdms_file.get_properties()
 
 # print(properties)
-
 cha_spacing = properties.get('SpatialResolution[m]') * properties.get('Fibre Length Multiplier')
 start_dist, stop_dist = properties.get('Start Distance (m)'), properties.get('Stop Distance (m)')
 sps = properties.get('SamplingFrequency[Hz]')
@@ -146,6 +145,7 @@ sps                = properties.get('SamplingFrequency[Hz]')        # current sa
 samp_freq          = 100                                            # target sampling rate (Hz)
 target_spatial_res = 0.25                                             # target spatial resolution (m)
 spatial_ratio      = int(target_spatial_res/spatial_res)
+
 freqmin            = 1                                              # pre filtering frequency bandwidth
 freqmax            = 49.9                                           # note this cannot exceed Nquist freq
 
@@ -163,8 +163,9 @@ cc_len             = 60                # correlate length in second
 step               = 60                # stepping length in second
 
 cha1, cha2         = 4000, 5999        # USE ONLY FOR CHANNEL SUBSET SELECTION (repeated later)
+effective_cha2     = floor(cha1 + (cha2 - cha1) / spatial_ratio)
 
-cha_list = np.array(range(cha1, cha2+1, spatial_ratio))
+cha_list = np.array(range(cha1, effective_cha2+1))
 nsta = len(cha_list)
 n_pair = int((nsta+1)*nsta/2)
 n_lag = maxlag * samp_freq * 2 + 1
@@ -172,7 +173,7 @@ n_lag = maxlag * samp_freq * 2 + 1
 prepro_para = {'freqmin':freqmin,
                'freqmax':freqmax,
                'sps':sps,
-               'npts_chunk':cc_len*sps,           # <-- I don't know why this is hard coded like this
+               'npts_chunk':cc_len*sps,           # <-- I don't know why this is hard coded like this i should probably find out
                'nsta':nsta,
                'cha_list':cha_list,
                'samp_freq':samp_freq,
@@ -250,8 +251,9 @@ for imin in pbar:
         tsta = sta[iiS:]
         receiver_lst = tsta[tindx]
 
-        iS = int((cha2*2 - cha1 - sta[iiS] + 1) * (sta[iiS] - cha1) / 2)
+        iS = int((effective_cha2*2 - cha1 - sta[iiS] + 1) * (sta[iiS] - cha1) / 2)
 
+        print(f"iiS: {iiS}; iS: {iS}; tindx: {tindx}; receiver_lst: {receiver_lst}; sta[iiS]: {sta[iiS]}")
         # stacking one minute
         corr_full[:, iS + receiver_lst - sta[iiS]] += corr.T
         stack_full[:, iS + receiver_lst - sta[iiS]] += 1
