@@ -40,6 +40,7 @@ def get_closest_index(timestamps, time):
     idx -= time - timestamps[idx-1] < timestamps[idx] - time
     return idx
 
+
 # returns a minute-long array of tdms files starting at the timestamp given
 def get_time_subset(tdms_array, start_time, timestamps, tpf, delta=timedelta(seconds=60), tolerance=300):
     # tolerence is the time in s that the closest timestamp can be away from the desired start_time
@@ -59,9 +60,12 @@ def get_time_subset(tdms_array, start_time, timestamps, tpf, delta=timedelta(sec
     
     return tdms_array[start_idx:end_idx+1]
 
+
 # returns a minute of data
 # currently CAN NOT HANDLE TDMS > 30 SECONDS - I THINK (it'll just clip the rest of the file, it can probably handle exactly 60s of data)
-def get_minute_data(tdms_array, channels, start_time, timestamps, sps):
+def get_minute_data(tdms_array, channels, prepro_para, start_time, timestamps):
+    cha1, cha2, sps, spatial_ratio= prepro_para.get('cha1'), prepro_para.get('cha2'), prepro_para.get('sps'), prepro_para.get('spatial_ratio')
+
     # make it so that if start_time is not a timestamp, the first minute in the array is returned
     current_time = 0
     tdms_t_size = tdms_array[0].get_data(channels[0], channels[1]).shape[0]
@@ -79,8 +83,140 @@ def get_minute_data(tdms_array, channels, start_time, timestamps, sps):
     
     return minute_data
 
-def plot_das_data(data):
 
+def get_dir_properties(dir_path):
+    with os.scandir(dir_path) as files:
+        for file in files:
+            if file.is_file():
+                file_path = file.path
+                break
+    tdms_file = TdmsReader(file_path)
+    tdms_file._read_properties()
+    return tdms_file.get_properties()
+
+
+def set_prepro_parameters(dir_path):
+    properties = get_dir_properties(dir_path)
+    
+    cha_spacing = properties.get('SpatialResolution[m]') * properties.get('Fibre Length Multiplier')
+    start_dist, stop_dist = properties.get('Start Distance (m)'), properties.get('Stop Distance (m)')
+    sps = properties.get('SamplingFrequency[Hz]')
+    spatial_res = properties.get('SpatialResolution[m]')
+           
+    sps                = properties.get('SamplingFrequency[Hz]')        # current sampling rate (Hz)
+    samp_freq          = 100                                            # target sampling rate (Hz)
+    target_spatial_res = 1                                              # target spatial resolution (m)
+    spatial_ratio      = int(target_spatial_res/spatial_res)
+
+    freqmin            = 1                                              # pre filtering frequency bandwidth
+    freqmax            = 49.9                                           # note this cannot exceed Nquist freq
+    freq_norm          = 'rma'             # 'no' for no whitening, or 'rma' for running-mean average, 'phase_only' for sign-bit normalization in freq domain.
+    time_norm          = 'one_bit'         # 'no' for no normalization, or 'rma', 'one_bit' for normalization in time domain
+    cc_method          = 'xcorr'           # 'xcorr' for pure cross correlation, 'deconv' for deconvolution; FOR "COHERENCY" PLEASE set freq_norm to "rma", time_norm to "no" and cc_method to "xcorr"
+    smooth_N           = 100               # moving window length for time domain normalization if selected (points)
+    smoothspect_N      = 100               # moving window length to smooth spectrum amplitude (points)
+    maxlag             = 8                 # lags of cross-correlation to save (sec)
+
+    max_over_std       = 20                # threshold to remove window of bad signals: set it to 10*9 if prefer not to remove them
+
+    cc_len             = 60                # correlate length in second
+    step               = 60                # stepping length in second [not used]
+
+    cha1, cha2         = 2000, 7999        # USE ONLY FOR CHANNEL SUBSET SELECTION (repeated later)
+    effective_cha2     = floor(cha1 + (cha2 - cha1) / spatial_ratio)
+
+    cha_list = np.array(range(cha1, effective_cha2 + 1))
+    nsta = len(cha_list)
+    n_pair = int((nsta+1)*nsta/2)
+    n_lag = maxlag * samp_freq * 2 + 1
+    
+    return {
+        'freqmin':freqmin,
+        'freqmax':freqmax,
+        'sps':sps,
+        'npts_chunk':cc_len*sps,           # <-- I don't know why this is hard coded like this i should probably find out
+        'nsta':nsta,
+        'cha_list':cha_list,
+        'samp_freq':samp_freq,
+        'freq_norm':freq_norm,
+        'time_norm':time_norm,
+        'cc_method':cc_method,
+        'smooth_N':smooth_N,
+        'smoothspect_N':smoothspect_N,
+        'maxlag':maxlag,
+        'max_over_std':max_over_std,
+        'cha1':cha1,
+        'cha2':cha2,
+        'effective_cha2':effective_cha2,
+        'cha_spacing':cha_spacing,
+        'spatial_ratio':spatial_ratio, 
+        'n_pair':n_pair,
+        'n_lag':n_lag
+    }
+
+
+def correlation(corr_full, stack_full, prepro_para, task_t0):
+    cha1, cha2, sps, effective_cha2, cha_list = prepro_para.get('cha1'), prepro_para.get('cha2'), prepro_para.get('sps'), prepro_para.get('effective_cha2'), prepro_para.get('cha_list')
+    
+    pbar = tqdm(range(n_minute))
+    t_query = 0; t_compute = 0
+
+    for imin in pbar:
+        t0 = time.time()
+        pbar.set_description(f"Processing {task_t0}")
+        tdata = get_minute_data(tdms_array, [cha1, cha2], task_t0, timestamps, sps)
+        task_t0 += timedelta(minutes = 1)
+        
+        t_query += time.time() - t0
+        t1 = time.time()
+        # perform pre-processing
+        trace_stdS, dataS = DAS_module.preprocess_raw_make_stat(tdata, prepro_para)
+        # print(f'Processed data shape: {trace_stdS.shape}')
+
+        # do normalization if needed
+        white_spect = DAS_module.noise_processing(dataS, prepro_para)
+        Nfft = white_spect.shape[1]; Nfft2 = Nfft // 2
+        data = white_spect[:, :Nfft2]
+        del dataS, white_spect
+
+        ind = np.where((trace_stdS < prepro_para['max_over_std']) &
+                                (trace_stdS > 0) &
+                        (np.isnan(trace_stdS) == 0))[0]
+        if not len(ind):
+            raise ValueError('the max_over_std criteria is too high which results in no data')
+        sta = cha_list[ind]
+        white_spect = data[ind]
+
+        # loop over all stations
+        for iiS in range(len(sta)):
+            # smooth the source spectrum
+            sfft1 = DAS_module.smooth_source_spect(white_spect[iiS], prepro_para)
+            
+            # correlate one source with all receivers
+            corr, tindx = DAS_module.correlate(sfft1, white_spect[iiS:], prepro_para, Nfft)
+
+            # update the receiver list
+            tsta = sta[iiS:]
+            receiver_lst = tsta[tindx]
+
+            iS = int((effective_cha2*2 - cha1 - sta[iiS] + 1) * (sta[iiS] - cha1) / 2)
+
+            # print(f'iiS: {iiS}; iS: {iS}; sta[iiS]: {sta[iiS]}; corr_full idx: {iS + receiver_lst - sta[iiS]}')
+            # print(f'iiS: {iiS}; iS: {iS}; sta[iiS]: {sta[iiS]}')
+            # stacking one minute
+            corr_full[:, iS + receiver_lst - sta[iiS]] += corr.T
+            stack_full[:, iS + receiver_lst - sta[iiS]] += 1
+            
+        t_compute += time.time() - t1
+    corr_full /= stack_full
+    # print("%.3f seconds in data query, %.3f seconds in xcorr computing" % (t_query, t_compute))
+    print(f"{round(t_query, 2)} seconds in data query, {round(t_compute, 2)} seconds in xcorr computing")
+    return corr_full, stack_full
+
+
+def plot_das_data(data, prepro_para):
+    cha1, cha2, effective_cha2, cha_spacing = prepro_para.get('cha1'), prepro_para.get('cha2'), prepro_para.get('effective_cha2'), prepro_para.get('cha_spacing')
+    
     plt.figure(figsize = (12, 5), dpi = 150)
     plt.imshow(data, aspect = 'auto', 
                cmap = 'RdBu', vmax = 1.5, vmin = -1.5, origin='lower')
@@ -98,8 +234,11 @@ def plot_das_data(data):
     #                  [int(i*cha_spacing) for i in np.linspace(cha1, cha2, 9)])
     twinx.set_xlabel("Distance along cable (m)", fontsize=15)
     plt.colorbar(pad = 0.1)
+
+
+def plot_correlation(corr, prepro_para, cmap_param='bwr'):
+    cha1, cha2, effective_cha2, spatial_ratio, cha_spacing, freqmin, freqmax, target_spatial_res = prepro_para.get('cha1'), prepro_para.get('cha2'), prepro_para.get('effective_cha2'), prepro_para.get('spatial_ratio'), prepro_para.get('cha_spacing'), prepro_para.get('freqmin'), prepro_para.get('freqmax'), prepro_para.get('target_spatial_res')
     
-def plot_correlation(corr, cmap_param='bwr'):
     print((np.linspace(cha1, cha2, 4) - cha1)/4)
     print(np.linspace(cha1, cha2, 4))
 
@@ -126,82 +265,20 @@ def plot_correlation(corr, cmap_param='bwr'):
     plt.savefig(f'./results/figures/{t_start}_{n_minute}-mins_f{freqmin}:{freqmax}__{cha1}:{cha2}_{target_spatial_res}.png')
 
 
-# file_path = "../../../../gpfs/data/DAS_data/Data/Second_Survey_UTC_20240119_151907.161.tdms"
-file_path = "../../temp_data_store/FirstData_UTC_20231109_134117.573.tdms"
-tdms_file = TdmsReader(file_path)
-tdms_file._read_properties()
+# dir_path = "../../../../gpfs/data/DAS_data/Data/"
+dir_path = "../../temp_data_store/"
 
-# subsets based on channels can be done later
-n_channels = tdms_file.fileinfo['n_channels']
-cha1, cha2 = 0, n_channels
-properties = tdms_file.get_properties()
-
-# print(properties)
-cha_spacing = properties.get('SpatialResolution[m]') * properties.get('Fibre Length Multiplier')
-start_dist, stop_dist = properties.get('Start Distance (m)'), properties.get('Stop Distance (m)')
-sps = properties.get('SamplingFrequency[Hz]')
-spatial_res = properties.get('SpatialResolution[m]')
-
-t_start = properties.get('GPSTimeStamp')
-time_delta = timedelta(seconds=tdms_file.channel_length / sps)
-t_end = t_start + time_delta
-
-sps                = properties.get('SamplingFrequency[Hz]')        # current sampling rate (Hz)
-samp_freq          = 100                                            # target sampling rate (Hz)
-target_spatial_res = 1                                              # target spatial resolution (m)
-spatial_ratio      = int(target_spatial_res/spatial_res)
-
-freqmin            = 1                                              # pre filtering frequency bandwidth
-freqmax            = 49.9                                           # note this cannot exceed Nquist freq
-
-freq_norm          = 'rma'             # 'no' for no whitening, or 'rma' for running-mean average, 'phase_only' for sign-bit normalization in freq domain.
-time_norm          = 'one_bit'         # 'no' for no normalization, or 'rma', 'one_bit' for normalization in time domain
-cc_method          = 'xcorr'           # 'xcorr' for pure cross correlation, 'deconv' for deconvolution; FOR "COHERENCY" PLEASE set freq_norm to "rma", time_norm to "no" and cc_method to "xcorr"
-smooth_N           = 100               # moving window length for time domain normalization if selected (points)
-smoothspect_N      = 100               # moving window length to smooth spectrum amplitude (points)
-maxlag             = 8                 # lags of cross-correlation to save (sec)
-
-# criteria for data selection
-max_over_std       = 20                # threshold to remove window of bad signals: set it to 10*9 if prefer not to remove them
-
-cc_len             = 60                # correlate length in second
-step               = 60                # stepping length in second
-
-cha1, cha2         = 2000, 7999        # USE ONLY FOR CHANNEL SUBSET SELECTION (repeated later)
-effective_cha2     = floor(cha1 + (cha2 - cha1) / spatial_ratio)
-
-cha_list = np.array(range(cha1, effective_cha2 + 1))
-nsta = len(cha_list)
-n_pair = int((nsta+1)*nsta/2)
-n_lag = maxlag * samp_freq * 2 + 1
-
-prepro_para = {'freqmin':freqmin,
-               'freqmax':freqmax,
-               'sps':sps,
-               'npts_chunk':cc_len*sps,           # <-- I don't know why this is hard coded like this i should probably find out
-               'nsta':nsta,
-               'cha_list':cha_list,
-               'samp_freq':samp_freq,
-               'freq_norm':freq_norm,
-               'time_norm':time_norm,
-               'cc_method':cc_method,
-               'smooth_N':smooth_N,
-               'smoothspect_N':smoothspect_N,
-               'maxlag':maxlag,
-               'max_over_std':max_over_std}
-
+properties = get_dir_properties(dir_path)
+n_lag = properties.get('n_lag')
+n_pair = properties.get('n_pair')
 
 corr_full = np.zeros([n_lag, n_pair], dtype = np.float32)
 stack_full = np.zeros([1, n_pair], dtype = np.int32)
-
-print(f"Shape of corr_full: {corr_full.shape}; shape of stack_full: {stack_full.shape}")
 
 # refresh data bc of popping and stuff
 task_t0 = datetime(year = 2024, month = 1, day = 19, 
                    hour = 15, minute = 19, second = 7, microsecond = 0)
 
-# dir_path = "../../../../gpfs/data/DAS_data/Data/"
-dir_path = "../../temp_data_store/"
 tdms_array = np.empty(len(os.listdir(dir_path)), TdmsReader)
 timestamps = np.empty(len(tdms_array), dtype=datetime)
 
@@ -215,60 +292,7 @@ print(f'{len(timestamps)} files available from {timestamps[0]} to {timestamps[-1
 
 tdms_array = [x for y, x in sorted(zip(np.array(timestamps), tdms_array))]
 
-# each task is one minute
 n_minute = 120
-pbar = tqdm(range(n_minute))
-t_query = 0; t_compute = 0
-
-for imin in pbar:
-    t0 = time.time()
-    pbar.set_description(f"Processing {task_t0}")
-    tdata = get_minute_data(tdms_array, [cha1, cha2], task_t0, timestamps, sps)
-    task_t0 += timedelta(minutes = 1)
-    
-    t_query += time.time() - t0
-    t1 = time.time()
-    # perform pre-processing
-    trace_stdS, dataS = DAS_module.preprocess_raw_make_stat(tdata, prepro_para)
-    # print(f'Processed data shape: {trace_stdS.shape}')
-
-    # do normalization if needed
-    white_spect = DAS_module.noise_processing(dataS, prepro_para)
-    Nfft = white_spect.shape[1]; Nfft2 = Nfft // 2
-    data = white_spect[:, :Nfft2]
-    del dataS, white_spect
-
-    ind = np.where((trace_stdS < prepro_para['max_over_std']) &
-                            (trace_stdS > 0) &
-                    (np.isnan(trace_stdS) == 0))[0]
-    if not len(ind):
-        raise ValueError('the max_over_std criteria is too high which results in no data')
-    sta = cha_list[ind]
-    white_spect = data[ind]
-
-    # loop over all stations
-    for iiS in range(len(sta)):
-        # smooth the source spectrum
-        sfft1 = DAS_module.smooth_source_spect(white_spect[iiS], prepro_para)
-        
-        # correlate one source with all receivers
-        corr, tindx = DAS_module.correlate(sfft1, white_spect[iiS:], prepro_para, Nfft)
-
-        # update the receiver list
-        tsta = sta[iiS:]
-        receiver_lst = tsta[tindx]
-
-        iS = int((effective_cha2*2 - cha1 - sta[iiS] + 1) * (sta[iiS] - cha1) / 2)
-
-        # print(f'iiS: {iiS}; iS: {iS}; sta[iiS]: {sta[iiS]}; corr_full idx: {iS + receiver_lst - sta[iiS]}')
-        # print(f'iiS: {iiS}; iS: {iS}; sta[iiS]: {sta[iiS]}')
-        # stacking one minute
-        corr_full[:, iS + receiver_lst - sta[iiS]] += corr.T
-        stack_full[:, iS + receiver_lst - sta[iiS]] += 1
-        
-    t_compute += time.time() - t1
-corr_full /= stack_full
-# print("%.3f seconds in data query, %.3f seconds in xcorr computing" % (t_query, t_compute))
-print(f"{round(t_query, 2)} seconds in data query, {round(t_compute, 2)} seconds in xcorr computing")
+corr_full, stack_full = correlation(corr_full, stack_full, task_t0)
 
 plot_correlation(corr_full)
