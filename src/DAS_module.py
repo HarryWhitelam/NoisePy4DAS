@@ -523,6 +523,7 @@ def whiten(data, fft_para):
             FFTRawSign[left:right] = np.exp(1j * np.angle(FFTRawSign[left:right]))
         elif freq_norm == 'rma':
             tave = moving_ave(np.abs(FFTRawSign[left:right]),smooth_N)
+            print(f'tave: {tave.shape}')
             FFTRawSign[left:right] = FFTRawSign[left:right]/tave
         # Right tapering:
         FFTRawSign[right:high] = np.cos(
