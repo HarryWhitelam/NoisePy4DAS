@@ -480,7 +480,15 @@ def whiten(data, fft_para):
     Napod = 100
     Nfft = int(Nfft)
     freqVec = scipy.fftpack.fftfreq(Nfft, d=delta)[:Nfft // 2]
+    # print(f'freqVec: {freqVec}')
     J = np.where((freqVec >= freqmin) & (freqVec <= freqmax))[0]
+    # ADDED FIX FOR SMOOTH_N: MIGHT NOT WORK NEEDS TESTING
+        # CONFIRMED THIS WON'T WORK: N needs to = maximum period at LEAST; ideally a multiple!
+        # TODO: THIS IS AWFUL FIX THIS TOMORROW PLEASE
+    if len(J) < smooth_N:
+        smooth_N = len(J)
+        print(f'WARNING: not enough frequency bins in range {freqmin}:{freqmax}. Smoothing over {smooth_N} points.')
+    # print(f'J: {J}')
     low = J[0] - Napod
     if low <= 0:
         low = 1
@@ -504,6 +512,9 @@ def whiten(data, fft_para):
         elif freq_norm == 'rma':
             for ii in range(data.shape[0]):
                 tave = moving_ave(np.abs(FFTRawSign[ii,left:right]),smooth_N)
+                # print(tave)
+                # print(f'Left: {left}; right: {right}')
+                # print(f'FFTRawSign: {FFTRawSign[ii,left:right]}')
                 FFTRawSign[ii,left:right] = FFTRawSign[ii,left:right]/tave
         # Right tapering:
         FFTRawSign[:,right:high] = np.cos(
