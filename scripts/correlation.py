@@ -18,10 +18,26 @@ import DAS_module
 import matplotlib.pyplot as plt
 import matplotlib as mpl
 import obspy
+import pyasdf
 from tqdm import tqdm
 
 from dasstore.zarr import Client
 from TDMS_Read import TdmsReader
+
+
+def get_tdms_array():
+    tdms_array = np.empty(len(os.listdir(dir_path)), TdmsReader)
+    timestamps = np.empty(len(tdms_array), dtype=datetime)
+
+    for count, file in enumerate(os.listdir(dir_path)):
+        if file.endswith('.tdms'):
+            tdms = TdmsReader(dir_path + file)
+            tdms_array[count] = tdms
+            timestamps[count] = tdms.get_properties().get('GPSTimeStamp')
+    timestamps.sort()
+    print(f'{len(timestamps)} files available from {timestamps[0]} to {timestamps[-1]}')
+
+    return [x for y, x in sorted(zip(np.array(timestamps), tdms_array))], timestamps
 
 
 def get_closest_index(timestamps, time):
@@ -41,8 +57,8 @@ def get_closest_index(timestamps, time):
     return idx
 
 
-# returns a minute-long array of tdms files starting at the timestamp given
-def get_time_subset(tdms_array, start_time, timestamps, tpf, delta=timedelta(seconds=60), tolerance=300):
+# returns a delta-long array of tdms files starting at the timestamp given
+def get_time_subset(tdms_array, start_time, timestamps, tpf, delta, tolerance=300):
     # tolerence is the time in s that the closest timestamp can be away from the desired start_time
     # timestamps MUST be orted, and align with TDMS array (i.e. timestamps[n] represents tdms_array[n]
     start_idx = get_closest_index(timestamps, start_time)
@@ -57,24 +73,27 @@ def get_time_subset(tdms_array, start_time, timestamps, tpf, delta=timedelta(sec
     
     if (end_idx - start_idx + 1) != (delta.seconds/tpf):
         print(f"WARNING: time subset not continuous; only {(end_idx - start_idx + 1)*tpf} seconds represented.")
+    # for i in range(start_idx, end_idx+1):
+    #     print(timestamps[i])
     
     return tdms_array[start_idx:end_idx+1]
 
 
 # returns a minute of data
 # currently CAN NOT HANDLE TDMS > 30 SECONDS - I THINK (it'll just clip the rest of the file, it can probably handle exactly 60s of data)
-def get_minute_data(tdms_array, channels, prepro_para, start_time, timestamps):
-    cha1, cha2, sps, spatial_ratio= prepro_para.get('cha1'), prepro_para.get('cha2'), prepro_para.get('sps'), prepro_para.get('spatial_ratio')
+def get_data_from_array(tdms_array, channels, prepro_para, start_time, timestamps, duration=60):
+    cha1, cha2, sps, spatial_ratio = prepro_para.get('cha1'), prepro_para.get('cha2'), prepro_para.get('sps'), prepro_para.get('spatial_ratio')
 
     # make it so that if start_time is not a timestamp, the first minute in the array is returned
     current_time = 0
     tdms_t_size = tdms_array[0].get_data(channels[0], channels[1]).shape[0]
-    minute_data = np.empty((int(60 * sps), floor((cha2-cha1+1)/spatial_ratio)))
+    minute_data = np.empty((int(duration * sps), floor((cha2-cha1+1)/spatial_ratio)))
     
     if type(start_time) is datetime:
-        tdms_array = get_time_subset(tdms_array, start_time, timestamps, tpf=tdms_t_size/sps, tolerance=30)   # tpf = time per file
+        tdms_array = get_time_subset(tdms_array, start_time, timestamps, tpf=tdms_t_size/sps, delta=timedelta(seconds=duration), tolerance=30)   # tpf = time per file
+        print(f'Num tdms: {len(tdms_array)}')
     
-    while current_time != 60 and len(tdms_array) != 0:
+    while current_time != duration and len(tdms_array) != 0:
         data = tdms_array.pop(0).get_data(cha1, cha2)
         data = data[:, ::spatial_ratio]
         current_row = current_time * sps
@@ -95,34 +114,34 @@ def get_dir_properties(dir_path):
     return tdms_file.get_properties()
 
 
-def set_prepro_parameters(dir_path):
+def set_prepro_parameters(dir_path, freqmin=1, freqmax=49.9):
     properties = get_dir_properties(dir_path)
     
     cha_spacing = properties.get('SpatialResolution[m]') * properties.get('Fibre Length Multiplier')
-    start_dist, stop_dist = properties.get('Start Distance (m)'), properties.get('Stop Distance (m)')
-    sps = properties.get('SamplingFrequency[Hz]')
-    spatial_res = properties.get('SpatialResolution[m]')
-           
+    # start_dist, stop_dist = properties.get('Start Distance (m)'), properties.get('Stop Distance (m)')
+
     sps                = properties.get('SamplingFrequency[Hz]')        # current sampling rate (Hz)
     samp_freq          = 100                                            # target sampling rate (Hz)
+    
+    spatial_res = properties.get('SpatialResolution[m]')
     target_spatial_res = 1                                              # target spatial resolution (m)
     spatial_ratio      = int(target_spatial_res/spatial_res)
 
-    freqmin            = 1                                              # pre filtering frequency bandwidth
-    freqmax            = 49.9                                           # note this cannot exceed Nquist freq
+    # freqmin: pre filtering frequency bandwidth
+    # freqmax: note this cannot exceed Nquist freq
     freq_norm          = 'rma'             # 'no' for no whitening, or 'rma' for running-mean average, 'phase_only' for sign-bit normalization in freq domain.
     time_norm          = 'one_bit'         # 'no' for no normalization, or 'rma', 'one_bit' for normalization in time domain
     cc_method          = 'xcorr'           # 'xcorr' for pure cross correlation, 'deconv' for deconvolution; FOR "COHERENCY" PLEASE set freq_norm to "rma", time_norm to "no" and cc_method to "xcorr"
     smooth_N           = 100               # moving window length for time domain normalization if selected (points)
     smoothspect_N      = 100               # moving window length to smooth spectrum amplitude (points)
-    maxlag             = 8                 # lags of cross-correlation to save (sec)
+    maxlag             = 4                 # lags of cross-correlation to save (sec)
 
     max_over_std       = 20                # threshold to remove window of bad signals: set it to 10*9 if prefer not to remove them
 
-    cc_len             = 60                # correlate length in second
-    step               = 60                # stepping length in second [not used]
+    cc_len             = 240                # correlate length in second
+    # step               = 60                # stepping length in second [not used]
 
-    cha1, cha2         = 2000, 7999        # USE ONLY FOR CHANNEL SUBSET SELECTION (repeated later)
+    cha1, cha2         = 6000, 7999        # USE ONLY FOR CHANNEL SUBSET SELECTION 
     effective_cha2     = floor(cha1 + (cha2 - cha1) / spatial_ratio)
 
     cha_list = np.array(range(cha1, effective_cha2 + 1))
@@ -134,7 +153,8 @@ def set_prepro_parameters(dir_path):
         'freqmin':freqmin,
         'freqmax':freqmax,
         'sps':sps,
-        'npts_chunk':cc_len*sps,           # <-- I don't know why this is hard coded like this i should probably find out
+        'cc_len':cc_len,
+        'npts_chunk':cc_len*sps,
         'nsta':nsta,
         'cha_list':cha_list,
         'samp_freq':samp_freq,
@@ -155,8 +175,11 @@ def set_prepro_parameters(dir_path):
     }
 
 
-def correlation(corr_full, stack_full, prepro_para, task_t0):
-    cha1, cha2, sps, effective_cha2, cha_list = prepro_para.get('cha1'), prepro_para.get('cha2'), prepro_para.get('sps'), prepro_para.get('effective_cha2'), prepro_para.get('cha_list')
+def correlation(tdms_array, prepro_para, timestamps, task_t0):
+    n_lag, n_pair, cha1, cha2, effective_cha2, cha_list, cc_len = prepro_para.get('n_lag'), prepro_para.get('n_pair'), prepro_para.get('cha1'), prepro_para.get('cha2'), prepro_para.get('effective_cha2'), prepro_para.get('cha_list'), prepro_para.get('cc_len')
+    
+    corr_full = np.zeros([n_lag, n_pair], dtype = np.float32)
+    stack_full = np.zeros([1, n_pair], dtype = np.int32)
     
     pbar = tqdm(range(n_minute))
     t_query = 0; t_compute = 0
@@ -164,14 +187,13 @@ def correlation(corr_full, stack_full, prepro_para, task_t0):
     for imin in pbar:
         t0 = time.time()
         pbar.set_description(f"Processing {task_t0}")
-        tdata = get_minute_data(tdms_array, [cha1, cha2], task_t0, timestamps, sps)
-        task_t0 += timedelta(minutes = 1)
+        tdata = get_data_from_array(tdms_array, [cha1, cha2], prepro_para, task_t0, timestamps, duration=cc_len)
+        task_t0 += timedelta(seconds=cc_len)
         
         t_query += time.time() - t0
         t1 = time.time()
         # perform pre-processing
         trace_stdS, dataS = DAS_module.preprocess_raw_make_stat(tdata, prepro_para)
-        # print(f'Processed data shape: {trace_stdS.shape}')
 
         # do normalization if needed
         white_spect = DAS_module.noise_processing(dataS, prepro_para)
@@ -238,12 +260,8 @@ def plot_das_data(data, prepro_para):
 
 def plot_correlation(corr, prepro_para, cmap_param='bwr'):
     cha1, cha2, effective_cha2, spatial_ratio, cha_spacing, freqmin, freqmax, target_spatial_res = prepro_para.get('cha1'), prepro_para.get('cha2'), prepro_para.get('effective_cha2'), prepro_para.get('spatial_ratio'), prepro_para.get('cha_spacing'), prepro_para.get('freqmin'), prepro_para.get('freqmax'), prepro_para.get('target_spatial_res')
-    
-    print((np.linspace(cha1, cha2, 4) - cha1)/4)
-    print(np.linspace(cha1, cha2, 4))
 
     plt.figure(figsize = (12, 5), dpi = 150)
-
     plt.imshow(corr[:, :(effective_cha2 - cha1)].T, aspect = 'auto', cmap = cmap_param, 
             vmax = 2e-2, vmin = -2e-2, origin = 'lower', interpolation=None)
 
@@ -265,34 +283,82 @@ def plot_correlation(corr, prepro_para, cmap_param='bwr'):
     plt.savefig(f'./results/figures/{t_start}_{n_minute}-mins_f{freqmin}:{freqmax}__{cha1}:{cha2}_{target_spatial_res}.png')
 
 
+def plot_multiple_correlations(corrs, prepro_para, cmap_param='bwr'):
+    cha1, cha2, effective_cha2, spatial_ratio, cha_spacing, freqmin, freqmax, target_spatial_res = prepro_para.get('cha1'), prepro_para.get('cha2'), prepro_para.get('effective_cha2'), prepro_para.get('spatial_ratio'), prepro_para.get('cha_spacing'), prepro_para.get('freqmin'), prepro_para.get('freqmax'), prepro_para.get('target_spatial_res')
+
+    fig, axs = plt.subplots(2, ceil(len(corrs)/2), figsize=(15, 10))
+    
+    for ax, corr in zip(axs.ravel(), corrs):
+        plt.sca(ax)
+        plt.imshow(corr[:, :(effective_cha2 - cha1)].T, aspect = 'auto', cmap = cmap_param, 
+                vmax = 2e-2, vmin = -2e-2, origin = 'lower', interpolation=None)
+
+        _ =plt.yticks((np.linspace(cha1, cha2, 4) - cha1)/spatial_ratio, 
+                    [int(i) for i in np.linspace(cha1, cha2, 4)], fontsize = 12)
+        plt.ylabel("Channel number", fontsize = 16)
+        _ = plt.xticks(np.arange(0, 1601, 200), (np.arange(0, 801, 100) - 400)/50, fontsize = 12)
+        plt.xlabel("Time lag (sec)", fontsize = 16)
+        bar = plt.colorbar(pad = 0.1, format = lambda x, pos: '{:.1f}'.format(x*100))
+        bar.set_label('Cross-correlation Coefficient ($\\times10^{-2}$)', fontsize = 15)
+
+        twiny = plt.gca().twinx()
+        twiny.set_yticks(np.linspace(0, cha2 - cha1, 4), 
+                                    [int(i* cha_spacing) for i in np.linspace(cha1, cha2, 4)])
+        twiny.set_ylabel("Distance along cable (m)", fontsize = 15)
+        plt.title(f"{freqmin} to {freqmax} Hz")
+    
+    # follow convention of: {timestamp}_{t length}_{channels}.png
+    t_start = task_t0 - timedelta(minutes=n_minute)
+    plt.savefig(f'./results/figures/{t_start}_{n_minute}-mins_{cha1}:{cha2}_{target_spatial_res}_freq_experiment.png')
+
+
+def save_ccf(corr_full, sta, nsta):
+    cha1, cha2, samp_freq, freqmin, freqmax, maxlag, target_spatial_res = prepro_para.get('cha1'), prepro_para.get('cha2'), prepro_para.get('samp_freq'), prepro_para.get('freqmin'), prepro_para.get('freqmax'), prepro_para.get('maxlag'), prepro_para.get('target_spatial_res')
+    
+    t0 = time.time()
+    with pyasdf.ASDFDataSet(f"./results/CCF/{t_start}_{n_minute}-mins_{cha1}:{cha2}_{target_spatial_res}.h5", mpi = False) as ccf_ds:
+        for iiS in tqdm(range(len(sta))):
+            for iiR in range(nsta - iiS):
+                # use the channel number as a way to figure out distance
+                Sindx = iiS + cha1
+                iS = int((cha2*2 - cha1 - Sindx + 1) * (Sindx - cha1) / 2)
+                param = {'sps':samp_freq,
+                        'dt': 1/samp_freq,
+                        'maxlag':maxlag,
+                        'freqmin':freqmin,
+                        'freqmax':freqmax,
+                        'dist':target_spatial_res}
+
+                # source-receiver pair
+                data_type = str(sta[iiS])
+                path = f'{Sindx}_{Sindx + iiR}'
+                ccf_ds.add_auxiliary_data(data=corr_full[:, iS + iiR], 
+                                        data_type=data_type, 
+                                        path=path, 
+                                        parameters=param)
+    t1 = time.time()
+    print(f"it takes %.3f seconds to write this ASDF file" % (t1 - t0))
+
+
 # dir_path = "../../../../gpfs/data/DAS_data/Data/"
 dir_path = "../../temp_data_store/"
+task_t0 = datetime(year = 2023, month = 11, day = 9, 
+                   hour = 13, minute = 42, second = 57)
+n_minute = 4
 
-properties = get_dir_properties(dir_path)
-n_lag = properties.get('n_lag')
-n_pair = properties.get('n_pair')
+# prepro_para = set_prepro_parameters(dir_path)
+# tdms_array, timestamps = get_tdms_array()
 
-corr_full = np.zeros([n_lag, n_pair], dtype = np.float32)
-stack_full = np.zeros([1, n_pair], dtype = np.int32)
+# corr_full, stack_full = correlation(tdms_array, prepro_para, timestamps, task_t0)
+# plot_correlation(corr_full, prepro_para)
 
-# refresh data bc of popping and stuff
-task_t0 = datetime(year = 2024, month = 1, day = 19, 
-                   hour = 15, minute = 19, second = 7, microsecond = 0)
+corrs = []
+# freq_range = [[0.1, 0.2], [0.2, 1], [1, 10], [10, 49.9]]
+freq_range = [[0.1, 0.2]]
+for freqs in freq_range:
+    prepro_para = set_prepro_parameters(dir_path, freqmin=freqs[0], freqmax=freqs[1])
+    tdms_array, timestamps = get_tdms_array()
+    corr_full, stack_full = correlation(tdms_array, prepro_para, timestamps, task_t0)
+    corrs.append(corr_full)
 
-tdms_array = np.empty(len(os.listdir(dir_path)), TdmsReader)
-timestamps = np.empty(len(tdms_array), dtype=datetime)
-
-for count, file in enumerate(os.listdir(dir_path)):
-    if file.endswith('.tdms'):
-        tdms = TdmsReader(dir_path + file)
-        tdms_array[count] = tdms
-        timestamps[count] = tdms.get_properties().get('GPSTimeStamp')
-timestamps.sort()
-print(f'{len(timestamps)} files available from {timestamps[0]} to {timestamps[-1]}')
-
-tdms_array = [x for y, x in sorted(zip(np.array(timestamps), tdms_array))]
-
-n_minute = 120
-corr_full, stack_full = correlation(corr_full, stack_full, task_t0)
-
-plot_correlation(corr_full)
+plot_multiple_correlations(corrs, prepro_para)

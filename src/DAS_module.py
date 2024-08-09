@@ -4,7 +4,7 @@ import glob
 import scipy
 import numpy as np
 from numba import jit
-from scipy.fftpack import next_fast_len
+from scipy.fft import next_fast_len
 from obspy.signal.filter import bandpass
 from obspy.core.util.base import _get_function_from_entry_point
 
@@ -173,7 +173,7 @@ def noise_processing(dataS,fft_para):
         source_white = whiten(white,fft_para)	# whiten and return FFT
     else:
         Nfft = int(next_fast_len(int(dataS.shape[1])))
-        source_white = scipy.fftpack.fft(white, Nfft, axis=1) # return FFT
+        source_white = scipy.fft.fft(white, Nfft, axis=1) # return FFT
 
     return source_white
 
@@ -276,7 +276,7 @@ def correlate(fft1_smoothed_abs,fft2,D,Nfft):
         crap[:Nfft2] = crap[:Nfft2]-np.mean(crap[:Nfft2])   # remove the mean in freq domain (spike at t=0)
         crap[-(Nfft2)+1:] = np.flip(np.conj(crap[1:(Nfft2)]),axis=0)
         crap[0]=complex(0,0)
-        s_corr[i,:] = np.real(np.fft.ifftshift(scipy.fftpack.ifft(crap, Nfft, axis=0)))
+        s_corr[i,:] = np.real(np.fft.ifftshift(scipy.fft.ifft(crap, Nfft, axis=0)))
 
     # remove abnormal trace
     ampmax = np.max(s_corr,axis=1)
@@ -469,7 +469,7 @@ def whiten(data, fft_para):
     smooth_N  = fft_para['smooth_N']
     freq_norm = fft_para['freq_norm']
 
-    # Speed up FFT by padding to optimal size for FFTPACK
+    # Speed up FFT by padding to optimal size for FFT
     if data.ndim == 1:
         axis = 0
     elif data.ndim == 2:
@@ -478,9 +478,15 @@ def whiten(data, fft_para):
     Nfft = int(next_fast_len(int(data.shape[axis])))
 
     Napod = 100
-    Nfft = int(Nfft)
-    freqVec = scipy.fftpack.fftfreq(Nfft, d=delta)[:Nfft // 2]
+    freqVec = scipy.fft.fftfreq(Nfft, d=delta)[:Nfft // 2]
     J = np.where((freqVec >= freqmin) & (freqVec <= freqmax))[0]
+    print(len(J))
+    # print(J)
+    # Nfft *= 50
+    # freqVec = scipy.fft.fftfreq(Nfft, d=delta)[:Nfft // 2]
+    # J = np.where((freqVec >= freqmin) & (freqVec <= freqmax))[0]
+    # print(len(J))
+    # print(J)
     low = J[0] - Napod
     if low <= 0:
         low = 1
@@ -491,7 +497,7 @@ def whiten(data, fft_para):
     if high > Nfft/2:
         high = int(Nfft//2)
 
-    FFTRawSign = scipy.fftpack.fft(data, Nfft,axis=axis)
+    FFTRawSign = scipy.fft.fft(data, Nfft, axis=axis)
     # Left tapering:
     if axis == 1:
         FFTRawSign[:,0:low] *= 0
@@ -504,6 +510,8 @@ def whiten(data, fft_para):
         elif freq_norm == 'rma':
             for ii in range(data.shape[0]):
                 tave = moving_ave(np.abs(FFTRawSign[ii,left:right]),smooth_N)
+                if len(tave) == 0:
+                    print("WARNING: Not enough points to time-domain smooth!!!")
                 FFTRawSign[ii,left:right] = FFTRawSign[ii,left:right]/tave
         # Right tapering:
         FFTRawSign[:,right:high] = np.cos(
