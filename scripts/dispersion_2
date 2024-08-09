@@ -20,7 +20,7 @@ maxlag = 8
 dist = 1
 dt = 1/100
 
-scales = np.arange(1, 100)
+scales = np.arange(1, 21)
 coefs, freqs = pywt.cwt(cc_data, scales, 'morl')  # Morlet wavelet
 
 group_velocities = []

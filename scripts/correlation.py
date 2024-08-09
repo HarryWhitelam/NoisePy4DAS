@@ -281,9 +281,9 @@ def plot_correlation(corr, prepro_para, cmap_param='bwr'):
                                 [int(i* cha_spacing) for i in np.linspace(cha1, cha2, 4)])
     twiny.set_ylabel("Distance along cable (m)", fontsize = 15)
     
-    # follow convention of: {timestamp}_{t length}_{channels}.png
     t_start = task_t0 - timedelta(minutes=n_minute)
     plt.savefig(f'./results/figures/{t_start}_{n_minute}mins_{freqmin}:{freqmax}Hz__{cha1}:{cha2}_{target_spatial_res}m.png')
+
 
 def save_ccf(corr_full, sta, nsta):
     cha1, cha2, samp_freq, freqmin, freqmax, maxlag, target_spatial_res = prepro_para.get('cha1'), prepro_para.get('cha2'), prepro_para.get('samp_freq'), prepro_para.get('freqmin'), prepro_para.get('freqmax'), prepro_para.get('maxlag'), prepro_para.get('target_spatial_res')
