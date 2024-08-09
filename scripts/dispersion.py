@@ -7,6 +7,7 @@ import matplotlib.pyplot as plt
 import numpy as np
 import pyasdf
 import pycwt
+import pywt
 import scipy
 
 # from . import noise_module
@@ -96,7 +97,7 @@ vel = np.arange(vmin, vmax, 0.02)
 dj = 1 / 12
 s0 = -1
 J = 255
-wvn = "morlet"
+wvn = "morl"
 
 # get station-pair name ready for output
 tmp = sfile.split("/")[-1].split("_")
@@ -104,7 +105,7 @@ spair = tmp[0] + "_" + tmp[1][:-3]
 
 # TODO: below constants need to be parameterised - not constants
 maxlag = 8
-dist = 1
+dist = 1       # in km i think
 dt = 1/100
 
 # initialize the plotting procedure
@@ -146,28 +147,38 @@ tvec = indx * dt
 data = data[indx]
 
 # wavelet transformation
-cwt, sj, freq, coi, _, _ = pycwt.cwt(data, dt, dj, s0, J, wvn)
+# cwt, sj, freq, coi, _, _ = pycwt.cwt(data, dt, dj, s0, J, wvn)
+
+# ATTEMPT: using pywavelet
+scales = np.arange(1, 31)
+cwt, freq = pywt.cwt(data, scales, wvn) 
+
+del data
 
 # do filtering here
-if (fmax > np.max(freq)) | (fmax <= fmin):
-    raise ValueError("Abort: frequency out of limits!")
+print('checkpoint 0')
 freq_ind = np.where((freq >= fmin) & (freq <= fmax))[0]
+print(freq_ind)
 cwt = cwt[freq_ind]
 freq = freq[freq_ind]
 
 # use amplitude of the cwt
+print('checkpoint 1')
 period = 1 / freq
 rcwt, pcwt = np.abs(cwt) ** 2, np.angle(cwt)
 
 # interpolation to grids of freq-vel
+print('checkpoint 2')
 fc = scipy.interpolate.interp2d(dist / tvec, period, rcwt)
 rcwt_new = fc(vel, per)
 
 # do normalization for each frequency
+print('checkpoint 3')
 for ii in range(len(per)):
     rcwt_new[ii] /= np.max(rcwt_new[ii])
 
 # extract dispersion curves for ZZ, RR and TT   FIXME: This doesn't exist in NoisePyDAS (namely extract_dispersion)
+print('checkpoint 4')
 if comp == "ZZ" or comp == "RR" or comp == "TT":
     nper, gv = extract_dispersion(rcwt_new, per, vel)
     fphase = open(os.path.join(outdir, spair + "_group_" + comp + ".csv"), "w")
@@ -176,6 +187,7 @@ if comp == "ZZ" or comp == "RR" or comp == "TT":
     fphase.close()
 
 # plot wavelet spectrum
+print('checkpoint 5')
 plt.imshow(
     np.transpose(rcwt_new),
     cmap="jet",
@@ -193,6 +205,7 @@ plt.text(int(per[-1] * 0.85), vel[-1] - 0.5, comp, fontdict=font)
 plt.tight_layout()
 
 # save figures
+print('checkpoint 6')
 outfname = outdir + "/{0:s}_{1:s}.pdf".format(spair, lag_type)
 # plt.savefig(outfname, format="pdf", dpi=400)
 plt.show()
