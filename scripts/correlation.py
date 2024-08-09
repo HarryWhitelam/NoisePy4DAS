@@ -175,7 +175,7 @@ def set_prepro_parameters(dir_path, freqmin=1, freqmax=49.9):
     }
 
 
-def correlation(tdms_array, prepro_para, timestamps, task_t0):
+def correlation(tdms_array, prepro_para, timestamps, task_t0, save_ccf=False):
     n_lag, n_pair, cha1, cha2, effective_cha2, cha_list, cc_len = prepro_para.get('n_lag'), prepro_para.get('n_pair'), prepro_para.get('cha1'), prepro_para.get('cha2'), prepro_para.get('effective_cha2'), prepro_para.get('cha_list'), prepro_para.get('cc_len')
     
     corr_full = np.zeros([n_lag, n_pair], dtype = np.float32)
@@ -233,6 +233,9 @@ def correlation(tdms_array, prepro_para, timestamps, task_t0):
     corr_full /= stack_full
     # print("%.3f seconds in data query, %.3f seconds in xcorr computing" % (t_query, t_compute))
     print(f"{round(t_query, 2)} seconds in data query, {round(t_compute, 2)} seconds in xcorr computing")
+    
+    if save_ccf:
+        save_ccf(corr_full, sta, nsta)
     return corr_full, stack_full
 
 
@@ -280,37 +283,7 @@ def plot_correlation(corr, prepro_para, cmap_param='bwr'):
     
     # follow convention of: {timestamp}_{t length}_{channels}.png
     t_start = task_t0 - timedelta(minutes=n_minute)
-    plt.savefig(f'./results/figures/{t_start}_{n_minute}-mins_f{freqmin}:{freqmax}__{cha1}:{cha2}_{target_spatial_res}.png')
-
-
-def plot_multiple_correlations(corrs, prepro_para, cmap_param='bwr'):
-    cha1, cha2, effective_cha2, spatial_ratio, cha_spacing, freqmin, freqmax, target_spatial_res = prepro_para.get('cha1'), prepro_para.get('cha2'), prepro_para.get('effective_cha2'), prepro_para.get('spatial_ratio'), prepro_para.get('cha_spacing'), prepro_para.get('freqmin'), prepro_para.get('freqmax'), prepro_para.get('target_spatial_res')
-
-    fig, axs = plt.subplots(2, ceil(len(corrs)/2), figsize=(15, 10))
-    
-    for ax, corr in zip(axs.ravel(), corrs):
-        plt.sca(ax)
-        plt.imshow(corr[:, :(effective_cha2 - cha1)].T, aspect = 'auto', cmap = cmap_param, 
-                vmax = 2e-2, vmin = -2e-2, origin = 'lower', interpolation=None)
-
-        _ =plt.yticks((np.linspace(cha1, cha2, 4) - cha1)/spatial_ratio, 
-                    [int(i) for i in np.linspace(cha1, cha2, 4)], fontsize = 12)
-        plt.ylabel("Channel number", fontsize = 16)
-        _ = plt.xticks(np.arange(0, 1601, 200), (np.arange(0, 801, 100) - 400)/50, fontsize = 12)
-        plt.xlabel("Time lag (sec)", fontsize = 16)
-        bar = plt.colorbar(pad = 0.1, format = lambda x, pos: '{:.1f}'.format(x*100))
-        bar.set_label('Cross-correlation Coefficient ($\\times10^{-2}$)', fontsize = 15)
-
-        twiny = plt.gca().twinx()
-        twiny.set_yticks(np.linspace(0, cha2 - cha1, 4), 
-                                    [int(i* cha_spacing) for i in np.linspace(cha1, cha2, 4)])
-        twiny.set_ylabel("Distance along cable (m)", fontsize = 15)
-        plt.title(f"{freqmin} to {freqmax} Hz")
-    
-    # follow convention of: {timestamp}_{t length}_{channels}.png
-    t_start = task_t0 - timedelta(minutes=n_minute)
-    plt.savefig(f'./results/figures/{t_start}_{n_minute}-mins_{cha1}:{cha2}_{target_spatial_res}_freq_experiment.png')
-
+    plt.savefig(f'./results/figures/{t_start}_{n_minute}mins_{freqmin}:{freqmax}Hz__{cha1}:{cha2}_{target_spatial_res}m.png')
 
 def save_ccf(corr_full, sta, nsta):
     cha1, cha2, samp_freq, freqmin, freqmax, maxlag, target_spatial_res = prepro_para.get('cha1'), prepro_para.get('cha2'), prepro_para.get('samp_freq'), prepro_para.get('freqmin'), prepro_para.get('freqmax'), prepro_para.get('maxlag'), prepro_para.get('target_spatial_res')
@@ -345,20 +318,10 @@ dir_path = "../../temp_data_store/"
 task_t0 = datetime(year = 2023, month = 11, day = 9, 
                    hour = 13, minute = 42, second = 57)
 n_minute = 4
+t_start = task_t0 - timedelta(minutes=n_minute)
 
-# prepro_para = set_prepro_parameters(dir_path)
-# tdms_array, timestamps = get_tdms_array()
+prepro_para = set_prepro_parameters(dir_path)
+tdms_array, timestamps = get_tdms_array()
 
-# corr_full, stack_full = correlation(tdms_array, prepro_para, timestamps, task_t0)
-# plot_correlation(corr_full, prepro_para)
-
-corrs = []
-# freq_range = [[0.1, 0.2], [0.2, 1], [1, 10], [10, 49.9]]
-freq_range = [[0.1, 0.2]]
-for freqs in freq_range:
-    prepro_para = set_prepro_parameters(dir_path, freqmin=freqs[0], freqmax=freqs[1])
-    tdms_array, timestamps = get_tdms_array()
-    corr_full, stack_full = correlation(tdms_array, prepro_para, timestamps, task_t0)
-    corrs.append(corr_full)
-
-plot_multiple_correlations(corrs, prepro_para)
+corr_full, stack_full = correlation(tdms_array, prepro_para, timestamps, task_t0, save_ccf=True)
+plot_correlation(corr_full, prepro_para)
