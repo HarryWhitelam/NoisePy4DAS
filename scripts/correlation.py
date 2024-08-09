@@ -279,7 +279,6 @@ def plot_correlation(corr, prepro_para, cmap_param='bwr'):
     twiny.set_ylabel("Distance along cable (m)", fontsize = 15)
     
     # follow convention of: {timestamp}_{t length}_{channels}.png
-    t_start = task_t0 - timedelta(minutes=n_minute)
     plt.savefig(f'./results/figures/{t_start}_{n_minute}-mins_f{freqmin}:{freqmax}__{cha1}:{cha2}_{target_spatial_res}.png')
 
 
@@ -308,7 +307,6 @@ def plot_multiple_correlations(corrs, prepro_para, cmap_param='bwr'):
         plt.title(f"{freqmin} to {freqmax} Hz")
     
     # follow convention of: {timestamp}_{t length}_{channels}.png
-    t_start = task_t0 - timedelta(minutes=n_minute)
     plt.savefig(f'./results/figures/{t_start}_{n_minute}-mins_{cha1}:{cha2}_{target_spatial_res}_freq_experiment.png')
 
 
@@ -345,6 +343,7 @@ dir_path = "../../temp_data_store/"
 task_t0 = datetime(year = 2023, month = 11, day = 9, 
                    hour = 13, minute = 42, second = 57)
 n_minute = 4
+t_start = task_t0 - timedelta(minutes=n_minute)
 
 # prepro_para = set_prepro_parameters(dir_path)
 # tdms_array, timestamps = get_tdms_array()
