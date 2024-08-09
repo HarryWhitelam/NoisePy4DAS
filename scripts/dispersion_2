@@ -1,0 +1,40 @@
+import os
+import matplotlib.pyplot as plt
+import numpy as np
+import pywt
+
+
+# rootpath = os.path.join(os.path.expanduser("~"), "distans/noisePy4DAS-SeaDAS")    # root path for this data processing
+rootpath = os.path.join(os.path.expanduser("~"), 
+                        "Documents/0. PhD/DiSTANS/Toolkit/NoisePy4DAS-SeaDAS/")
+sfile = os.path.join(rootpath, "test_stack.txt")                                   # ASDF file containing stacked data
+outdir = os.path.join(rootpath, "results/figures/dispersion")                       # dir where to output dispersive image and extracted dispersion
+
+
+cc_data = np.loadtxt(sfile, delimiter=',')
+cc_data = cc_data[len(cc_data)//2:]         # using positive lags only
+print(cc_data.shape)
+
+time = np.arange(0, len(cc_data[0]))
+maxlag = 8
+dist = 1
+dt = 1/100
+
+scales = np.arange(1, 100)
+coefs, freqs = pywt.cwt(cc_data, scales, 'morl')  # Morlet wavelet
+
+group_velocities = []
+for i, scale in enumerate(scales):
+    peak_idx = np.argmax(np.abs(coefs[i]))
+    arrival_time = time[peak_idx]
+    velocity = dt / arrival_time
+    group_velocities.append(velocity)
+
+# Step 4: Plot the Dispersion Curve
+plt.figure(figsize=(10, 6))
+plt.plot(1 / freqs, group_velocities, 'o-')
+plt.xlabel('Frequency (Hz)')
+plt.ylabel('Group Velocity (km/s)')
+plt.title('Dispersion Curve from Cross-Correlation Data')
+plt.grid(True)
+plt.show()
