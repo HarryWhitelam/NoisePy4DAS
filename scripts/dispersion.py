@@ -72,8 +72,8 @@ def extract_dispersion(amp, per, vel):
 ############################################
 
 # input file info
-# rootpath = os.path.join(os.path.expanduser("~"), "distans/noisePy4DAS-SeaDAS")    # root path for this data processing
-rootpath = os.path.join(os.path.expanduser("~"), 
+rootpath = os.path.join(os.path.expanduser("~"), "distans/noisePy4DAS-SeaDAS")    # root path for this data processing
+# rootpath = os.path.join(os.path.expanduser("~"), 
                         "Documents/0. PhD/DiSTANS/Toolkit/NoisePy4DAS-SeaDAS/")
 sfile = os.path.join(rootpath, "test_stack.txt")                                   # ASDF file containing stacked data
 outdir = os.path.join(rootpath, "results/figures/dispersion")                       # dir where to output dispersive image and extracted dispersion
@@ -194,6 +194,6 @@ plt.tight_layout()
 
 # save figures
 outfname = outdir + "/{0:s}_{1:s}.pdf".format(spair, lag_type)
-# plt.savefig(outfname, format="pdf", dpi=400)
-plt.show()
-# plt.close()
+plt.savefig(outfname, format="pdf", dpi=400)
+# plt.show()
+plt.close()

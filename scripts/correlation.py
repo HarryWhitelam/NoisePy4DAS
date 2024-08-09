@@ -313,8 +313,8 @@ def save_ccf(corr_full, sta, nsta):
     print(f"it takes %.3f seconds to write this ASDF file" % (t1 - t0))
 
 
-# dir_path = "../../../../gpfs/data/DAS_data/Data/"
-dir_path = "../../temp_data_store/"
+dir_path = "../../../../gpfs/data/DAS_data/Data/"
+# dir_path = "../../temp_data_store/"
 task_t0 = datetime(year = 2023, month = 11, day = 9, 
                    hour = 13, minute = 42, second = 57)
 n_minute = 4
