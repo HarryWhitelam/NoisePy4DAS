@@ -262,7 +262,7 @@ def plot_das_data(data, prepro_para):
 
 
 def plot_correlation(corr, prepro_para, cmap_param='bwr'):
-    cha1, cha2, effective_cha2, spatial_ratio, cha_spacing, freqmin, freqmax, target_spatial_res = prepro_para.get('cha1'), prepro_para.get('cha2'), prepro_para.get('effective_cha2'), prepro_para.get('spatial_ratio'), prepro_para.get('cha_spacing'), prepro_para.get('freqmin'), prepro_para.get('freqmax'), prepro_para.get('target_spatial_res')
+    cha1, cha2, effective_cha2, spatial_ratio, cha_spacing, freqmin, freqmax, target_spatial_res, maxlag = prepro_para.get('cha1'), prepro_para.get('cha2'), prepro_para.get('effective_cha2'), prepro_para.get('spatial_ratio'), prepro_para.get('cha_spacing'), prepro_para.get('freqmin'), prepro_para.get('freqmax'), prepro_para.get('target_spatial_res'), prepro_para.get('maxlag')
 
     plt.figure(figsize = (12, 5), dpi = 150)
     plt.imshow(corr[:, :(effective_cha2 - cha1)].T, aspect = 'auto', cmap = cmap_param, 
@@ -271,7 +271,8 @@ def plot_correlation(corr, prepro_para, cmap_param='bwr'):
     _ =plt.yticks((np.linspace(cha1, cha2, 4) - cha1)/spatial_ratio, 
                 [int(i) for i in np.linspace(cha1, cha2, 4)], fontsize = 12)
     plt.ylabel("Channel number", fontsize = 16)
-    _ = plt.xticks(np.arange(0, 1601, 200), (np.arange(0, 801, 100) - 400)/50, fontsize = 12)
+    # _ = plt.xticks(np.arange(0, 1601, 200), (np.arange(0, 801, 100) - 400)/50, fontsize = 12)
+    _ = plt.xticks(np.arange(0, maxlag*200+1, 200), np.arange(-maxlag, maxlag+1, 2), fontsize=12)
     plt.xlabel("Time lag (sec)", fontsize = 16)
     bar = plt.colorbar(pad = 0.1, format = lambda x, pos: '{:.1f}'.format(x*100))
     bar.set_label('Cross-correlation Coefficient ($\\times10^{-2}$)', fontsize = 15)

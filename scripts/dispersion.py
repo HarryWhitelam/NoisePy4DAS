@@ -74,8 +74,7 @@ def extract_dispersion(amp, per, vel):
 
 # input file info
 rootpath = os.path.join(os.path.expanduser("~"), "distans/noisePy4DAS-SeaDAS")    # root path for this data processing
-# rootpath = os.path.join(os.path.expanduser("~"), 
-                        "Documents/0. PhD/DiSTANS/Toolkit/NoisePy4DAS-SeaDAS/")
+# rootpath = os.path.join(os.path.expanduser("~"), "Documents/0. PhD/DiSTANS/Toolkit/NoisePy4DAS-SeaDAS/")
 sfile = os.path.join(rootpath, "test_stack.txt")                                   # ASDF file containing stacked data
 outdir = os.path.join(rootpath, "results/figures/dispersion")                       # dir where to output dispersive image and extracted dispersion
 
@@ -120,7 +119,6 @@ comp = 'ZZ'
 
 # load cross-correlation functions
 tdata = np.loadtxt(sfile, delimiter=',')
-print(tdata.shape)
 
 # stack positive and negative lags
 npts = int(1 / dt) * 2 * maxlag + 1
@@ -158,7 +156,6 @@ del data
 # do filtering here
 print('checkpoint 0')
 freq_ind = np.where((freq >= fmin) & (freq <= fmax))[0]
-print(freq_ind)
 cwt = cwt[freq_ind]
 freq = freq[freq_ind]
 
@@ -169,7 +166,11 @@ rcwt, pcwt = np.abs(cwt) ** 2, np.angle(cwt)
 
 # interpolation to grids of freq-vel
 print('checkpoint 2')
-fc = scipy.interpolate.interp2d(dist / tvec, period, rcwt)
+d_vec = dist / tvec
+d_vec = list(zip(d_vec, period))
+# fc = scipy.interpolate.interp2d(dist / tvec, period, rcwt)
+# fc = scipy.interpolate.LinearNDInterpolator(d_vec, rcwt)
+fc = scipy.interpolate.RectBivariateSpline(dist / tvec, period, rcwt.T)
 rcwt_new = fc(vel, per)
 
 # do normalization for each frequency
