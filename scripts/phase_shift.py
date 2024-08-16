@@ -1,22 +1,81 @@
 ### Functions from: https://github.com/luan-th-nguyen/PyDispersion/blob/master/src/dispersion.py
+import sys
+sys.path.append("./src")
+sys.path.append("./DASstore")
 
+import os
 import matplotlib.pyplot as plt
 import numpy as np
 import scipy
 from obspy import Stream
 import dascore
+from datetime import datetime, timedelta
+from TDMS_Read import TdmsReader
 
-def load_data(dir_path, start_time):
-    spool = dascore.spool(dir_path).update()
-    print('Loaded directory!')
-    spool = spool.select(time=(start_time, None))
-    print(f'Selected all samples after {start_time}')
+
+def get_closest_index(timestamps, time):
+    """retrieves the index of the closest timestamp within timestamps to time
+
+    Args:
+        timestamps (ndarray): _description_
+        time (timestamp): _description_
+
+    Returns:
+        _type_: _description_
+    """    
+    # array must be sorted
+    idx = timestamps.searchsorted(time)
+    idx = np.clip(idx, 1, len(timestamps)-1)
+    idx -= time - timestamps[idx-1] < timestamps[idx] - time
+    return idx
+
+
+def get_tdms_array(dir_path):
+    tdms_array = np.empty(int(len([filename for filename in os.listdir(dir_path) if filename.endswith(".tdms")])), dtype=TdmsReader)
+    timestamps = np.empty(len(tdms_array), dtype=datetime)
+
+    for count, file in enumerate([filename for filename in os.listdir(dir_path) if filename.endswith(".tdms")]):
+        if file.endswith('.tdms'):
+            tdms = TdmsReader(dir_path + file)
+            tdms_array[count] = dir_path + file
+            timestamps[count] = tdms.get_properties().get('GPSTimeStamp')
+    timestamps.sort()
+    print(f'{len(timestamps)} files available from {timestamps[0]} to {timestamps[-1]}')
+
+    return [x for y, x in sorted(zip(np.array(timestamps), tdms_array))], timestamps
+
+
+def get_time_subset(dir_path, start_time, tpf, delta, tolerance=300):
+    tdms_array, timestamps = get_tdms_array(dir_path)
     
+    # tolerence is the time in s that the closest timestamp can be away from the desired start_time
+    start_idx = get_closest_index(timestamps, start_time)
+    if abs((start_time - timestamps[start_idx]).total_seconds()) > tolerance:
+        print(f"Error: first tdms is over {tolerance} seconds away from the given start time.")
+        return
+    
+    end_time = timestamps[start_idx] + delta - timedelta(seconds=tpf)
+    end_idx = get_closest_index(timestamps, end_time)
+    if (end_time - timestamps[end_idx]).total_seconds() > tolerance:
+        print(f"WARNING: end tdms is over {tolerance} seconds away from the calculated end time.")
+    # print(f"Given t={start_time}, snippet selected from {timestamps[start_idx]} to {timestamps[end_idx]}!")
+    
+    if (end_idx - start_idx + 1) != (delta.seconds/tpf):
+        print(f"WARNING: time subset not continuous; only {(end_idx - start_idx + 1)*tpf} seconds represented.")
+    
+    return tdms_array[start_idx:end_idx+1]
+
+
+def load_data(file_paths):
     stream = Stream()
-    for patch in spool:
-        stream += patch.io.to_obspy()
+    for file_path in file_paths:
+        spool = dascore.spool(file_path)
+        for patch in spool:
+            stream += patch.io.to_obspy()
+    print(stream)
     
     return stream
+
 
 def get_fft(traces, dt, nt):
     """ Get temporal Fourier transform for each of the traces
@@ -27,6 +86,7 @@ def get_fft(traces, dt, nt):
         return U[:,0:nt//2], f[0:nt//2]
     else:
         return U[0:nt//2], f[0:nt//2]
+
 
 def get_dispersion(traces,dx,cmin,cmax,dc,fmax):
     """ calculate dispersion curves after Park et al. 1998
@@ -67,16 +127,28 @@ def get_dispersion(traces,dx,cmin,cmax,dc,fmax):
 
     return f,c,img,fmax_idx,U,t
 
+
 # dir_path = "/home/harry/Documents/0. PhD/DiSTANS/temp_data_store/"
 dir_path = "../../../../gpfs/data/DAS_data/30mins/"
 start_time = '2023-11-09T13:39:46'
+
+# prepro_para = {
+#     'cha1': 2000,
+#     'cha2': 7999,
+#     'sps': 100, 
+#     'spatial_ratio': int(1/0.25),      # int(target_spatial_res/spatial_res)
+#     'cc_len': 60
+# }
+
 
 dx = 0.25
 cmin = 50.0
 cmax = 8000.0
 dc = 10.
 fmax = 100.0
+
 stream = load_data(dir_path, start_time)
+# tdms_array = get_time_subset(dir_path, start_time, tpf=10, delta=timedelta(minutes=1))
 f,c,img,fmax_idx,U,t = get_dispersion(stream, dx, cmin, cmax, dc, fmax)
 
 im, ax = plt.subplots(figsize=(7.0,5.0))

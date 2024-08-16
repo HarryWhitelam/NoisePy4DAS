@@ -21,15 +21,15 @@ import obspy
 import pyasdf
 from tqdm import tqdm
 
-from dasstore.zarr import Client
 from TDMS_Read import TdmsReader
 
 
-def get_tdms_array():
-    tdms_array = np.empty(len(os.listdir(dir_path)), TdmsReader)
+def get_tdms_array(dir_path):
+    tdms_array = np.empty(int(len([filename for filename in os.listdir(dir_path) if filename.endswith(".tdms")])), dtype=TdmsReader)
+        # tdms_array = np.empty(len(os.listdir(dir_path)), TdmsReader)
     timestamps = np.empty(len(tdms_array), dtype=datetime)
 
-    for count, file in enumerate(os.listdir(dir_path)):
+    for count, file in enumerate([filename for filename in os.listdir(dir_path) if filename.endswith(".tdms")]):
         if file.endswith('.tdms'):
             tdms = TdmsReader(dir_path + file)
             tdms_array[count] = tdms
@@ -63,7 +63,8 @@ def get_time_subset(tdms_array, start_time, timestamps, tpf, delta, tolerance=30
     # timestamps MUST be orted, and align with TDMS array (i.e. timestamps[n] represents tdms_array[n]
     start_idx = get_closest_index(timestamps, start_time)
     if abs((start_time - timestamps[start_idx]).total_seconds()) > tolerance:
-        print(f"WARNING: first tdms is over {tolerance} seconds away from the given start time.")
+        print(f"Error: first tdms is over {tolerance} seconds away from the given start time.")
+        return
     
     end_time = timestamps[start_idx] + delta - timedelta(seconds=tpf)
     end_idx = get_closest_index(timestamps, end_time)
@@ -81,12 +82,12 @@ def get_time_subset(tdms_array, start_time, timestamps, tpf, delta, tolerance=30
 
 # returns a minute of data
 # currently CAN NOT HANDLE TDMS > 30 SECONDS - I THINK (it'll just clip the rest of the file, it can probably handle exactly 60s of data)
-def get_data_from_array(tdms_array, channels, prepro_para, start_time, timestamps, duration=60):
-    cha1, cha2, sps, spatial_ratio = prepro_para.get('cha1'), prepro_para.get('cha2'), prepro_para.get('sps'), prepro_para.get('spatial_ratio')
+def get_data_from_array(tdms_array, prepro_para, start_time, timestamps):
+    cha1, cha2, sps, spatial_ratio, duration = prepro_para.get('cha1'), prepro_para.get('cha2'), prepro_para.get('sps'), prepro_para.get('spatial_ratio'), prepro_para.get('cc_len')
 
     # make it so that if start_time is not a timestamp, the first minute in the array is returned
     current_time = 0
-    tdms_t_size = tdms_array[0].get_data(channels[0], channels[1]).shape[0]
+    tdms_t_size = tdms_array[0].get_data(cha1, cha2).shape[0]
     minute_data = np.empty((int(duration * sps), floor((cha2-cha1+1)/spatial_ratio)))
     
     if type(start_time) is datetime:
@@ -176,7 +177,7 @@ def set_prepro_parameters(dir_path, freqmin=1, freqmax=49.9):
 
 
 def correlation(tdms_array, prepro_para, timestamps, task_t0, save_ccf=False):
-    n_lag, n_pair, cha1, cha2, effective_cha2, cha_list, cc_len = prepro_para.get('n_lag'), prepro_para.get('n_pair'), prepro_para.get('cha1'), prepro_para.get('cha2'), prepro_para.get('effective_cha2'), prepro_para.get('cha_list'), prepro_para.get('cc_len')
+    n_lag, n_pair, cha1,  effective_cha2, cha_list, cc_len, nsta = prepro_para.get('n_lag'), prepro_para.get('n_pair'), prepro_para.get('cha1'), prepro_para.get('effective_cha2'), prepro_para.get('cha_list'), prepro_para.get('cc_len'), prepro_para.get('nsta')
     
     corr_full = np.zeros([n_lag, n_pair], dtype = np.float32)
     stack_full = np.zeros([1, n_pair], dtype = np.int32)
@@ -187,7 +188,7 @@ def correlation(tdms_array, prepro_para, timestamps, task_t0, save_ccf=False):
     for imin in pbar:
         t0 = time.time()
         pbar.set_description(f"Processing {task_t0}")
-        tdata = get_data_from_array(tdms_array, [cha1, cha2], prepro_para, task_t0, timestamps, duration=cc_len)
+        tdata = get_data_from_array(tdms_array, prepro_para, task_t0, timestamps)
         task_t0 += timedelta(seconds=cc_len)
         
         t_query += time.time() - t0
