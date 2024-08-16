@@ -25,11 +25,12 @@ from dasstore.zarr import Client
 from TDMS_Read import TdmsReader
 
 
-def get_tdms_array():
-    tdms_array = np.empty(len(os.listdir(dir_path)), TdmsReader)
+def get_tdms_array(dir_path):
+    tdms_array = np.empty(int(len([filename for filename in os.listdir(dir_path) if filename.endswith(".tdms")])), dtype=TdmsReader)
+        # tdms_array = np.empty(len(os.listdir(dir_path)), TdmsReader)
     timestamps = np.empty(len(tdms_array), dtype=datetime)
 
-    for count, file in enumerate(os.listdir(dir_path)):
+    for count, file in enumerate([filename for filename in os.listdir(dir_path) if filename.endswith(".tdms")]):
         if file.endswith('.tdms'):
             tdms = TdmsReader(dir_path + file)
             tdms_array[count] = tdms
@@ -63,7 +64,8 @@ def get_time_subset(tdms_array, start_time, timestamps, tpf, delta, tolerance=30
     # timestamps MUST be orted, and align with TDMS array (i.e. timestamps[n] represents tdms_array[n]
     start_idx = get_closest_index(timestamps, start_time)
     if abs((start_time - timestamps[start_idx]).total_seconds()) > tolerance:
-        print(f"WARNING: first tdms is over {tolerance} seconds away from the given start time.")
+        print(f"Error: first tdms is over {tolerance} seconds away from the given start time.")
+        return
     
     end_time = timestamps[start_idx] + delta - timedelta(seconds=tpf)
     end_idx = get_closest_index(timestamps, end_time)
@@ -81,12 +83,12 @@ def get_time_subset(tdms_array, start_time, timestamps, tpf, delta, tolerance=30
 
 # returns a minute of data
 # currently CAN NOT HANDLE TDMS > 30 SECONDS - I THINK (it'll just clip the rest of the file, it can probably handle exactly 60s of data)
-def get_data_from_array(tdms_array, channels, prepro_para, start_time, timestamps, duration=60):
-    cha1, cha2, sps, spatial_ratio = prepro_para.get('cha1'), prepro_para.get('cha2'), prepro_para.get('sps'), prepro_para.get('spatial_ratio')
+def get_data_from_array(tdms_array, prepro_para, start_time, timestamps):
+    cha1, cha2, sps, spatial_ratio, duration = prepro_para.get('cha1'), prepro_para.get('cha2'), prepro_para.get('sps'), prepro_para.get('spatial_ratio'), prepro_para.get('cc_len')
 
     # make it so that if start_time is not a timestamp, the first minute in the array is returned
     current_time = 0
-    tdms_t_size = tdms_array[0].get_data(channels[0], channels[1]).shape[0]
+    tdms_t_size = tdms_array[0].get_data(cha1, cha2).shape[0]
     minute_data = np.empty((int(duration * sps), floor((cha2-cha1+1)/spatial_ratio)))
     
     if type(start_time) is datetime:
@@ -187,7 +189,7 @@ def correlation(tdms_array, prepro_para, timestamps, task_t0):
     for imin in pbar:
         t0 = time.time()
         pbar.set_description(f"Processing {task_t0}")
-        tdata = get_data_from_array(tdms_array, [cha1, cha2], prepro_para, task_t0, timestamps, duration=cc_len)
+        tdata = get_data_from_array(tdms_array, prepro_para, task_t0, timestamps)
         task_t0 += timedelta(seconds=cc_len)
         
         t_query += time.time() - t0
@@ -259,7 +261,7 @@ def plot_das_data(data, prepro_para):
 
 
 def plot_correlation(corr, prepro_para, cmap_param='bwr'):
-    cha1, cha2, effective_cha2, spatial_ratio, cha_spacing, freqmin, freqmax, target_spatial_res = prepro_para.get('cha1'), prepro_para.get('cha2'), prepro_para.get('effective_cha2'), prepro_para.get('spatial_ratio'), prepro_para.get('cha_spacing'), prepro_para.get('freqmin'), prepro_para.get('freqmax'), prepro_para.get('target_spatial_res')
+    cha1, cha2, effective_cha2, spatial_ratio, cha_spacing, freqmin, freqmax, target_spatial_res, maxlag = prepro_para.get('cha1'), prepro_para.get('cha2'), prepro_para.get('effective_cha2'), prepro_para.get('spatial_ratio'), prepro_para.get('cha_spacing'), prepro_para.get('freqmin'), prepro_para.get('freqmax'), prepro_para.get('target_spatial_res'), prepro_para.get('maxlag')
 
     plt.figure(figsize = (12, 5), dpi = 150)
     plt.imshow(corr[:, :(effective_cha2 - cha1)].T, aspect = 'auto', cmap = cmap_param, 
@@ -268,7 +270,8 @@ def plot_correlation(corr, prepro_para, cmap_param='bwr'):
     _ =plt.yticks((np.linspace(cha1, cha2, 4) - cha1)/spatial_ratio, 
                 [int(i) for i in np.linspace(cha1, cha2, 4)], fontsize = 12)
     plt.ylabel("Channel number", fontsize = 16)
-    _ = plt.xticks(np.arange(0, 1601, 200), (np.arange(0, 801, 100) - 400)/50, fontsize = 12)
+    # _ = plt.xticks(np.arange(0, 1601, 200), (np.arange(0, 801, 100) - 400)/50, fontsize=12)
+    _ = plt.xticks(np.arange(0, maxlag*200+1, 200), np.arange(-maxlag, maxlag+1, 2), fontsize=12)
     plt.xlabel("Time lag (sec)", fontsize = 16)
     bar = plt.colorbar(pad = 0.1, format = lambda x, pos: '{:.1f}'.format(x*100))
     bar.set_label('Cross-correlation Coefficient ($\\times10^{-2}$)', fontsize = 15)
@@ -356,7 +359,7 @@ corrs = []
 freq_range = [[0.1, 0.2]]
 for freqs in freq_range:
     prepro_para = set_prepro_parameters(dir_path, freqmin=freqs[0], freqmax=freqs[1])
-    tdms_array, timestamps = get_tdms_array()
+    tdms_array, timestamps = get_tdms_array(dir_path)
     corr_full, stack_full = correlation(tdms_array, prepro_para, timestamps, task_t0)
     corrs.append(corr_full)
 

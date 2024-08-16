@@ -169,7 +169,7 @@ rcwt, pcwt = np.abs(cwt) ** 2, np.angle(cwt)
 
 # interpolation to grids of freq-vel
 print('checkpoint 2')
-fc = scipy.interpolate.interp2d(dist / tvec, period, rcwt)
+fc = scipy.interpolate.LinearNDInterpolator(dist / tvec, period, rcwt)
 rcwt_new = fc(vel, per)
 
 # do normalization for each frequency
