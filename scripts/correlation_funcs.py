@@ -20,7 +20,7 @@ import matplotlib as mpl
 import obspy
 from tqdm import tqdm
 
-from dasstore.zarr import Client
+# from dasstore.zarr import Client
 from TDMS_Read import TdmsReader
 
 
@@ -253,7 +253,7 @@ def plot_das_data(data, prepro_para):
 
 
 def plot_correlation(corr, prepro_para, cmap_param='bwr', save_corr=False):
-    cha1, cha2, effective_cha2, spatial_ratio, cha_spacing, freqmin, freqmax, target_spatial_res = prepro_para.get('cha1'), prepro_para.get('cha2'), prepro_para.get('effective_cha2'), prepro_para.get('spatial_ratio'), prepro_para.get('cha_spacing'), prepro_para.get('freqmin'), prepro_para.get('freqmax'), prepro_para.get('target_spatial_res')
+    cha1, cha2, effective_cha2, spatial_ratio, cha_spacing, target_spatial_res, freqmin, freqmax, maxlag = prepro_para.get('cha1'), prepro_para.get('cha2'), prepro_para.get('effective_cha2'), prepro_para.get('spatial_ratio'), prepro_para.get('cha_spacing'), prepro_para.get('target_spatial_res'), prepro_para.get('freqmin'), prepro_para.get('freqmax'), prepro_para.get('maxlag')
 
     plt.figure(figsize = (12, 5), dpi = 150)
     plt.imshow(corr[:, :(effective_cha2 - cha1)].T, aspect = 'auto', cmap = cmap_param, 
@@ -262,7 +262,8 @@ def plot_correlation(corr, prepro_para, cmap_param='bwr', save_corr=False):
     _ =plt.yticks((np.linspace(cha1, cha2, 4) - cha1)/spatial_ratio, 
                 [int(i) for i in np.linspace(cha1, cha2, 4)], fontsize = 12)
     plt.ylabel("Channel number", fontsize = 16)
-    _ = plt.xticks(np.arange(0, 1601, 200), (np.arange(0, 801, 100) - 400)/50, fontsize = 12)
+    # _ = plt.xticks(np.arange(0, 1601, 200), (np.arange(0, 801, 100) - 400)/50, fontsize = 12)
+    _ = plt.xticks(np.arange(0, maxlag*200+1, 200), np.arange(-maxlag, maxlag+1, 2), fontsize=12)
     plt.xlabel("Time lag (sec)", fontsize = 16)
     bar = plt.colorbar(pad = 0.1, format = lambda x, pos: '{:.1f}'.format(x*100))
     bar.set_label('Cross-correlation Coefficient ($\\times10^{-2}$)', fontsize = 15)
@@ -280,11 +281,11 @@ def plot_correlation(corr, prepro_para, cmap_param='bwr', save_corr=False):
 
 
 def plot_multiple_correlations(corrs, prepro_para, vars, cmap_param='bwr', save_corr=False):
-    cha1, cha2, effective_cha2, spatial_ratio, cha_spacing, target_spatial_res = prepro_para.get('cha1'), prepro_para.get('cha2'), prepro_para.get('effective_cha2'), prepro_para.get('spatial_ratio'), prepro_para.get('cha_spacing'), prepro_para.get('target_spatial_res')
+    cha1, cha2, effective_cha2, spatial_ratio, cha_spacing, target_spatial_res, freqmin, freqmax, maxlag = prepro_para.get('cha1'), prepro_para.get('cha2'), prepro_para.get('effective_cha2'), prepro_para.get('spatial_ratio'), prepro_para.get('cha_spacing'), prepro_para.get('target_spatial_res'), prepro_para.get('freqmin'), prepro_para.get('freqmax'), prepro_para.get('maxlag')
 
     fig, axs = plt.subplots(2, ceil(len(corrs)/2), figsize=(15, 10))
     
-    for ax, corr, freqs in zip(axs.ravel(), corrs, freq_range):
+    for ax, corr, var in zip(axs.ravel(), corrs, vars):
         plt.sca(ax)
         plt.imshow(corr[:, :(effective_cha2 - cha1)].T, aspect = 'auto', cmap = cmap_param, 
                 vmax = 2e-2, vmin = -2e-2, origin = 'lower', interpolation=None)
@@ -292,7 +293,8 @@ def plot_multiple_correlations(corrs, prepro_para, vars, cmap_param='bwr', save_
         _ =plt.yticks((np.linspace(cha1, cha2, 4) - cha1)/spatial_ratio, 
                     [int(i) for i in np.linspace(cha1, cha2, 4)], fontsize = 12)
         plt.ylabel("Channel number", fontsize = 16)
-        _ = plt.xticks(np.arange(0, 1601, 200), (np.arange(0, 801, 100) - 400)/50, fontsize = 12)
+        # _ = plt.xticks(np.arange(0, maxlag*200+1, 200), (np.arange(0, 801, 100) - 400)/50, fontsize = 12)
+        _ = plt.xticks(np.arange(0, maxlag*200+1, 200), np.arange(-maxlag, maxlag+1, 2), fontsize=12)
         plt.xlabel("Time lag (sec)", fontsize = 16)
         bar = plt.colorbar(pad = 0.1, format = lambda x, pos: '{:.1f}'.format(x*100))
         bar.set_label('Cross-correlation Coefficient ($\\times10^{-2}$)', fontsize = 15)
@@ -301,27 +303,28 @@ def plot_multiple_correlations(corrs, prepro_para, vars, cmap_param='bwr', save_
         twiny.set_yticks(np.linspace(0, cha2 - cha1, 4), 
                                     [int(i* cha_spacing) for i in np.linspace(cha1, cha2, 4)])
         twiny.set_ylabel("Distance along cable (m)", fontsize = 15)
-        plt.title(f"{freqs[0]} to {freqs[1]} Hz")
+        plt.title(f"{var} mins stacked")
     
-    # follow convention of: {timestamp}_{t length}_{channels}.png
+    # follow convention of: {t_start}_{n_minute}-mins_f{freqmin}:{freqmax}__{cha1}:{cha2}_{target_spatial_res}m
     t_start = task_t0 - timedelta(minutes=n_minute)
-    plt.savefig(f'./results/figures/{t_start}_{n_minute}-mins_{cha1}:{cha2}_{target_spatial_res}m_freq_experiment.png')
+    plt.savefig(f'./results/figures/{t_start}_f{freqmin}:{freqmax}__{cha1}:{cha2}_{target_spatial_res}m_stack_length_experiment.png')
     if save_corr:
         np.savetxt(f'{t_start}_{n_minute}-mins_f{freqmin}:{freqmax}__{cha1}:{cha2}_{target_spatial_res}m.txt', corrs[0], delimiter=",")
 
 dir_path = "../../../../gpfs/data/DAS_data/Data/"
 task_t0 = datetime(year = 2024, month = 1, day = 19,
                    hour = 15, minute = 19, second = 7, microsecond = 0)
-n_minute = 360
+# n_minute = 360
 
 corrs = []
-freq_range = [[1.0, 49.9], [1.0, 10.0], [10.0, 25.0], [25.0, 49.9]]
+# freq_range = [[1.0, 49.9], [1.0, 10.0], [10.0, 25.0], [25.0, 49.9]]
 # freq_range = [[0.01, 0.04], [0.04, 0.1], [0.1, 1.0], [1.0, 49.9]]
-for freq in freq_range:
-    prepro_para = set_prepro_parameters(dir_path, freqmin=freq[0], freqmax=freq[1])
+n_minute_range = [60, 120, 240, 360]
+for n_minute in n_minute_range:
+    prepro_para = set_prepro_parameters(dir_path)
     tdms_array, timestamps = get_tdms_array()
     corr_full = correlation(tdms_array, prepro_para, timestamps, task_t0)
     corrs.append(corr_full)
 
 # plot_correlation(corr_full, prepro_para)
-plot_multiple_correlations(corrs, prepro_para, freq_range, save_corr=True)
+plot_multiple_correlations(corrs, prepro_para, n_minute_range, save_corr=True)
