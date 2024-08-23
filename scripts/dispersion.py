@@ -119,6 +119,7 @@ comp = 'ZZ'
 
 # load cross-correlation functions
 tdata = np.loadtxt(sfile, delimiter=',')
+print(f'tdata shape: {tdata.shape}')
 
 # stack positive and negative lags
 npts = int(1 / dt) * 2 * maxlag + 1
@@ -144,13 +145,16 @@ indx = np.arange(pt1, pt2)
 tvec = indx * dt
 data = data[indx]
 
-# wavelet transformation
+# wavelet transformation - below is deprecated :(
 # cwt, sj, freq, coi, _, _ = pycwt.cwt(data, dt, dj, s0, J, wvn)
 
 # ATTEMPT: using pywavelet
-scales = np.arange(1, 31)
+scales = np.arange(1, 50)
+cwt_frequencies = pywt.scale2frequency(wvn, scales) / dt
+print(cwt_frequencies)
 cwt, freq = pywt.cwt(data, scales, wvn) 
-
+print(f'cwt shape: {cwt.shape}')
+print(f'freq shape: {freq.shape}')
 del data
 
 # do filtering here
@@ -158,6 +162,8 @@ print('checkpoint 0')
 freq_ind = np.where((freq >= fmin) & (freq <= fmax))[0]
 cwt = cwt[freq_ind]
 freq = freq[freq_ind]
+print(f'cwt shape after filter: {cwt.shape}')
+print(f'freq shape after filter: {freq.shape}')
 
 # use amplitude of the cwt
 print('checkpoint 1')
@@ -166,12 +172,16 @@ rcwt, pcwt = np.abs(cwt) ** 2, np.angle(cwt)
 
 # interpolation to grids of freq-vel
 print('checkpoint 2')
+print(f'dist/tvec shape: {(dist/tvec).shape}')
+print(f'period shape: {period.shape}')
+print(f'rcwt shape: {rcwt.shape}')
+print(f'rcwt[:,:,0] shape: {rcwt[:,:,0].shape}')
 d_vec = dist / tvec
-d_vec = list(zip(d_vec, period))
 # fc = scipy.interpolate.interp2d(dist / tvec, period, rcwt)
 # fc = scipy.interpolate.LinearNDInterpolator(d_vec, rcwt)
-fc = scipy.interpolate.RectBivariateSpline(dist / tvec, period, rcwt.T)
-rcwt_new = fc(vel, per)
+# fc = scipy.interpolate.RectBivariateSpline(dist / tvec, period, rcwt.T)
+fc = scipy.interpolate.RegularGridInterpolator((dist / tvec, period), rcwt[:,:,0].T, method='cubic')
+rcwt_new = fc((vel, per))		# changed to tuple for RGI
 
 # do normalization for each frequency
 print('checkpoint 3')
