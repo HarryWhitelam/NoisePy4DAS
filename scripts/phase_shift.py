@@ -11,6 +11,7 @@ from obspy import Stream, Trace
 from obspy.core.trace import Stats
 import dascore
 from datetime import datetime, timedelta
+import tdms_io
 from TDMS_Read import TdmsReader
 
 
@@ -177,6 +178,9 @@ cmax = 8000.0
 dc = 10.0
 fmax = 100.0
 
+# task_t0 = datetime(year = 2023, month = 11, day = 9, hour = 13, minute = 42, second = 57)   # set to local data start
+# tdms_array, timestamps = tdms_io.get_tdms_array(dir_path)
+# tdata = tdms_io.get_data_from_array(tdms_array, prepro_para, task_t0, timestamps)
 # stream = load_data(dir_path)
 stream = load_xcorr('test_stack.txt')
 

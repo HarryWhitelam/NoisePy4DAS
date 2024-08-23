@@ -139,7 +139,7 @@ def set_prepro_parameters(dir_path, freqmin=1, freqmax=49.9):
 
     max_over_std       = 20                # threshold to remove window of bad signals: set it to 10*9 if prefer not to remove them
 
-    cc_len             = 240                # correlate length in second
+    cc_len             = 60                # correlate length in second
     # step               = 60                # stepping length in second [not used]
 
     cha1, cha2         = 6000, 7999        # USE ONLY FOR CHANNEL SUBSET SELECTION 
