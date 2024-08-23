@@ -6,18 +6,41 @@ import matplotlib as mpl
 import matplotlib.pyplot as plt
 from matplotlib.gridspec import GridSpec
 import numpy as np
-
 import swprocess
+from datetime import datetime, timedelta
+import tdms_io
+
 
 # Path (relative or full) to a folder containing the data files. Data files must be in either the SEG2 and/or SU data format.
-path_to_folder = "/home/harry/Documents/0. PhD/DiSTANS/segy_das/"
+dir_path = "/home/harry/Documents/0. PhD/DiSTANS/su_das/"
         
-fnames = []
-for file in os.listdir(path_to_folder):
-    if file.lower().endswith(".sgy") | file.lower().endswith(".segy"):
-        fnames.append(f'{path_to_folder}{file}')
-    else:
-        print(f"bad file :( not segy: {file}")
+# fnames = []
+# for file in os.listdir(dir_path):
+#     # if file.lower().endswith(".sgy") | file.lower().endswith(".segy"):
+#     if file.lower().endswith(".su"):
+#         fnames.append(f'{dir_path}{file}')
+#     else:
+#         print(f"bad file :( not segy: {file}")
+
+### importing data as ndarray wait this isn't what I want at all 
+# dir_path = "../../temp_data_store/"
+# properties = tdms_io.get_dir_properties(dir_path)
+# prepro_para = {
+#     'cha1': 6000,
+#     'cha2': 7999,
+#     'sps': properties.get('SamplingFrequency[Hz]'),
+#     'spatial_ratio': int(1 / properties.get('SpatialResolution[m]')),          # int(target_spatial_res/spatial_res)
+#     'duration': timedelta(seconds=360).total_seconds(),
+# }
+# task_t0 = datetime(year = 2023, month = 11, day = 9, 
+#                    hour = 13, minute = 42, second = 57)
+# tdms_array, timestamps = tdms_io.get_tdms_array(dir_path)
+# tdata = tdms_io.get_data_from_array(tdms_array, prepro_para, task_t0, timestamps)
+
+### importing the stack data!
+tdata = np.loadtxt('test_stack.txt', delimiter=',')
+sps = 100
+
 
 # Name for each fnames_set, if None, sets will be named according to the source position.
 names = None
@@ -74,6 +97,39 @@ settings = swprocess.Masw.create_settings_dict(workflow=workflow,
                                                signal_begin=signal_begin, signal_end=signal_end,
                                                pad_snr = pad_snr, df_snr=df_snr)
 start = time.perf_counter()
+
+### Longshot to get this from an ndarray:
+# make the source object
+# source = swprocess.Source(-10.0, 0.0, 0.0)
+
+# # make some noise data
+# nstats = tdata.shape[1]
+# npts = tdata.shape[0]
+
+# x = np.linspace(0, 500, nstats)     # CURRENTLY LOCKED TO 500 m!!!
+# y = np.zeros(nstats)
+# z = np.zeros(nstats)
+
+# # make the sensor object
+# sensors = []
+# for i in range(nstats): 
+#     sensor = swprocess.Sensor1C(tdata[:,i], 1/sps, x[i], y[i], z[i])
+#     sensors.append(sensor)
+
+# data_array = swprocess.Array1D(sensors, source)
+# data_array.to_file('test.su')
+
+fnames = ['test.su']
+data_array = swprocess.Array1D.from_files(fnames)
+print(data_array)
+
+fig, ax = data_array.plot()
+print('finished plot')
+print(type(fig), type(ax))
+fig.savefig('test_fig.png')
+fig.show()
+# _ = data_array.waterfall()
+### end of longshot
 wavefieldtransform = swprocess.Masw.run(fnames=fnames, settings=settings)
 end = time.perf_counter()
 print(f"Elapsed Time (s): {round(end-start,2)}")

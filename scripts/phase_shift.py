@@ -7,9 +7,10 @@ import os
 import matplotlib.pyplot as plt
 import numpy as np
 import scipy
-from obspy import Stream
+from obspy import Stream, Trace
 import dascore
 from datetime import datetime, timedelta
+import tdms_io
 from TDMS_Read import TdmsReader
 
 def get_closest_index(timestamps, time):
@@ -65,14 +66,24 @@ def get_time_subset(dir_path, start_time, tpf, delta, tolerance=300):
     return tdms_array[start_idx:end_idx+1]
 
 
-def load_data(file_paths):
+def load_data(dir_path):
     stream = Stream()
-    for file_path in file_paths:
-        spool = dascore.spool(file_path)
-        for patch in spool:
-            stream += patch.io.to_obspy()
-    print(stream)
     
+    for file in os.listdir(dir_path):
+        if file.endswith(".tdms"):
+            file_path = os.path.join(dir_path, file)
+            spool = dascore.spool(file_path)
+            for patch in spool:
+                stream += patch.io.to_obspy()
+    print(stream)
+    return stream
+
+def load_xcorr(file_path):
+    stream = Stream()
+    xdata = np.loadtxt(file_path, delimiter=',')
+    for i in range(0, xdata.shape[1]):
+        stream.append(Trace(xdata[:, i]))
+    print(stream)
     return stream
 
 
@@ -146,8 +157,14 @@ cmin = 50.0
 cmax = 8000.0
 dc = 10.
 fmax = 100.0
-tdms_array = get_time_subset(dir_path, start_time, tpf=10, delta=timedelta(minutes=1))
-stream = load_data(dir_path)
+
+task_t0 = datetime(year = 2023, month = 11, day = 9, 
+                   hour = 13, minute = 42, second = 57)
+# tdms_array, timestamps = tdms_io.get_tdms_array(dir_path)
+# tdata = tdms_io.get_data_from_array(tdms_array, prepro_para, task_t0, timestamps)
+# stream = load_data(dir_path)
+stream = load_xcorr('test_stack.txt')
+
 f,c,img,fmax_idx,U,t = get_dispersion(stream, dx, cmin, cmax, dc, fmax)
 
 im, ax = plt.subplots(figsize=(7.0,5.0))
