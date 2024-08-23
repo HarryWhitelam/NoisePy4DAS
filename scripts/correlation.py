@@ -272,7 +272,7 @@ def plot_correlation(corr, prepro_para, cmap_param='bwr'):
     _ =plt.yticks((np.linspace(cha1, cha2, 4) - cha1)/spatial_ratio, 
                 [int(i) for i in np.linspace(cha1, cha2, 4)], fontsize = 12)
     plt.ylabel("Channel number", fontsize = 16)
-    # _ = plt.xticks(np.arange(0, 1601, 200), (np.arange(0, 801, 100) - 400)/50, fontsize=12)
+    # _ = plt.xticks(np.arange(0, 1601, 200), (np.arange(0, 801, 100) - 400)/50, fontsize = 12)
     _ = plt.xticks(np.arange(0, maxlag*200+1, 200), np.arange(-maxlag, maxlag+1, 2), fontsize=12)
     plt.xlabel("Time lag (sec)", fontsize = 16)
     bar = plt.colorbar(pad = 0.1, format = lambda x, pos: '{:.1f}'.format(x*100))
@@ -315,8 +315,8 @@ def save_ccf(corr_full, sta, nsta):
     print(f"it takes %.3f seconds to write this ASDF file" % (t1 - t0))
 
 
-# dir_path = "../../../../gpfs/data/DAS_data/Data/"
-dir_path = "../../temp_data_store/"
+dir_path = "../../../../gpfs/data/DAS_data/Data/"
+# dir_path = "../../temp_data_store/"
 task_t0 = datetime(year = 2023, month = 11, day = 9, 
                    hour = 13, minute = 42, second = 57)
 n_minute = 4
