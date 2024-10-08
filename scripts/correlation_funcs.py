@@ -59,7 +59,7 @@ def get_closest_index(timestamps, time):
 def scale(data, props):
     """Takes in TDMS data and its properties using them to scale the data as it is compressed within the file format. Returns scaled data
 
-    𝑠𝑡𝑟𝑎𝑖𝑛𝑟𝑎𝑡𝑒 𝑛𝑚 𝑚𝑠 = 116 𝑥 𝑖𝐷𝐴𝑆 𝑣𝑎𝑙𝑢𝑒𝑠 𝑥 𝑠𝑎𝑚𝑝𝑙𝑖𝑛𝑔 𝑓𝑟𝑒𝑞 (𝐻𝑧) / 𝑔𝑎𝑢𝑔𝑒 𝑙𝑒𝑛𝑔𝑡ℎ (𝑚)
+    strainrate nm ms = 116 * iDAS values * sampling freq (Hz) / gauge length (m)
 
     Keyword arguments:
         data -- numpy array containing TDMS data
@@ -98,7 +98,7 @@ def get_minute_data(tdms_array, channels, prepro_para, start_time, timestamps):
     # make it so that if start_time is not a timestamp, the first minute in the array is returned
     current_time = 0
     tdms_t_size = tdms_array[0].get_data(channels[0], channels[1]).shape[0]
-    minute_data = np.empty((int(60 * sps), floor((cha2-cha1+1)/spatial_ratio)))
+    minute_data = np.empty((int(60 * sps), ceil((cha2-cha1+1)/spatial_ratio)))
     
     if type(start_time) is datetime:
         tdms_array = get_time_subset(tdms_array, start_time, timestamps, tpf=tdms_t_size/sps, tolerance=30)   # tpf = time per file
@@ -141,7 +141,7 @@ def set_prepro_parameters(dir_path, freqmin=1, freqmax=49.9, target_spatial_res=
     spatial_ratio      = int(target_spatial_res/spatial_res)		# both values in m
 
     freq_norm          = 'rma'             # 'no' for no whitening, or 'rma' for running-mean average, 'phase_only' for sign-bit normalization in freq domain.
-    time_norm          = 'rma'             # 'no' for no normalization, or 'rma', 'one_bit' for normalization in time domain
+    time_norm          = 'rma'         # 'no' for no normalization, or 'rma', 'one_bit' for normalization in time domain
     cc_method          = 'xcorr'           # 'xcorr' for pure cross correlation, 'deconv' for deconvolution; FOR "COHERENCY" PLEASE set freq_norm to "rma", time_norm to "no" and cc_method to "xcorr"
     smooth_N           = 100               # moving window length for time domain normalization if selected (points)
     smoothspect_N      = 100               # moving window length to smooth spectrum amplitude (points)
@@ -241,6 +241,7 @@ def correlation(tdms_array, prepro_para, timestamps, task_t0, save_corr=False):
             
         t_compute += time.time() - t1
     corr_full /= stack_full
+    print(f'corr_full max: {np.nanmax(corr_full)}; min: {np.nanmin(corr_full)}')
     print(f"{round(t_query, 2)} seconds in data query, {round(t_compute, 2)} seconds in xcorr computing")
     return corr_full
 
@@ -280,8 +281,8 @@ def plot_correlation(corr, prepro_para, cmap_param='bwr', save_corr=False):
     # _ = plt.xticks(np.arange(0, 1601, 200), (np.arange(0, 801, 100) - 400)/50, fontsize = 12)
     _ = plt.xticks(np.arange(0, maxlag*200+1, 200), np.arange(-maxlag, maxlag+1, 2), fontsize=12)
     plt.xlabel("Time lag (sec)", fontsize = 12)
-    bar = plt.colorbar(pad = 0.1, format = lambda x, pos: '{:.1f}'.format(x*100))
-    bar.set_label('Cross-correlation Coefficient ($\\times10^{-2}$)', fontsize = 15)
+    # bar = plt.colorbar(pad = 0.1, format = lambda x, pos: '{:.1f}'.format(x*100))
+    # bar.set_label('Cross-correlation Coefficient', fontsize = 15)
 
     twiny = plt.gca().twinx()
     twiny.set_yticks(np.linspace(0, cha2 - cha1, 4), 
@@ -301,17 +302,19 @@ def plot_multiple_correlations(corrs, prepro_para, vars, cmap_param='bwr', save_
 
     fig, axs = plt.subplots(2, ceil(len(corrs)/2), figsize=(15, 10))
     for ax, corr, var in zip(axs.ravel(), corrs, vars):
-        # NOTE BIG CHANGES HERE TO INVESTIGATE CHANNEL NUMBER ROLE!!!
-        cha1, cha2 = var[0], var[1]
-        effective_cha2 = floor(cha1 + (cha2 - cha1) / spatial_ratio)
-        print(f'cha1, cha2, effective_cha2: {cha1}, {cha2}, {effective_cha2}')
-        print(f'corr shape: {corr.shape}')
-        print(f'trimmed corr: {corr[:, :(effective_cha2 - cha1)].shape}')
+        if isinstance(var, list):
+            cha1, cha2 = var[0], var[1]       # for channel experiments (correct labelling)
+            effective_cha2 = floor(cha1 + (cha2 - cha1) / spatial_ratio)
+
+        # NOTE PRINTS HERE TO INVESTIGATE CHANNEL NUMBER ROLE!!!
+        # print(f'cha1, cha2, effective_cha2: {cha1}, {cha2}, {effective_cha2}')
+        # print(f'corr shape: {corr.shape}')
+        # print(f'trimmed corr: {corr[:, :(effective_cha2 - cha1)].shape}')
         # CHANGES END HERE
 
         plt.sca(ax)
         plt.imshow(corr[:, :(effective_cha2 - cha1)].T, aspect = 'auto', cmap = cmap_param, 
-                vmax = 2e-2, vmin = -2e-2, origin = 'lower', interpolation=None)
+                vmax = 1, vmin = -1, origin = 'lower', interpolation=None)
 
         _ =plt.yticks((np.linspace(cha1, cha2, 4) - cha1)/spatial_ratio, 
                     [int(i) for i in np.linspace(cha1, cha2, 4)], fontsize = 12)
@@ -326,12 +329,12 @@ def plot_multiple_correlations(corrs, prepro_para, vars, cmap_param='bwr', save_
         twiny.set_yticks(np.linspace(0, cha2 - cha1, 4), 
                                     [int(i* cha_spacing) for i in np.linspace(cha1, cha2, 4)])
         twiny.set_ylabel("Distance along cable (m)", fontsize = 12)
-        plt.title(f"{var} channels")
+        plt.title(f"Channels {var}")
     
-    # follow convention of: {t_start}_{n_minute}-mins_f{freqmin}:{freqmax}__{cha1}:{cha2}_{target_spatial_res}m
+    # follow convention of: {t_start}_{n_minute}mins_f{freqmin}:{freqmax}__{cha1}:{cha2}_{target_spatial_res}m
     t_start = task_t0 - timedelta(minutes=n_minute)
     plt.tight_layout()
-    plt.savefig(f'./results/figures/{t_start}_{n_minute}mins_f{freqmin}:{freqmax}__{target_spatial_res}m__channels_experiment__scaled.png')
+    plt.savefig(f'./results/figures/{t_start}_f{freqmin}:{freqmax}__{cha1}:{cha2}_{target_spatial_res}m__stack_length_experiment_no_cbar.png')
     if save_corr:
         np.savetxt(f'{t_start}_{n_minute}mins_f{freqmin}:{freqmax}__{cha1}:{cha2}_{target_spatial_res}m.txt', corrs[0].T, delimiter=",")
 
@@ -345,13 +348,22 @@ corrs = []
 # freq_range = [[0.01, 0.04], [0.04, 0.1], [0.1, 1.0], [1.0, 49.9]]
 # n_minute_range = [10, 60, 120, 360]
 # target_spatial_res_range = [0.25, 1, 5, 10]
-channels_range = [[1200, 2999], [3000, 4999], [5000, 6999], [7000, 8999]]
-for channels in channels_range:
-    print(f'Starting channels experiment: {channels}')
-    prepro_para = set_prepro_parameters(dir_path, cha1=channels[0], cha2=channels[1])
+channels_range = [[2000, 3499], [3500, 4999], [5000, 6499], [6500, 7999]]
+for chas in channels_range:
+    print(f'Starting channels experiment: {chas}')
+    prepro_para = set_prepro_parameters(dir_path, cha1=chas[0], cha2=chas[1], target_spatial_res=5)
     tdms_array, timestamps = get_tdms_array()
     corr_full = correlation(tdms_array, prepro_para, timestamps, task_t0)
     corrs.append(corr_full)
 
-# plot_correlation(corr_full, prepro_para)
 plot_multiple_correlations(corrs, prepro_para, channels_range, save_corr=False)
+
+
+
+
+### SINGLE RUN: 
+# prepro_para = set_prepro_parameters(dir_path, target_spatial_res=1)
+# tdms_array, timestamps = get_tdms_array()
+
+# corr_full = correlation(tdms_array, prepro_para, timestamps, task_t0, save_corr=False)
+# plot_correlation(corr_full, prepro_para)

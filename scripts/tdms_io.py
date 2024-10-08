@@ -114,3 +114,10 @@ def scale(data, props):
     data = data * 1.8192
     data = (116 * data * props.get('SamplingFrequency[Hz]')) / props.get('GaugeLength')
     return data
+
+
+def downsample_data(data, sps, spatial_res, target_sps, target_spatial_res):
+    temporal_ratio = int(target_sps/sps)
+    spatial_ratio = int(target_spatial_res/spatial_res)
+    
+    return data[::temporal_ratio, spatial_ratio]
