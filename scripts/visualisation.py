@@ -74,25 +74,26 @@ def animated_spectrogram(tdms_array, prepro_para, task_t0, timestamps):
         fig, 
         update,
         frames=n_channels,
-        interval=100,
+        interval=75,
         repeat=True,
     )
-    plt.show()
-    
-    ani.save('psd.gif', writer='pillow')
+    # plt.show()
+    # file name format: psd_cha1:cha2_spatial_res.gif or something like that
+    ani.save(f'psd_{prepro_para.get("cha1")}:{prepro_para.get("cha2")}_{prepro_para.get("spatial_ratio")*0.25}m.gif', writer='pillow')
 
 
-dir_path = "../../temp_data_store/"
+# dir_path = "../../temp_data_store/"
+dir_path = "../../../../gpfs/data/DAS_data/Data/"
 properties = tdms_io.get_dir_properties(dir_path)
 prepro_para = {
     'cha1': 2000,
-    'cha2': 2399,
+    'cha2': 7999,
     'sps': properties.get('SamplingFrequency[Hz]'),
-    'spatial_ratio': int(1 / properties.get('SpatialResolution[m]')),          # int(target_spatial_res/spatial_res)
-    'duration': timedelta(seconds=120).total_seconds(),
+    'spatial_ratio': int(10 / properties.get('SpatialResolution[m]')),          # int(target_spatial_res/spatial_res)
+    'duration': timedelta(hours=3).total_seconds(),
 }
-task_t0 = datetime(year = 2023, month = 11, day = 9, 
-                   hour = 13, minute = 42, second = 57)
+task_t0 = datetime(year = 2024, month = 1, day = 19,
+                   hour = 15, minute = 19, second = 7, microsecond = 0)
 tdms_array, timestamps = tdms_io.get_tdms_array(dir_path)
 
 channel_slices = [[1500, 1500], [3000, 3000], [5000, 5000], [7000, 7000]]
