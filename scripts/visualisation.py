@@ -98,15 +98,16 @@ def animated_spectrogram(tdms_array, prepro_para, task_t0, timestamps):
         fig, 
         update,
         frames=n_channels,
-        interval=100,
+        interval=75,
         repeat=True,
     )
-    plt.show()
-    
-    ani.save('psd.gif', writer='pillow')
+    # plt.show()
+    # file name format: psd_cha1:cha2_spatial_res.gif or something like that
+    ani.save(f'psd_{prepro_para.get("cha1")}:{prepro_para.get("cha2")}_{prepro_para.get("spatial_ratio")*0.25}m.gif', writer='pillow')
 
 
 # dir_path = "../../temp_data_store/"
+dir_path = "../../../../gpfs/data/DAS_data/Data/"
 # properties = tdms_io.get_dir_properties(dir_path)
 # prepro_para = {
 #     'cha1': 2000,

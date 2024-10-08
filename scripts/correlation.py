@@ -29,7 +29,7 @@ def get_tdms_array(dir_path):
         # tdms_array = np.empty(len(os.listdir(dir_path)), TdmsReader)
     timestamps = np.empty(len(tdms_array), dtype=datetime)
 
-    for count, file in enumerate([filename for filename in os.listdir(dir_path) if filename.endswith(".tdms")]):
+    for count, file in enumerate(os.listdir(dir_path)):
         if file.endswith('.tdms'):
             tdms = TdmsReader(dir_path + file)
             tdms_array[count] = tdms
@@ -92,7 +92,6 @@ def get_data_from_array(tdms_array, prepro_para, start_time, timestamps):
     
     if type(start_time) is datetime:
         tdms_array = get_time_subset(tdms_array, start_time, timestamps, tpf=tdms_t_size/sps, delta=timedelta(seconds=duration), tolerance=30)   # tpf = time per file
-        print(f'Num tdms: {len(tdms_array)}')
     
     while current_time != duration and len(tdms_array) != 0:
         data = tdms_array.pop(0).get_data(cha1, cha2)
