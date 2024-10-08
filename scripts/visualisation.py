@@ -1,12 +1,36 @@
 import tdms_io
 import numpy as np
+import pandas as pd
+import geopandas as gpd
 import obspy
 from scipy.signal import spectrogram, welch
 from scipy.fft import rfft, rfftfreq
 from datetime import datetime, timedelta
 import matplotlib.pyplot as plt
 from matplotlib.animation import FuncAnimation
+import contextily as cx
 from math import ceil
+
+def dms_to_dd(degrees, minutes=0, seconds=0):
+    return degrees + (minutes/60) + (seconds/3600)
+
+
+def plot_gps_coords(file_path):
+    # csv_data = np.genfromtxt(file_path, delimiter=',')
+    gps_df = pd.read_csv(file_path, sep=',', index_col=0)
+    
+    gps_df[['lat_degs', 'lat_mins']] = gps_df['lat'].str.split(' ', expand=True).astype(float)
+    gps_df[['lon_degs', 'lon_mins']] = gps_df['lon'].str.split(' ', expand=True).astype(float)
+    gps_df['lat'], gps_df['lon'] = dms_to_dd(gps_df['lat_degs'], gps_df['lat_mins']), dms_to_dd(gps_df['lon_degs'], gps_df['lon_mins'])
+        
+    gdf = gpd.GeoDataFrame(
+        gps_df[['lat', 'lon']], geometry=gpd.points_from_xy(gps_df['lon'], gps_df['lat'], crs='EPSG:4326')
+    )
+    
+    ax = gdf.plot(figsize=(10, 10), color='red')
+    cx.add_basemap(ax, crs=gdf.crs)
+    plt.show()
+
 
 def psd_with_channel_slicing(tdms_array, prepro_para, task_t0, timestamps, channel_slices):
     fig, axs = plt.subplots(2, ceil(len(channel_slices)/2), figsize=(15, 10))
@@ -84,19 +108,21 @@ def animated_spectrogram(tdms_array, prepro_para, task_t0, timestamps):
 
 # dir_path = "../../temp_data_store/"
 dir_path = "../../../../gpfs/data/DAS_data/Data/"
-properties = tdms_io.get_dir_properties(dir_path)
-prepro_para = {
-    'cha1': 2000,
-    'cha2': 7999,
-    'sps': properties.get('SamplingFrequency[Hz]'),
-    'spatial_ratio': int(10 / properties.get('SpatialResolution[m]')),          # int(target_spatial_res/spatial_res)
-    'duration': timedelta(hours=3).total_seconds(),
-}
-task_t0 = datetime(year = 2024, month = 1, day = 19,
-                   hour = 15, minute = 19, second = 7, microsecond = 0)
-tdms_array, timestamps = tdms_io.get_tdms_array(dir_path)
+# properties = tdms_io.get_dir_properties(dir_path)
+# prepro_para = {
+#     'cha1': 2000,
+#     'cha2': 2399,
+#     'sps': properties.get('SamplingFrequency[Hz]'),
+#     'spatial_ratio': int(1 / properties.get('SpatialResolution[m]')),          # int(target_spatial_res/spatial_res)
+#     'duration': timedelta(seconds=120).total_seconds(),
+# }
+# task_t0 = datetime(year = 2023, month = 11, day = 9, 
+#                    hour = 13, minute = 42, second = 57)
+# tdms_array, timestamps = tdms_io.get_tdms_array(dir_path)
 
-channel_slices = [[1500, 1500], [3000, 3000], [5000, 5000], [7000, 7000]]
-# psd_with_channel_slicing(tdms_array, prepro_para, task_t0, timestamps, channel_slices)
+# channel_slices = [[1500, 1500], [3000, 3000], [5000, 5000], [7000, 7000]]
+# # psd_with_channel_slicing(tdms_array, prepro_para, task_t0, timestamps, channel_slices)
 
-animated_spectrogram(tdms_array, prepro_para, task_t0, timestamps)
+# animated_spectrogram(tdms_array, prepro_para, task_t0, timestamps)
+
+plot_gps_coords('../../Deployment/gps_coords.csv')
