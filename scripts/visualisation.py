@@ -127,4 +127,4 @@ dir_path = "../../../../gpfs/data/DAS_data/Data/"
 
 # animated_spectrogram(tdms_array, prepro_para, task_t0, timestamps)
 
-plot_gps_coords('../../Deployment/gps_coords.csv')
+plot_gps_coords('res/linewalk_gps.csv')

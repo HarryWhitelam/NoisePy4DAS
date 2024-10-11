@@ -10,20 +10,19 @@ def closest(points, v):
     return min(points, key=lambda p: haversine_distance(v[0],v[1],p[1],p[0]))
 
 
-track_pt = np.loadtxt('track_gps.csv', delimiter=',', skiprows=1, usecols=(1,2), comments='#')[:, ::-1] # read in the track points and swap the two columns (let longitude precede latitude)
-known_pt = np.loadtxt('known_gps.csv', delimiter=',', skiprows=1, usecols=(1,0,2), comments='#')
+track_pt = np.loadtxt('res/track_pts.csv', delimiter=',', skiprows=1, usecols=(1,2), comments='#')[:, ::-1] # read in the track points and swap the two columns (let longitude precede latitude)
+known_pt = np.loadtxt('res/known_pts.csv', delimiter=',', skiprows=1, usecols=(1,0,2), comments='#')
 
 
 uinta_gps_points = [
-    # [52.89939421, 1.38699213],      # cable start
-    [52.89970906, 1.38548287],      # fall one
-    [52.90026837, 1.38414773],      # forest entrance
-    [52.90091812, 1.38306587],      # forest exit
-    [52.90232053, 1.38018163],      # fall path
-    [52.90307644, 1.37774255],      # marlings sign
-    [52.90438791, 1.37468231],      # fall two question mark
-    [52.90499186, 1.37081761],      # inner curve
-    [52.90613392, 1.36821678],      # field divider
+    [52.89970906, 1.38548287],      # fall one                  10/01/24 12:10      2072
+    [52.90026837, 1.38414773],      # forest entrance           10/01/24 12:12      2627?
+    [52.90091812, 1.38306587],      # forest exit               10/01/24 12:15      3175
+    [52.90232053, 1.38018163],      # fall path                 10/01/24 12:19      4244
+    [52.90307644, 1.37774255],      # marlings sign             10/01/24 12:22      4982
+    [52.90438791, 1.37468231],      # fall two question mark    10/01/24 12:26      6079
+    [52.90499186, 1.37081761],      # inner curve               10/01/24 12:31      7276
+    [52.90613392, 1.36821678],      # field divider             10/01/24 12:35      8172
 ]
 
 gearth_gps_points = [

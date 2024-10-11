@@ -42,7 +42,7 @@ def max_min_strain_rate(data, channel_bounds=None):
     return max_val, max_idx, min_val, min_idx
 
 
-file_path =  "/media/harry/Elements/DAS_Data/LineWalkData_UTC_20240110_120340.208.tdms"
+file_path =  "../../temp_data_store/Linewalk/LineWalkData_UTC_20240110_120340.208.tdms"
 # print('File: {0}'.format(file_path))
 
 tdms = TdmsReader(file_path)
@@ -70,17 +70,17 @@ first_channel = 0
 last_channel = n_channels
 
 start_time = datetime(year=2024, month=1, day=10, hour=12, minute=3, second=40)
-target_time = datetime(year=2024, month=1, day=10, hour=12, minute=35, second=42)
+target_time = datetime(year=2024, month=1, day=10, hour=12, minute=35, second=50)
 ms_diff = (target_time - start_time).seconds * 1000
 
-first_time_sample = ms_diff - 5000
-second_time_sample = ms_diff + 5000
+first_time_sample = ms_diff - 10000
+second_time_sample = ms_diff + 10000
 
 some_data = tdms.get_data(first_channel, last_channel, first_time_sample, second_time_sample)
 # print('Size of data loaded: {0}'.format(some_data.shape))
 some_data = scale(some_data, props)
 
-max_strain, max_channel, min_strain, min_channel = max_min_strain_rate(some_data, [8000, 8500])
+max_strain, max_channel, min_strain, min_channel = max_min_strain_rate(some_data, [8000, 8400])
 print(f"Min Strain: {min_strain} at channel {min_channel}, Max Strain: {max_strain} at channel {max_channel}")
 
 
