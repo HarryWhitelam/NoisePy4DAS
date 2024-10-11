@@ -55,7 +55,7 @@ interp_ch = location_interpolation(known_pt, track_pt=track_pt, dx=0.25)
 print(interp_ch) # longitude, latitude, and channel number
 # interp_ch_df = pd.DataFrame(interp_ch, columns=['lon', 'lat', 'channel_no'])
 # interp_ch_df.to_csv('res/interp_ch_pts.csv', index=False)
-
+# this is a test
 plt.scatter(interp_ch[:,0], interp_ch[:,1], c=interp_ch[:,2], cmap='jet')
 plt.scatter(track_pt[:,0], track_pt[:,1], c='k', s=10)
 plt.gca().set_aspect('equal')
