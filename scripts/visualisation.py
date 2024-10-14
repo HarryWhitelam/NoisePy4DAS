@@ -22,10 +22,12 @@ def plot_gps_coords(file_path):
     gps_df[['lat_degs', 'lat_mins']] = gps_df['lat'].str.split(' ', expand=True).astype(float)
     gps_df[['lon_degs', 'lon_mins']] = gps_df['lon'].str.split(' ', expand=True).astype(float)
     gps_df['lat'], gps_df['lon'] = dms_to_dd(gps_df['lat_degs'], gps_df['lat_mins']), dms_to_dd(gps_df['lon_degs'], gps_df['lon_mins'])
-        
+    
     gdf = gpd.GeoDataFrame(
         gps_df[['lat', 'lon']], geometry=gpd.points_from_xy(gps_df['lon'], gps_df['lat'], crs='EPSG:4326')
     )
+    
+    # gps_df[['lat', 'lon']].to_csv('track_gps.csv', sep=',')
     
     ax = gdf.plot(figsize=(10, 10), color='red')
     cx.add_basemap(ax, crs=gdf.crs)
@@ -125,4 +127,4 @@ dir_path = "../../../../gpfs/data/DAS_data/Data/"
 
 # animated_spectrogram(tdms_array, prepro_para, task_t0, timestamps)
 
-plot_gps_coords('../../Deployment/gps_coords.csv')
+plot_gps_coords('res/linewalk_gps.csv')

@@ -24,7 +24,7 @@ from tqdm import tqdm
 from TDMS_Read import TdmsReader
 
 
-def get_tdms_array():
+def get_tdms_array(dir_path):
     tdms_array = np.empty(len(os.listdir(dir_path)), TdmsReader)
     timestamps = np.empty(len(tdms_array), dtype=datetime)
 
@@ -128,7 +128,7 @@ def get_dir_properties(dir_path):
     return tdms_file.get_properties()
 
 
-def set_prepro_parameters(dir_path, freqmin=1, freqmax=49.9, target_spatial_res=5, cha1=4000, cha2=7999):
+def set_prepro_parameters(dir_path, freqmin=1, freqmax=49.9, target_spatial_res=5, cha1=4000, cha2=7999, n_minute=60):
     properties = get_dir_properties(dir_path)
     
     cha_spacing = properties.get('SpatialResolution[m]') * properties.get('Fibre Length Multiplier')
@@ -141,7 +141,7 @@ def set_prepro_parameters(dir_path, freqmin=1, freqmax=49.9, target_spatial_res=
     spatial_ratio      = int(target_spatial_res/spatial_res)		# both values in m
 
     freq_norm          = 'rma'             # 'no' for no whitening, or 'rma' for running-mean average, 'phase_only' for sign-bit normalization in freq domain.
-    time_norm          = 'rma'         # 'no' for no normalization, or 'rma', 'one_bit' for normalization in time domain
+    time_norm          = 'rma'             # 'no' for no normalization, or 'rma', 'one_bit' for normalization in time domain
     cc_method          = 'xcorr'           # 'xcorr' for pure cross correlation, 'deconv' for deconvolution; FOR "COHERENCY" PLEASE set freq_norm to "rma", time_norm to "no" and cc_method to "xcorr"
     smooth_N           = 100               # moving window length for time domain normalization if selected (points)
     smoothspect_N      = 100               # moving window length to smooth spectrum amplitude (points)
@@ -153,10 +153,10 @@ def set_prepro_parameters(dir_path, freqmin=1, freqmax=49.9, target_spatial_res=
     # step               = 60                # stepping length in second [not used]
 
     effective_cha2     = floor(cha1 + (cha2 - cha1) / spatial_ratio)
-    cha_list = np.array(range(cha1, effective_cha2 + 1))
-    nsta = len(cha_list)
-    n_pair = int((nsta+1)*nsta/2)
-    n_lag = maxlag * samp_freq * 2 + 1
+    cha_list           = np.array(range(cha1, effective_cha2 + 1))
+    nsta               = len(cha_list)
+    n_pair             = int((nsta+1)*nsta/2)
+    n_lag              = maxlag * samp_freq * 2 + 1
     
     return {
         'freqmin':freqmin,
@@ -180,12 +180,13 @@ def set_prepro_parameters(dir_path, freqmin=1, freqmax=49.9, target_spatial_res=
         'target_spatial_res':target_spatial_res,
         'spatial_ratio':spatial_ratio, 
         'n_pair':n_pair,
-        'n_lag':n_lag
+        'n_lag':n_lag,
+        'n_minute':n_minute
     }
 
 
 def correlation(tdms_array, prepro_para, timestamps, task_t0, save_corr=False):
-    n_lag, n_pair, cha1, cha2, effective_cha2, cha_list = prepro_para.get('n_lag'), prepro_para.get('n_pair'), prepro_para.get('cha1'), prepro_para.get('cha2'), prepro_para.get('effective_cha2'), prepro_para.get('cha_list')
+    n_lag, n_pair, cha1, cha2, effective_cha2, cha_list, n_minute = prepro_para.get('n_lag'), prepro_para.get('n_pair'), prepro_para.get('cha1'), prepro_para.get('cha2'), prepro_para.get('effective_cha2'), prepro_para.get('cha_list'), prepro_para.get('n_minute')
     
     corr_full = np.zeros([n_lag, n_pair], dtype = np.float32)
     stack_full = np.zeros([1, n_pair], dtype = np.int32)
@@ -269,7 +270,7 @@ def plot_das_data(data, prepro_para):
 
 
 def plot_correlation(corr, prepro_para, cmap_param='bwr', save_corr=False):
-    cha1, cha2, effective_cha2, spatial_ratio, cha_spacing, target_spatial_res, freqmin, freqmax, maxlag = prepro_para.get('cha1'), prepro_para.get('cha2'), prepro_para.get('effective_cha2'), prepro_para.get('spatial_ratio'), prepro_para.get('cha_spacing'), prepro_para.get('target_spatial_res'), prepro_para.get('freqmin'), prepro_para.get('freqmax'), prepro_para.get('maxlag')
+    cha1, cha2, effective_cha2, spatial_ratio, cha_spacing, target_spatial_res, freqmin, freqmax, maxlag, n_minute, task_t0 = prepro_para.get('cha1'), prepro_para.get('cha2'), prepro_para.get('effective_cha2'), prepro_para.get('spatial_ratio'), prepro_para.get('cha_spacing'), prepro_para.get('target_spatial_res'), prepro_para.get('freqmin'), prepro_para.get('freqmax'), prepro_para.get('maxlag'), prepro_para.get('n_minute'), prepro_para.get('task_t0')
 
     plt.figure(figsize = (12, 5), dpi = 150)
     plt.imshow(corr[:, :(effective_cha2 - cha1)].T, aspect = 'auto', cmap = cmap_param, 
@@ -298,7 +299,7 @@ def plot_correlation(corr, prepro_para, cmap_param='bwr', save_corr=False):
 
 
 def plot_multiple_correlations(corrs, prepro_para, vars, cmap_param='bwr', save_corr=False):
-    cha1, cha2, effective_cha2, spatial_ratio, cha_spacing, target_spatial_res, freqmin, freqmax, maxlag = prepro_para.get('cha1'), prepro_para.get('cha2'), prepro_para.get('effective_cha2'), prepro_para.get('spatial_ratio'), prepro_para.get('cha_spacing'), prepro_para.get('target_spatial_res'), prepro_para.get('freqmin'), prepro_para.get('freqmax'), prepro_para.get('maxlag')
+    cha1, cha2, effective_cha2, spatial_ratio, cha_spacing, target_spatial_res, freqmin, freqmax, maxlag, n_minute, task_t0 = prepro_para.get('cha1'), prepro_para.get('cha2'), prepro_para.get('effective_cha2'), prepro_para.get('spatial_ratio'), prepro_para.get('cha_spacing'), prepro_para.get('target_spatial_res'), prepro_para.get('freqmin'), prepro_para.get('freqmax'), prepro_para.get('maxlag'), prepro_para.get('n_minute'), prepro_para.get('task_t0')
 
     fig, axs = plt.subplots(2, ceil(len(corrs)/2), figsize=(15, 10))
     for ax, corr, var in zip(axs.ravel(), corrs, vars):
@@ -337,33 +338,3 @@ def plot_multiple_correlations(corrs, prepro_para, vars, cmap_param='bwr', save_
     plt.savefig(f'./results/figures/{t_start}_f{freqmin}:{freqmax}__{cha1}:{cha2}_{target_spatial_res}m__stack_length_experiment_no_cbar.png')
     if save_corr:
         np.savetxt(f'{t_start}_{n_minute}mins_f{freqmin}:{freqmax}__{cha1}:{cha2}_{target_spatial_res}m.txt', corrs[0].T, delimiter=",")
-
-dir_path = "../../../../gpfs/data/DAS_data/Data/"
-task_t0 = datetime(year = 2024, month = 1, day = 19,
-                   hour = 15, minute = 19, second = 7, microsecond = 0)
-n_minute = 360
-
-corrs = []
-# freq_range = [[1.0, 49.9], [1.0, 10.0], [10.0, 25.0], [25.0, 49.9]]
-# freq_range = [[0.01, 0.04], [0.04, 0.1], [0.1, 1.0], [1.0, 49.9]]
-# n_minute_range = [10, 60, 120, 360]
-# target_spatial_res_range = [0.25, 1, 5, 10]
-channels_range = [[2000, 3499], [3500, 4999], [5000, 6499], [6500, 7999]]
-for chas in channels_range:
-    print(f'Starting channels experiment: {chas}')
-    prepro_para = set_prepro_parameters(dir_path, cha1=chas[0], cha2=chas[1], target_spatial_res=5)
-    tdms_array, timestamps = get_tdms_array()
-    corr_full = correlation(tdms_array, prepro_para, timestamps, task_t0)
-    corrs.append(corr_full)
-
-plot_multiple_correlations(corrs, prepro_para, channels_range, save_corr=False)
-
-
-
-
-### SINGLE RUN: 
-# prepro_para = set_prepro_parameters(dir_path, target_spatial_res=1)
-# tdms_array, timestamps = get_tdms_array()
-
-# corr_full = correlation(tdms_array, prepro_para, timestamps, task_t0, save_corr=False)
-# plot_correlation(corr_full, prepro_para)

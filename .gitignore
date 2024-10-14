@@ -129,5 +129,20 @@ dmypy.json
 # Pyre type checker
 .pyre/
 
+
+### HW additions
+# ignore customisation
+.vscode/*
+
 # ignore results folder
 results/*
+
+# ignore large files (pushed as required) 
+*.csv
+*.txt
+*.gif
+*.su
+*.tdms
+*.segy
+*.h5
+*.hdf5
