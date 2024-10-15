@@ -8,6 +8,8 @@ from datetime import datetime, timedelta
 from math import floor
 from TDMS_Read import TdmsReader
 
+from random import random
+
 
 def get_tdms_array(dir_path):
     tdms_array = np.empty(int(len([filename for filename in os.listdir(dir_path) if filename.endswith(".tdms")])), dtype=TdmsReader)
@@ -116,8 +118,36 @@ def scale(data, props):
     return data
 
 
-def downsample_data(data, sps, spatial_res, target_sps, target_spatial_res):
-    temporal_ratio = int(target_sps/sps)
+def slice_downsample(data, sps, spatial_res, target_sps, target_spatial_res):
+    temporal_ratio = int(sps/target_sps)                    # reversed as time-reciprocal
     spatial_ratio = int(target_spatial_res/spatial_res)
     
-    return data[::temporal_ratio, spatial_ratio]
+    return data[::temporal_ratio, ::spatial_ratio]
+
+
+def mean_downsample(data, sps, spatial_res, target_sps, target_spatial_res):
+    temporal_ratio = int(sps/target_sps)                    # reversed as time-reciprocal
+    spatial_ratio = int(target_spatial_res/spatial_res)
+    shape = data.shape
+    
+    print(int(shape[0]/temporal_ratio), int(shape[1]/spatial_ratio))
+    ds_data = np.empty(shape=(int(shape[0]/temporal_ratio), int(shape[1]/spatial_ratio)))
+    for i in range(shape[1]):
+        ds_data[i] = np.convolve(data[i], np.ones(spatial_ratio), 'valid') / spatial_ratio
+    
+    # return np.convolve(data, np.ones(spatial_ratio), 'valid') / spatial_ratio
+    return ds_data
+
+
+test_data = np.empty(shape=(10, 5))
+for i in range(1, 11):
+    test_data[i-1] = [i, i*2, i*5, i*10, random()]
+
+second_test = np.arange(20)
+
+
+# sliced_data = slice_downsample(test_data, 1, 1, 1, 2)
+# print(sliced_data)
+
+mean_data = mean_downsample(test_data, 1, 1, 1, 2)
+print(mean_data)
