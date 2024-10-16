@@ -118,36 +118,54 @@ def scale(data, props):
     return data
 
 
-def slice_downsample(data, sps, spatial_res, target_sps, target_spatial_res):
-    temporal_ratio = int(sps/target_sps)                    # reversed as time-reciprocal
-    spatial_ratio = int(target_spatial_res/spatial_res)
-    
+def slice_downsample(data, temporal_ratio, spatial_ratio):
     return data[::temporal_ratio, ::spatial_ratio]
 
 
-def mean_downsample(data, sps, spatial_res, target_sps, target_spatial_res):
-    temporal_ratio = int(sps/target_sps)                    # reversed as time-reciprocal
-    spatial_ratio = int(target_spatial_res/spatial_res)
-    shape = data.shape
-    
-    print(int(shape[0]/temporal_ratio), int(shape[1]/spatial_ratio))
+def mean_downsample(data, temporal_ratio, spatial_ratio):
+    shape = data.shape    
     ds_data = np.empty(shape=(int(shape[0]/temporal_ratio), int(shape[1]/spatial_ratio)))
-    for i in range(shape[1]):
-        ds_data[i] = np.convolve(data[i], np.ones(spatial_ratio), 'valid') / spatial_ratio
     
-    # return np.convolve(data, np.ones(spatial_ratio), 'valid') / spatial_ratio
+    # for i in range(shape[1]):
+    #     ds_data[i] = np.convolve(data[i], np.ones(spatial_ratio), 'valid') / spatial_ratio
+    
+    for i in range(0, shape[0], temporal_ratio):
+        for j in range(0, shape[1], spatial_ratio):
+            # print(i, j)
+            ds_data[i // temporal_ratio, j // spatial_ratio] = \
+                np.mean(data[i:i+temporal_ratio, j:j+spatial_ratio])
+    
     return ds_data
 
 
-test_data = np.empty(shape=(10, 5))
+sps = 1
+spatial_res = 1
+target_sps = 1
+target_spatial_res = .67
+
+if (temporal_ratio := int(sps/target_sps)) != sps/target_sps:             # reversed as time-reciprocal
+    print(f'Target sps not a factor of current sps, some data will be lost.')
+if (spatial_ratio := int(target_spatial_res/spatial_res)) != target_spatial_res/spatial_res:
+    print(f'Target spatial res not a factor of current spatial res, some data will be lost.')
+
+print(temporal_ratio, spatial_ratio)
+
+test_data = np.empty(shape=(10, 6))
 for i in range(1, 11):
-    test_data[i-1] = [i, i*2, i*5, i*10, random()]
+    test_data[i-1] = [i, i*2, i*5, i*10, random(), random()]
+# [[  1.           2.           5.          10.           0.90996733           0.11557851]
+#  [  2.           4.          10.          20.           0.25683587           0.89005394]
+#  [  3.           6.          15.          30.           0.10812548           0.45505769]
+#  [  4.           8.          20.          40.           0.46343448           0.71672940]
+#  [  5.          10.          25.          50.           0.86825790           0.69531352]
+#  [  6.          12.          30.          60.           0.12835542           0.79795516]
+#  [  7.          14.          35.          70.           0.31663804           0.85532936]
+#  [  8.          16.          40.          80.           0.55079609           0.67358710]
+#  [  9.          18.          45.          90.           0.16375882           0.96487782]
+#  [ 10.          20.          50.         100.           0.66585205           0.81153159]]
 
-second_test = np.arange(20)
-
-
-# sliced_data = slice_downsample(test_data, 1, 1, 1, 2)
+# sliced_data = slice_downsample(test_data, temporal_ratio, spatial_ratio)
 # print(sliced_data)
 
-mean_data = mean_downsample(test_data, 1, 1, 1, 2)
+mean_data = mean_downsample(test_data, temporal_ratio, spatial_ratio)
 print(mean_data)
