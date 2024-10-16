@@ -7,6 +7,8 @@ import numpy as np
 from datetime import datetime, timedelta
 from math import floor, ceil
 from TDMS_Read import TdmsReader
+import matplotlib.pyplot as plt
+from time import time
 
 from random import random
 
@@ -152,9 +154,25 @@ def mean_downsample(data, temporal_ratio, spatial_ratio):
     return ds_data
 
 
-sps = 1
-spatial_res = 1
-target_sps = 1
+# print(f'temporal_ratio: {temporal_ratio}, spatial_ratio: {spatial_ratio}')
+
+# data = np.empty(shape=(10, 7))
+# for i in range(1, 11):
+#     data[i-1] = [i, i*2, i*4, i*5, i*10, random(), random()]
+# print(data)
+
+t1 = time()
+
+file_path =  "../../temp_data_store/Linewalk/LineWalkData_UTC_20240110_120340.208.tdms"
+# print('File: {0}'.format(file_path))
+
+tdms = TdmsReader(file_path)
+props = tdms.get_properties()
+
+fs = props.get('SamplingFrequency[Hz]')
+sps = 1/fs
+spatial_res = 0.25
+target_sps = 1/fs
 target_spatial_res = 2
 
 if (temporal_ratio := int(sps/target_sps)) != sps/target_sps:             # reversed as time-reciprocal
@@ -162,17 +180,40 @@ if (temporal_ratio := int(sps/target_sps)) != sps/target_sps:             # reve
 if (spatial_ratio := int(target_spatial_res/spatial_res)) != target_spatial_res/spatial_res:
     print(f'Target spatial res not a factor of current spatial res, some data will be lost.')
 
-# print(f'temporal_ratio: {temporal_ratio}, spatial_ratio: {spatial_ratio}')
+first_channel = 0
+last_channel = tdms.fileinfo['n_channels']
 
-test_data = np.empty(shape=(10, 7))
-for i in range(1, 11):
-    test_data[i-1] = [i, i*2, i*4, i*5, i*10, random(), random()]
-print(test_data)
+start_time = datetime(year=2024, month=1, day=10, hour=12, minute=3, second=40)
+target_time = datetime(year=2024, month=1, day=10, hour=12, minute=35, second=50)
+ms_diff = (target_time - start_time).seconds * 1000
 
-sliced_data = slice_downsample(test_data, temporal_ratio, spatial_ratio)
+first_time_sample = ms_diff - 10000
+second_time_sample = ms_diff + 10000
+bounds = 10000000
+
+data = tdms.get_data(first_channel, last_channel, first_time_sample, second_time_sample)
+
+sliced_data = slice_downsample(data, temporal_ratio, spatial_ratio)
+sliced_data.tofile('./res/downsample_tests/sliced_data.csv')
+mean_data = mean_downsample(data, temporal_ratio, spatial_ratio)
+mean_data.tofile('./res/downsample_tests/mean_data.csv')
+
 print(sliced_data)
-
-mean_data = mean_downsample(test_data, temporal_ratio, spatial_ratio)
 print(mean_data)
 
-print(mean_data - sliced_data)
+print(f'preplotting time: {time() - t1}')
+
+fig1, (ax1, ax2, ax3) = plt.subplots(1, 3)
+img1 = ax1.imshow(sliced_data, aspect='auto', interpolation='none', vmin=-bounds, vmax=bounds)
+img2 = ax2.imshow(mean_data, aspect='auto', interpolation='none', vmin=-bounds, vmax=bounds)
+img3 = ax3.imshow(data, aspect='auto', interpolation='none', vmin=-bounds, vmax=bounds)
+plt.ylabel('Time (seconds)')
+#plt.xlim(-100, 2000)
+plt.xlabel('Channel No.')
+plt.title((props.get('GPSTimeStamp')))
+plt.set_cmap('bwr')
+# fig1.colorbar(img1, label= "Nano Strain per Second [nm/m/s]")
+
+plt.show()
+
+print(f'total time: {time() - t1}')
