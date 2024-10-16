@@ -123,8 +123,8 @@ def slice_downsample(data, temporal_ratio, spatial_ratio):
 
 
 def mean_downsample(data, temporal_ratio, spatial_ratio):
-    shape = data.shape    
-    ds_data = np.empty(shape=(round(shape[0]/temporal_ratio), round(shape[1]/spatial_ratio)))
+    shape = data.shape
+    ds_data = np.empty(shape=(ceil(shape[0]/temporal_ratio), ceil(shape[1]/spatial_ratio)))
     
     # for i in range(shape[1]):
     #     ds_data[i] = np.convolve(data[i], np.ones(spatial_ratio), 'valid') / spatial_ratio
@@ -140,10 +140,10 @@ def mean_downsample(data, temporal_ratio, spatial_ratio):
         for j in range(0, shape[1], spatial_ratio):
             # print(f'i: {i}, j: {j}')
             if j > temporal_ratio:
-                j_left = j - floor(temporal_ratio / 2)
+                j_left = j - floor(spatial_ratio / 2)
             else:
                 j_left = j
-            j_right = j + ceil(temporal_ratio / 2)
+            j_right = j + ceil(spatial_ratio / 2)
             
             # print(f'{i_left}:{i_right}, {j_left}:{j_right}')
             ds_data[i // temporal_ratio, j // spatial_ratio] = \
@@ -155,21 +155,24 @@ def mean_downsample(data, temporal_ratio, spatial_ratio):
 sps = 1
 spatial_res = 1
 target_sps = 1
-target_spatial_res = 4
+target_spatial_res = 2
 
 if (temporal_ratio := int(sps/target_sps)) != sps/target_sps:             # reversed as time-reciprocal
     print(f'Target sps not a factor of current sps, some data will be lost.')
 if (spatial_ratio := int(target_spatial_res/spatial_res)) != target_spatial_res/spatial_res:
     print(f'Target spatial res not a factor of current spatial res, some data will be lost.')
 
-print(f'temporal_ratio: {temporal_ratio}, spatial_ratio: {spatial_ratio}')
+# print(f'temporal_ratio: {temporal_ratio}, spatial_ratio: {spatial_ratio}')
 
 test_data = np.empty(shape=(10, 7))
 for i in range(1, 11):
     test_data[i-1] = [i, i*2, i*4, i*5, i*10, random(), random()]
+print(test_data)
 
-# sliced_data = slice_downsample(test_data, temporal_ratio, spatial_ratio)
-# print(sliced_data)
+sliced_data = slice_downsample(test_data, temporal_ratio, spatial_ratio)
+print(sliced_data)
 
 mean_data = mean_downsample(test_data, temporal_ratio, spatial_ratio)
 print(mean_data)
+
+print(mean_data - sliced_data)
