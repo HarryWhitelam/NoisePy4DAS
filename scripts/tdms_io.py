@@ -5,7 +5,7 @@ sys.path.append("./DASstore")
 import os
 import numpy as np
 from datetime import datetime, timedelta
-from math import floor
+from math import floor, ceil
 from TDMS_Read import TdmsReader
 
 from random import random
@@ -124,16 +124,30 @@ def slice_downsample(data, temporal_ratio, spatial_ratio):
 
 def mean_downsample(data, temporal_ratio, spatial_ratio):
     shape = data.shape    
-    ds_data = np.empty(shape=(int(shape[0]/temporal_ratio), int(shape[1]/spatial_ratio)))
+    ds_data = np.empty(shape=(round(shape[0]/temporal_ratio), round(shape[1]/spatial_ratio)))
     
     # for i in range(shape[1]):
     #     ds_data[i] = np.convolve(data[i], np.ones(spatial_ratio), 'valid') / spatial_ratio
     
     for i in range(0, shape[0], temporal_ratio):
+        if i > temporal_ratio:
+            i_left = i - floor(temporal_ratio / 2)
+        else: 
+            i_left = i
+        # if i < shape[0] - temporal_ratio:
+        i_right = i + ceil(temporal_ratio / 2)
+        
         for j in range(0, shape[1], spatial_ratio):
-            # print(i, j)
+            # print(f'i: {i}, j: {j}')
+            if j > temporal_ratio:
+                j_left = j - floor(temporal_ratio / 2)
+            else:
+                j_left = j
+            j_right = j + ceil(temporal_ratio / 2)
+            
+            # print(f'{i_left}:{i_right}, {j_left}:{j_right}')
             ds_data[i // temporal_ratio, j // spatial_ratio] = \
-                np.mean(data[i:i+temporal_ratio, j:j+spatial_ratio])
+                np.mean(data[i_left:i_right, j_left:j_right])
     
     return ds_data
 
@@ -141,28 +155,18 @@ def mean_downsample(data, temporal_ratio, spatial_ratio):
 sps = 1
 spatial_res = 1
 target_sps = 1
-target_spatial_res = .67
+target_spatial_res = 4
 
 if (temporal_ratio := int(sps/target_sps)) != sps/target_sps:             # reversed as time-reciprocal
     print(f'Target sps not a factor of current sps, some data will be lost.')
 if (spatial_ratio := int(target_spatial_res/spatial_res)) != target_spatial_res/spatial_res:
     print(f'Target spatial res not a factor of current spatial res, some data will be lost.')
 
-print(temporal_ratio, spatial_ratio)
+print(f'temporal_ratio: {temporal_ratio}, spatial_ratio: {spatial_ratio}')
 
-test_data = np.empty(shape=(10, 6))
+test_data = np.empty(shape=(10, 7))
 for i in range(1, 11):
-    test_data[i-1] = [i, i*2, i*5, i*10, random(), random()]
-# [[  1.           2.           5.          10.           0.90996733           0.11557851]
-#  [  2.           4.          10.          20.           0.25683587           0.89005394]
-#  [  3.           6.          15.          30.           0.10812548           0.45505769]
-#  [  4.           8.          20.          40.           0.46343448           0.71672940]
-#  [  5.          10.          25.          50.           0.86825790           0.69531352]
-#  [  6.          12.          30.          60.           0.12835542           0.79795516]
-#  [  7.          14.          35.          70.           0.31663804           0.85532936]
-#  [  8.          16.          40.          80.           0.55079609           0.67358710]
-#  [  9.          18.          45.          90.           0.16375882           0.96487782]
-#  [ 10.          20.          50.         100.           0.66585205           0.81153159]]
+    test_data[i-1] = [i, i*2, i*4, i*5, i*10, random(), random()]
 
 # sliced_data = slice_downsample(test_data, temporal_ratio, spatial_ratio)
 # print(sliced_data)
