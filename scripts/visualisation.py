@@ -112,21 +112,26 @@ def animated_spectrogram(tdms_array, prepro_para, task_t0, timestamps):
 
 def image_comparison(img1, img2, method):
     comps = [img1, img2]
-    if method in ('checkerboard', 'all'):
-        comps.append(compare_images(img1, img2, method='checkerboard'))
     if method in ('diff', 'all'):
         comps.append(compare_images(img1, img2, method='diff'))
     if method in ('blend', 'all'):
         comps.append(compare_images(img1, img2, method='blend'))
+    if method in ('checkerboard', 'all'):
+        if img1.shape[2] > 1:
+            img1 = img1[:,:,0]
+        if img2.shape[2] > 1:
+            img2 = img2[:,:,0]
+        print(img1.shape)
+        comps.append(compare_images(img1, img2, method='checkerboard'))
     
     fig = plt.figure(figsize=(15, 12))
     # plt.suptitle("TITLE HERE")
     for n, comp in enumerate(comps): 
-        ax = plt.subplot(3, 2, n + 1)
+        ax = plt.subplot(2, 3, n + 1)
         ax.imshow(comp, cmap='bwr')
+    fig.tight_layout()
         
     plt.show()
-    print("END OF FUNCTION")
 
 # dir_path = "../../temp_data_store/"
 # dir_path = "../../../../gpfs/data/DAS_data/Data/"

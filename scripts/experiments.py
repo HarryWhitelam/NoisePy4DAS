@@ -76,11 +76,12 @@ def downsample_comparison():
     ax3.set_title('Mean')
     plt.sca(ax1)
     plt.ylabel('Time (seconds)')
-    #plt.xlim(-100, 2000)
+    # plt.xlim(-100, 2000)
     plt.sca(ax2)
     plt.xlabel('Channel No.')
     plt.suptitle((props.get('GPSTimeStamp')))
     # fig1.colorbar(img1, label="Nano Strain per Second [nm/m/s]")
+    plt.tight_layout()
     
     extent2 = ax2.get_window_extent().transformed(fig1.dpi_scale_trans.inverted())
     fig1.savefig('res/downsample_tests/sliced_data.png', bbox_inches=extent2)
@@ -91,9 +92,9 @@ def downsample_comparison():
     
     comp_img1 = imread('res/downsample_tests/sliced_data.png')
     comp_img2 = imread('res/downsample_tests/mean_data.png')
-        
-    image_comparison(comp_img1, comp_img2, method='diff')
-
+    
+    image_comparison(comp_img1, comp_img2, method='all')
+    
     print(f'total time: {time() - t1}')
 
 
