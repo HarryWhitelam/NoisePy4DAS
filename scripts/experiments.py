@@ -66,7 +66,7 @@ def downsample_comparison():
         print(f"Mean data took {time() - t_mean} seconds to generate and save.")
 
     print(f'preplotting time: {time() - t1}')
-
+    
     fig1, (ax1, ax2, ax3) = plt.subplots(1, 3)
     img1 = ax1.imshow(data, aspect='auto', interpolation='none', extent=(first_channel, last_channel, ((second_time_sample - 1)/fs), (first_time_sample/fs)), vmin=-bounds, vmax=bounds, cmap='bwr')
     ax1.set_title('Original')
@@ -76,7 +76,6 @@ def downsample_comparison():
     ax3.set_title('Mean')
     plt.sca(ax1)
     plt.ylabel('Time (seconds)')
-    # plt.xlim(-100, 2000)
     plt.sca(ax2)
     plt.xlabel('Channel No.')
     plt.suptitle((props.get('GPSTimeStamp')))
@@ -92,9 +91,9 @@ def downsample_comparison():
     
     comp_img1 = imread('res/downsample_tests/sliced_data.png')
     comp_img2 = imread('res/downsample_tests/mean_data.png')
-    
-    image_comparison(comp_img1, comp_img2, method='all')
-    
+        
+    image_comparison(comp_img1, comp_img2, method='all', cmap='grey', extra_plots=[mean_data - sliced_data, sliced_data - mean_data])
+
     print(f'total time: {time() - t1}')
 
 

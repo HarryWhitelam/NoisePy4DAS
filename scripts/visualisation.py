@@ -7,7 +7,6 @@ from scipy.fft import rfft, rfftfreq
 from datetime import datetime, timedelta
 import matplotlib.pyplot as plt
 from matplotlib.animation import FuncAnimation
-from matplotlib.gridspec import GridSpec
 from skimage.util import compare_images
 import contextily as cx
 from math import ceil
@@ -110,27 +109,24 @@ def animated_spectrogram(tdms_array, prepro_para, task_t0, timestamps):
     ani.save(f'psd_{prepro_para.get("cha1")}:{prepro_para.get("cha2")}_{prepro_para.get("spatial_ratio")*0.25}m.gif', writer='pillow')
 
 
-def image_comparison(img1, img2, method):
+def image_comparison(img1, img2, method, ncols=2, cmap='gray', extra_plots=None):
     comps = [img1, img2]
     if method in ('diff', 'all'):
         comps.append(compare_images(img1, img2, method='diff'))
     if method in ('blend', 'all'):
         comps.append(compare_images(img1, img2, method='blend'))
-    if method in ('checkerboard', 'all'):
-        if img1.shape[2] > 1:
-            img1 = img1[:,:,0]
-        if img2.shape[2] > 1:
-            img2 = img2[:,:,0]
-        print(img1.shape)
-        comps.append(compare_images(img1, img2, method='checkerboard'))
+    if extra_plots:
+        comps += extra_plots
+    
+    nrows = len(comps) // ncols + (len(comps) % ncols > 0)
     
     fig = plt.figure(figsize=(15, 12))
     # plt.suptitle("TITLE HERE")
     for n, comp in enumerate(comps): 
-        ax = plt.subplot(2, 3, n + 1)
-        ax.imshow(comp, cmap='bwr')
+        ax = plt.subplot(nrows, ncols, n + 1)
+        ax.imshow(comp, cmap=cmap, aspect='auto', interpolation='none')
     fig.tight_layout()
-        
+    
     plt.show()
 
 # dir_path = "../../temp_data_store/"
