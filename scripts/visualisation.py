@@ -109,25 +109,44 @@ def animated_spectrogram(tdms_array, prepro_para, task_t0, timestamps):
     ani.save(f'psd_{prepro_para.get("cha1")}:{prepro_para.get("cha2")}_{prepro_para.get("spatial_ratio")*0.25}m.gif', writer='pillow')
 
 
-def image_comparison(img1, img2, method, ncols=2, cmap='gray', extra_plots=None):
-    comps = [img1, img2]
+def image_comparison(data_dict, method, ncols=2, cmap='gray'):
+    data_list = list(data_dict.values())
     if method in ('diff', 'all'):
-        comps.append(compare_images(img1, img2, method='diff'))
+        data_dict['diff'] = compare_images(data_list[0], data_list[1], method='diff')
     if method in ('blend', 'all'):
-        comps.append(compare_images(img1, img2, method='blend'))
-    if extra_plots:
-        comps += extra_plots
+        data_dict['blend'] = compare_images(data_list[0], data_list[1], method='blend')
     
-    nrows = len(comps) // ncols + (len(comps) % ncols > 0)
+    nrows = len(data_dict) // ncols + (len(data_dict) % ncols > 0)
     
     fig = plt.figure(figsize=(15, 12))
     # plt.suptitle("TITLE HERE")
-    for n, comp in enumerate(comps): 
+    for n, (key, val) in enumerate(data_dict.items()): 
         ax = plt.subplot(nrows, ncols, n + 1)
-        ax.imshow(comp, cmap=cmap, aspect='auto', interpolation='none')
-    fig.tight_layout()
+        ax.imshow(val, cmap=cmap, aspect='auto', interpolation='none')
+        ax.title.set_text(key)
     
+    fig.tight_layout()
     plt.show()
+
+
+def spectral_comparison(data_dict, fs, ncols=2, subplots=False):
+    nrows = len(data_dict) // ncols + (len(data_dict) % ncols > 0)
+    
+    fig = plt.figure(figsize=(15, 12))
+    for n, (key, val) in enumerate(data_dict.items()):
+        val = val.mean(axis=1)
+        freqs, psd = welch(val.T, fs=fs)
+        if subplots:
+            ax = plt.subplot(nrows, ncols, n + 1)
+            ax.semilogy(freqs, psd, label=f'test {key}')
+            ax.title.set_text(key)
+        else:
+            plt.semilogy(freqs, psd, label=key)
+    
+    plt.legend()
+    fig.tight_layout()
+    plt.show()
+
 
 # dir_path = "../../temp_data_store/"
 # dir_path = "../../../../gpfs/data/DAS_data/Data/"

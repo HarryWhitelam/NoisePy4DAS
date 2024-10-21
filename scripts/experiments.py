@@ -1,7 +1,7 @@
 import sys
 sys.path.append("./src")
 sys.path.append("./DASstore")
-from visualisation import image_comparison
+from visualisation import image_comparison, spectral_comparison
 from tdms_io import scale, slice_downsample, mean_downsample
 
 from time import time
@@ -22,10 +22,9 @@ def downsample_comparison():
     tdms = TdmsReader(file_path)
     props = tdms.get_properties()
 
-    fs = props.get('SamplingFrequency[Hz]')
-    sps = 1/fs
+    sps = props.get('SamplingFrequency[Hz]')
     spatial_res = 0.25
-    target_sps = 1/fs
+    target_sps = sps
     target_spatial_res = 2
 
     if (temporal_ratio := int(sps/target_sps)) != sps/target_sps:             # reversed as time-reciprocal
@@ -67,32 +66,46 @@ def downsample_comparison():
 
     print(f'preplotting time: {time() - t1}')
     
-    fig1, (ax1, ax2, ax3) = plt.subplots(1, 3)
-    img1 = ax1.imshow(data, aspect='auto', interpolation='none', extent=(first_channel, last_channel, ((second_time_sample - 1)/fs), (first_time_sample/fs)), vmin=-bounds, vmax=bounds, cmap='bwr')
-    ax1.set_title('Original')
-    img2 = ax2.imshow(sliced_data, aspect='auto', interpolation='none', extent=(first_channel, last_channel, ((second_time_sample - 1)/fs), (first_time_sample/fs)), vmin=-bounds, vmax=bounds, cmap='bwr')
-    ax2.set_title('Sliced')
-    img3 = ax3.imshow(mean_data, aspect='auto', interpolation='none', extent=(first_channel, last_channel, ((second_time_sample - 1)/fs), (first_time_sample/fs)),  vmin=-bounds, vmax=bounds, cmap='bwr')
-    ax3.set_title('Mean')
-    plt.sca(ax1)
-    plt.ylabel('Time (seconds)')
-    plt.sca(ax2)
-    plt.xlabel('Channel No.')
-    plt.suptitle((props.get('GPSTimeStamp')))
-    # fig1.colorbar(img1, label="Nano Strain per Second [nm/m/s]")
-    plt.tight_layout()
+    # fig1, (ax1, ax2, ax3) = plt.subplots(1, 3)
+    # img1 = ax1.imshow(data, aspect='auto', interpolation='none', extent=(first_channel, last_channel, ((second_time_sample - 1)/fs), (first_time_sample/fs)), vmin=-bounds, vmax=bounds, cmap='bwr')
+    # ax1.set_title('Original')
+    # img2 = ax2.imshow(sliced_data, aspect='auto', interpolation='none', extent=(first_channel, last_channel, ((second_time_sample - 1)/fs), (first_time_sample/fs)), vmin=-bounds, vmax=bounds, cmap='bwr')
+    # ax2.set_title('Sliced')
+    # img3 = ax3.imshow(mean_data, aspect='auto', interpolation='none', extent=(first_channel, last_channel, ((second_time_sample - 1)/fs), (first_time_sample/fs)),  vmin=-bounds, vmax=bounds, cmap='bwr')
+    # ax3.set_title('Mean')
+    # plt.sca(ax1)
+    # plt.ylabel('Time (seconds)')
+    # plt.sca(ax2)
+    # plt.xlabel('Channel No.')
+    # plt.suptitle((props.get('GPSTimeStamp')))
+    # # fig1.colorbar(img1, label="Nano Strain per Second [nm/m/s]")
+    # plt.tight_layout()
     
-    extent2 = ax2.get_window_extent().transformed(fig1.dpi_scale_trans.inverted())
-    fig1.savefig('res/downsample_tests/sliced_data.png', bbox_inches=extent2)
-    extent3 = ax3.get_window_extent().transformed(fig1.dpi_scale_trans.inverted())
-    fig1.savefig('res/downsample_tests/mean_data.png', bbox_inches=extent3)
+    # extent2 = ax2.get_window_extent().transformed(fig1.dpi_scale_trans.inverted())
+    # fig1.savefig('res/downsample_tests/sliced_data.png', bbox_inches=extent2)
+    # extent3 = ax3.get_window_extent().transformed(fig1.dpi_scale_trans.inverted())
+    # fig1.savefig('res/downsample_tests/mean_data.png', bbox_inches=extent3)
     
-    plt.show()
+    # plt.show()
     
-    comp_img1 = imread('res/downsample_tests/sliced_data.png')
-    comp_img2 = imread('res/downsample_tests/mean_data.png')
-        
-    image_comparison(comp_img1, comp_img2, method='all', cmap='grey', extra_plots=[mean_data - sliced_data, sliced_data - mean_data])
+    # comp_img1 = imread('res/downsample_tests/sliced_data.png')
+    # comp_img2 = imread('res/downsample_tests/mean_data.png')
+    
+    data_dict = {
+        'data': data,
+        'sliced': sliced_data,
+        'mean': mean_data,
+        # 'mean - sliced': (mean_data - sliced_data),
+        # 'sliced - mean': (sliced_data - mean_data), 
+    }
+    
+    # image_comparison(comp_img1, comp_img2, method='all', cmap='grey', extra_plots=[mean_data - sliced_data, sliced_data - mean_data])
+    spectral_comparison(data_dict, fs=sps)
+    
+    print('Beginning numerical comparison; following trend of: original | sliced | mean')
+    print(f'Means: {data.mean()} | {sliced_data.mean()} | {mean_data.mean()}')
+    print(f'Std: {data.std()} | {sliced_data.std()} | {mean_data.std()}\n')
+    print(f'Mean of difference: {(sliced_data - mean_data).mean()}')
 
     print(f'total time: {time() - t1}')
 
