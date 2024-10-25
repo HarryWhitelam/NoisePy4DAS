@@ -1,7 +1,7 @@
 import sys
 sys.path.append("./src")
 sys.path.append("./DASstore")
-from visualisation import image_comparison, spectral_comparison
+from visualisation import image_comparison, spectral_comparison, numerical_comparison
 from tdms_io import scale, slice_downsample, mean_downsample
 
 from time import time
@@ -11,7 +11,7 @@ import numpy as np
 import pandas as pd
 import matplotlib.pyplot as plt
 from skimage.io import imread, imshow
-
+from skimage.transform import resize
 
 def downsample_comparison():
     t1 = time()
@@ -91,23 +91,27 @@ def downsample_comparison():
     # comp_img1 = imread('res/downsample_tests/sliced_data.png')
     # comp_img2 = imread('res/downsample_tests/mean_data.png')
     
+    resize_data = resize(data, output_shape=(data.shape[0] / temporal_ratio, data.shape[1] / spatial_ratio))
+    
     data_dict = {
         'data': data,
         'sliced': sliced_data,
         'mean': mean_data,
         # 'mean - sliced': (mean_data - sliced_data),
         # 'sliced - mean': (sliced_data - mean_data), 
+        'resize': resize_data,
     }
     
-    # image_comparison(comp_img1, comp_img2, method='all', cmap='grey', extra_plots=[mean_data - sliced_data, sliced_data - mean_data])
-    spectral_comparison(data_dict, fs=sps)
+    # image_comparison(data_dict, method='all')
+    # spectral_comparison(data_dict, fs=sps)
     
-    print('Beginning numerical comparison; following trend of: original | sliced | mean')
-    print(f'Means: {data.mean()} | {sliced_data.mean()} | {mean_data.mean()}')
-    print(f'Std: {data.std()} | {sliced_data.std()} | {mean_data.std()}\n')
-    print(f'Mean of difference: {(sliced_data - mean_data).mean()}')
-
-    print(f'total time: {time() - t1}')
+    # print('Beginning numerical comparison; following trend of: original | sliced | mean | resize')
+    # print(f'Means: {data.mean()} | {sliced_data.mean()} | {mean_data.mean()} | {resize_data.mean()}')
+    # print(f'Std: {data.std()} | {sliced_data.std()} | {mean_data.std()} | {resize_data.std()}')
+    
+    numerical_comparison(data_dict)
+    
+    print(f'\nTotal time: {time() - t1}')
 
 
 downsample_comparison()

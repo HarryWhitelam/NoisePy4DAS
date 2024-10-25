@@ -109,7 +109,7 @@ def animated_spectrogram(tdms_array, prepro_para, task_t0, timestamps):
     ani.save(f'psd_{prepro_para.get("cha1")}:{prepro_para.get("cha2")}_{prepro_para.get("spatial_ratio")*0.25}m.gif', writer='pillow')
 
 
-def image_comparison(data_dict, method, ncols=2, cmap='gray'):
+def image_comparison(data_dict, method='all', ncols=2, cmap='gray'):
     data_list = list(data_dict.values())
     if method in ('diff', 'all'):
         data_dict['diff'] = compare_images(data_list[0], data_list[1], method='diff')
@@ -146,6 +146,17 @@ def spectral_comparison(data_dict, fs, ncols=2, subplots=False):
     plt.legend()
     fig.tight_layout()
     plt.show()
+    
+def numerical_comparison(data_dict):
+    df = pd.DataFrame(columns=['id', 'mean', 'std'])
+    df['id'] = list(data_dict.keys())
+    df['mean'] = [data.mean() for data in data_dict.values()]
+    df['std'] = [data.std() for data in data_dict.values()]
+    print(df)
+    
+    for col in df.columns[1:]:
+        closest = df.loc[(df[col][1:] - df[col][0]).abs().idxmin()]['id']
+        print(f'Closest {col}: {closest}')
 
 
 # dir_path = "../../temp_data_store/"

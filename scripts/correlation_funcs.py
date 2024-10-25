@@ -233,8 +233,6 @@ def correlation(tdms_array, prepro_para, timestamps, task_t0, save_corr=False):
 
             iS = int((effective_cha2*2 - cha1 - sta[iiS] + 1) * (sta[iiS] - cha1) / 2)
 
-            # print(f'iiS: {iiS}; iS: {iS}; sta[iiS]: {sta[iiS]}; corr_full idx: {iS + receiver_lst - sta[iiS]}')
-            # print(f'iiS: {iiS}; iS: {iS}; sta[iiS]: {sta[iiS]}')
             # stacking one minute
             corr_full[:, iS + receiver_lst - sta[iiS]] += corr.T
             stack_full[:, iS + receiver_lst - sta[iiS]] += 1
