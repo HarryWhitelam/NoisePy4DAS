@@ -101,14 +101,9 @@ def downsample_comparison():
         # 'sliced - mean': (sliced_data - mean_data), 
         'resize': resize_data,
     }
-    
-    # image_comparison(data_dict, method='all')
-    # spectral_comparison(data_dict, fs=sps)
-    
-    # print('Beginning numerical comparison; following trend of: original | sliced | mean | resize')
-    # print(f'Means: {data.mean()} | {sliced_data.mean()} | {mean_data.mean()} | {resize_data.mean()}')
-    # print(f'Std: {data.std()} | {sliced_data.std()} | {mean_data.std()} | {resize_data.std()}')
-    
+
+    image_comparison(data_dict.copy(), method='all')            # .copy() because dict is mutable, and we add records in image_comparison
+    spectral_comparison(data_dict, fs=sps, find_nearest=True)
     numerical_comparison(data_dict)
     
     print(f'\nTotal time: {time() - t1}')

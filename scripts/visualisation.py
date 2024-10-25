@@ -112,9 +112,9 @@ def animated_spectrogram(tdms_array, prepro_para, task_t0, timestamps):
 def image_comparison(data_dict, method='all', ncols=2, cmap='gray'):
     data_list = list(data_dict.values())
     if method in ('diff', 'all'):
-        data_dict['diff'] = compare_images(data_list[0], data_list[1], method='diff')
+        data_dict['diff'] = compare_images(data_list[1], data_list[2], method='diff')
     if method in ('blend', 'all'):
-        data_dict['blend'] = compare_images(data_list[0], data_list[1], method='blend')
+        data_dict['blend'] = compare_images(data_list[1], data_list[2], method='blend')
     
     nrows = len(data_dict) // ncols + (len(data_dict) % ncols > 0)
     
@@ -129,23 +129,32 @@ def image_comparison(data_dict, method='all', ncols=2, cmap='gray'):
     plt.show()
 
 
-def spectral_comparison(data_dict, fs, ncols=2, subplots=False):
+def spectral_comparison(data_dict, fs, ncols=2, subplots=False, find_nearest=False):
+    if find_nearest:
+        fft_arr = []    
     nrows = len(data_dict) // ncols + (len(data_dict) % ncols > 0)
-    
     fig = plt.figure(figsize=(15, 12))
+    
     for n, (key, val) in enumerate(data_dict.items()):
         val = val.mean(axis=1)
         freqs, psd = welch(val.T, fs=fs)
+        if find_nearest:
+            fft_arr.append([key, freqs, psd])
         if subplots:
             ax = plt.subplot(nrows, ncols, n + 1)
             ax.semilogy(freqs, psd, label=f'test {key}')
             ax.title.set_text(key)
         else:
             plt.semilogy(freqs, psd, label=key)
+
+    if find_nearest:
+        dists = [np.linalg.norm(fft[2] - fft_arr[0][2]) for fft in fft_arr[1:]]
+        print(f'Closest spectrogram is {fft_arr[dists.index(min(dists))+1][0]}')
     
     plt.legend()
     fig.tight_layout()
     plt.show()
+
     
 def numerical_comparison(data_dict):
     df = pd.DataFrame(columns=['id', 'mean', 'std'])

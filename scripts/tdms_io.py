@@ -123,7 +123,7 @@ def slice_downsample(data, temporal_ratio, spatial_ratio):
     return data[::temporal_ratio, ::spatial_ratio]
 
 
-def mean_downsample(data, temporal_ratio, spatial_ratio, ):
+def mean_downsample(data, temporal_ratio, spatial_ratio):
     shape = data.shape
     ds_data = np.empty(shape=(ceil(shape[0]/temporal_ratio), ceil(shape[1]/spatial_ratio)))
     
