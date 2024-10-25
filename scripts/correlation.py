@@ -34,7 +34,7 @@ n_minute = 360
 
 
 
-### SINGLE RUN: 
+## SINGLE RUN: 
 prepro_para = set_prepro_parameters(dir_path, target_spatial_res=1)
 tdms_array, timestamps = get_tdms_array()
 

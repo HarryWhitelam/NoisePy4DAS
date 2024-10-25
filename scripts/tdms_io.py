@@ -80,8 +80,7 @@ def get_time_subset(tdms_array, start_time, timestamps, tpf, delta, tolerance=30
     return tdms_array[start_idx:end_idx+1]
 
 
-# returns a minute of data
-# currently CAN NOT HANDLE TDMS > 30 SECONDS - I THINK (it'll just clip the rest of the file, it can probably handle exactly 60s of data)
+# returns a duration of data (default is 60s)
 def get_data_from_array(tdms_array, prepro_para, start_time, timestamps):
     cha1, cha2, sps, spatial_ratio, duration = prepro_para.get('cha1'), prepro_para.get('cha2'), prepro_para.get('sps'), prepro_para.get('spatial_ratio'), prepro_para.get('duration')
 
@@ -127,9 +126,6 @@ def slice_downsample(data, temporal_ratio, spatial_ratio):
 def mean_downsample(data, temporal_ratio, spatial_ratio):
     shape = data.shape
     ds_data = np.empty(shape=(ceil(shape[0]/temporal_ratio), ceil(shape[1]/spatial_ratio)))
-    
-    # for i in range(shape[1]):
-    #     ds_data[i] = np.convolve(data[i], np.ones(spatial_ratio), 'valid') / spatial_ratio
     
     for i in range(0, shape[0], temporal_ratio):
         if i > temporal_ratio:

@@ -70,7 +70,7 @@ def scale(data, props):
     return data
 
 
-# returns a minute-long array of tdms files starting at the timestamp given
+# returns a delta-long array of tdms files starting at the timestamp given
 def get_time_subset(tdms_array, start_time, timestamps, tpf, delta=timedelta(seconds=60), tolerance=300):
     # tolerence is the time in s that the closest timestamp can be away from the desired start_time
     # timestamps MUST be orted, and align with TDMS array (i.e. timestamps[n] represents tdms_array[n]
@@ -90,20 +90,19 @@ def get_time_subset(tdms_array, start_time, timestamps, tpf, delta=timedelta(sec
     return tdms_array[start_idx:end_idx+1]
 
 
-# returns a minute of data
-# currently CAN NOT HANDLE TDMS > 30 SECONDS - I THINK (it'll just clip the rest of the file, it can probably handle exactly 60s of data)
-def get_minute_data(tdms_array, channels, prepro_para, start_time, timestamps):
+# returns a duration of data (default is 60s)
+def get_data_from_array(tdms_array, channels, prepro_para, start_time, timestamps, duration=60):
     cha1, cha2, sps, spatial_ratio = prepro_para.get('cha1'), prepro_para.get('cha2'), prepro_para.get('sps'), prepro_para.get('spatial_ratio')
 
     # make it so that if start_time is not a timestamp, the first minute in the array is returned
     current_time = 0
     tdms_t_size = tdms_array[0].get_data(channels[0], channels[1]).shape[0]
-    minute_data = np.empty((int(60 * sps), ceil((cha2-cha1+1)/spatial_ratio)))
+    minute_data = np.empty((int(duration * sps), ceil((cha2-cha1+1)/spatial_ratio)))
     
     if type(start_time) is datetime:
-        tdms_array = get_time_subset(tdms_array, start_time, timestamps, tpf=tdms_t_size/sps, tolerance=30)   # tpf = time per file
+        tdms_array = get_time_subset(tdms_array, start_time, timestamps, tpf=tdms_t_size/sps, delta=timedelta(seconds=duration), tolerance=30)   # tpf = time per file
     
-    while current_time != 60 and len(tdms_array) != 0:
+    while current_time != duration and len(tdms_array) != 0:
         # data = tdms_array.pop(0).get_data(cha1, cha2)
         tdms = tdms_array.pop(0)
         props = tdms.get_properties()
@@ -197,7 +196,7 @@ def correlation(tdms_array, prepro_para, timestamps, task_t0, save_corr=False):
     for imin in pbar:
         t0 = time.time()
         pbar.set_description(f"Processing {task_t0}")
-        tdata = get_minute_data(tdms_array, [cha1, cha2], prepro_para, task_t0, timestamps)
+        tdata = get_data_from_array(tdms_array, [cha1, cha2], prepro_para, task_t0, timestamps)
         task_t0 += timedelta(minutes = 1)
         
         t_query += time.time() - t0
