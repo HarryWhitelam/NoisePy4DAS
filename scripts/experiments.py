@@ -2,7 +2,7 @@ import sys
 sys.path.append("./src")
 sys.path.append("./DASstore")
 from visualisation import image_comparison, spectral_comparison, numerical_comparison
-from tdms_io import scale, slice_downsample, mean_downsample
+from tdms_io import scale, slice_downsample, mean_downsample, max_min_strain_rate
 
 from time import time
 from TDMS_Read import TdmsReader
@@ -16,9 +16,9 @@ from skimage.transform import resize
 def downsample_comparison():
     t1 = time()
 
-    file_path =  "../../temp_data_store/Linewalk/LineWalkData_UTC_20240110_120340.208.tdms"
-    # print('File: {0}'.format(file_path))
-
+    # file_path =  "../../temp_data_store/Linewalk/LineWalkData_UTC_20240110_120340.208.tdms"
+    file_path =  "../../temp_data_store/Snippets/FirstData_UTC_20231109_134947.573.tdms"
+    
     tdms = TdmsReader(file_path)
     props = tdms.get_properties()
 
@@ -34,34 +34,37 @@ def downsample_comparison():
 
     first_channel = 2000
     # last_channel = tdms.fileinfo['n_channels']
-    last_channel = 4000
+    last_channel = 3999
 
-    start_time = datetime(year=2024, month=1, day=10, hour=12, minute=3, second=40)
-    target_time = datetime(year=2024, month=1, day=10, hour=12, minute=20, second=0)
+    start_time = datetime(year=2023, month=11, day=9, hour=13, minute=49, second=37)
+    target_time = datetime(year=2023, month=11, day=9, hour=13, minute=54, second=37)
     ms_diff = (target_time - start_time).seconds * 1000
 
     first_time_sample = ms_diff - 5000
     second_time_sample = ms_diff + 5000
     bounds = 10000000
 
-    data = tdms.get_data(first_channel, last_channel, first_time_sample, second_time_sample)
+    # data = tdms.get_data(first_channel, last_channel, first_time_sample, second_time_sample)
+    data = tdms.get_data(first_channel, last_channel)
     data = scale(data, props)
+    print(data.shape)
 
+    current_file_ext = 'microseism.csv'
     try:
-        sliced_data = pd.read_csv('res/downsample_tests/sliced_data.csv', sep=',').to_numpy()
+        sliced_data = pd.read_csv(f'res/downsample_tests/sliced_data_{current_file_ext}', sep=',').to_numpy()
     except:
         print("Sliced downsampled data missing, generating now.")
         t_sliced = time()
         sliced_data = slice_downsample(data, temporal_ratio, spatial_ratio)
-        pd.DataFrame(sliced_data).to_csv('res/downsample_tests/sliced_data.csv', index=False, header=False)
+        pd.DataFrame(sliced_data).to_csv(f'res/downsample_tests/sliced_data_{current_file_ext}', index=False, header=False)
         print(f"Sliced data took {time() - t_sliced} seconds to generate and save.")
     try:
-        mean_data = pd.read_csv('res/downsample_tests/mean_data.csv', sep=',').to_numpy()
+        mean_data = pd.read_csv(f'res/downsample_tests/mean_data_{current_file_ext}', sep=',').to_numpy()
     except: 
         print("Mean downsampled data missing, generating now.")
         t_mean = time()
         mean_data = mean_downsample(data, temporal_ratio, spatial_ratio)
-        pd.DataFrame(mean_data).to_csv('res/downsample_tests/mean_data.csv', index=False, header=False)
+        pd.DataFrame(mean_data).to_csv(f'res/downsample_tests/mean_data_{current_file_ext}', index=False, header=False)
         print(f"Mean data took {time() - t_mean} seconds to generate and save.")
 
     print(f'preplotting time: {time() - t1}')
@@ -101,8 +104,12 @@ def downsample_comparison():
         # 'sliced - mean': (sliced_data - mean_data), 
         'resize': resize_data,
     }
+    for data in data_dict.values(): 
+        # print(data.shape)
+        max_strain, max_channel, min_strain, min_channel = max_min_strain_rate(data)
+        print(f"Min Strain: {min_strain} at channel {min_channel}, Max Strain: {max_strain} at channel {max_channel}")
 
-    image_comparison(data_dict.copy(), method='all')            # .copy() because dict is mutable, and we add records in image_comparison
+    image_comparison(data_dict.copy(), method='all', cmap='bwr')            # .copy() because dict is mutable, and we add records in image_comparison
     spectral_comparison(data_dict, fs=sps, find_nearest=True)
     numerical_comparison(data_dict)
     

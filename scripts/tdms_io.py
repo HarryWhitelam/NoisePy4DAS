@@ -148,6 +148,37 @@ def mean_downsample(data, temporal_ratio, spatial_ratio):
     return ds_data
 
 
+def max_min_strain_rate(data, channel_bounds=None):
+    """Takes in a 2D numpy array of TDMS data and returns the min and max values
+
+    Keyword arguments:
+        data -- A numpy array containing TDMS data
+    """
+    max_val = 0
+    max_idx = 0
+    min_val = 0
+    min_idx = 0
+
+    for sample in data:
+        if channel_bounds != None:
+            sample = sample[channel_bounds[0]:channel_bounds[1]]
+        max = sample.max()
+        min = sample.min()
+        if max > max_val:
+            max_val = max
+            max_idx = np.where(sample == max)[0]
+
+        if min < min_val:
+            min_val = min
+            min_idx = np.where(sample == min)[0]
+
+    if channel_bounds != None: 
+        max_idx += channel_bounds[0]
+        min_idx += channel_bounds[0]
+    
+    return max_val, max_idx, min_val, min_idx
+
+
 # print(f'temporal_ratio: {temporal_ratio}, spatial_ratio: {spatial_ratio}')
 
 # data = np.empty(shape=(10, 7))
