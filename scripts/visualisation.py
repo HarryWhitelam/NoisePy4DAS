@@ -2,14 +2,15 @@ import tdms_io
 import numpy as np
 import pandas as pd
 import geopandas as gpd
-import obspy
 from scipy.signal import spectrogram, welch
 from scipy.fft import rfft, rfftfreq
 from datetime import datetime, timedelta
 import matplotlib.pyplot as plt
 from matplotlib.animation import FuncAnimation
+from skimage.util import compare_images
 import contextily as cx
 from math import ceil
+
 
 def dms_to_dd(degrees, minutes=0, seconds=0):
     return degrees + (minutes/60) + (seconds/3600)
@@ -108,8 +109,67 @@ def animated_spectrogram(tdms_array, prepro_para, task_t0, timestamps):
     ani.save(f'psd_{prepro_para.get("cha1")}:{prepro_para.get("cha2")}_{prepro_para.get("spatial_ratio")*0.25}m.gif', writer='pillow')
 
 
+def image_comparison(data_dict, method='all', ncols=2, cmap='gray'):
+    data_list = list(data_dict.values())
+    if method in ('diff', 'all'):
+        data_dict['diff'] = compare_images(data_list[1], data_list[2], method='diff')
+    if method in ('blend', 'all'):
+        data_dict['blend'] = compare_images(data_list[1], data_list[2], method='blend')
+    
+    nrows = len(data_dict) // ncols + (len(data_dict) % ncols > 0)
+    
+    fig = plt.figure(figsize=(15, 12))
+    # plt.suptitle("TITLE HERE")
+    for n, (key, val) in enumerate(data_dict.items()): 
+        ax = plt.subplot(nrows, ncols, n + 1)
+        ax.imshow(val, cmap=cmap, aspect='auto', interpolation='none')
+        ax.title.set_text(key)
+    
+    fig.tight_layout()
+    plt.show()
+
+
+def spectral_comparison(data_dict, fs, ncols=2, subplots=False, find_nearest=False):
+    if find_nearest:
+        fft_arr = []    
+    nrows = len(data_dict) // ncols + (len(data_dict) % ncols > 0)
+    fig = plt.figure(figsize=(15, 12))
+    
+    for n, (key, val) in enumerate(data_dict.items()):
+        val = val.mean(axis=1)
+        freqs, psd = welch(val.T, fs=fs)
+        if find_nearest:
+            fft_arr.append([key, freqs, psd])
+        if subplots:
+            ax = plt.subplot(nrows, ncols, n + 1)
+            ax.semilogy(freqs, psd, label=f'test {key}')
+            ax.title.set_text(key)
+        else:
+            plt.semilogy(freqs, psd, label=key)
+
+    if find_nearest:
+        dists = [np.linalg.norm(fft[2] - fft_arr[0][2]) for fft in fft_arr[1:]]
+        print(f'Closest spectrogram is {fft_arr[dists.index(min(dists))+1][0]}')
+    
+    plt.legend()
+    fig.tight_layout()
+    plt.show()
+
+    
+def numerical_comparison(data_dict):
+    df = pd.DataFrame(columns=['id', 'mean', 'std'])
+    df['id'] = list(data_dict.keys())
+    df['mean'] = [data.mean() for data in data_dict.values()]
+    df['std'] = [data.std() for data in data_dict.values()]
+    print(df)
+    
+    for col in df.columns[1:]:
+        closest = df.loc[(df[col][1:] - df[col][0]).abs().idxmin()]['id']
+        print(f'Closest {col}: {closest}')
+
+
 # dir_path = "../../temp_data_store/"
-dir_path = "../../../../gpfs/data/DAS_data/Data/"
+# dir_path = "../../../../gpfs/data/DAS_data/Data/"
 # properties = tdms_io.get_dir_properties(dir_path)
 # prepro_para = {
 #     'cha1': 2000,
@@ -127,4 +187,4 @@ dir_path = "../../../../gpfs/data/DAS_data/Data/"
 
 # animated_spectrogram(tdms_array, prepro_para, task_t0, timestamps)
 
-plot_gps_coords('res/linewalk_gps.csv')
+# plot_gps_coords('res/linewalk_gps.csv')

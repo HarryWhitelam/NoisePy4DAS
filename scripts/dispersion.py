@@ -5,11 +5,12 @@ import os
 
 import matplotlib.pyplot as plt
 import numpy as np
-import pyasdf
+# import pyasdf
 import pycwt
 import pywt
 import scipy
 
+import obspy.clients.base
 # from . import noise_module
 
 """

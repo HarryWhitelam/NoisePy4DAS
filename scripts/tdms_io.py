@@ -2,11 +2,12 @@ import sys
 sys.path.append("./src")
 sys.path.append("./DASstore")
 
+from TDMS_Read import TdmsReader
 import os
 import numpy as np
 from datetime import datetime, timedelta
-from math import floor
-from TDMS_Read import TdmsReader
+from math import floor, ceil
+from skimage.transform import resize
 
 
 def get_tdms_array(dir_path):
@@ -76,8 +77,7 @@ def get_time_subset(tdms_array, start_time, timestamps, tpf, delta, tolerance=30
     return tdms_array[start_idx:end_idx+1]
 
 
-# returns a minute of data
-# currently CAN NOT HANDLE TDMS > 30 SECONDS - I THINK (it'll just clip the rest of the file, it can probably handle exactly 60s of data)
+# returns a duration of data (default is 60s)
 def get_data_from_array(tdms_array, prepro_para, start_time, timestamps):
     cha1, cha2, sps, spatial_ratio, duration = prepro_para.get('cha1'), prepro_para.get('cha2'), prepro_para.get('sps'), prepro_para.get('spatial_ratio'), prepro_para.get('duration')
 
@@ -111,13 +111,92 @@ def scale(data, props):
         data -- numpy array containing TDMS data
         props -- properties struct from TDMS reader
     """
-    data = data * 1.8192
+    data = data / 8192
     data = (116 * data * props.get('SamplingFrequency[Hz]')) / props.get('GaugeLength')
     return data
 
 
-def downsample_data(data, sps, spatial_res, target_sps, target_spatial_res):
-    temporal_ratio = int(target_sps/sps)
-    spatial_ratio = int(target_spatial_res/spatial_res)
+def slice_downsample(data, temporal_ratio, spatial_ratio):
+    return data[::temporal_ratio, ::spatial_ratio]
+
+
+def mean_downsample(data, temporal_ratio, spatial_ratio):
+    shape = data.shape
+    ds_data = np.empty(shape=(ceil(shape[0]/temporal_ratio), ceil(shape[1]/spatial_ratio)))
     
-    return data[::temporal_ratio, spatial_ratio]
+    for i in range(0, shape[0], temporal_ratio):
+        if i > temporal_ratio:
+            i_left = i - floor(temporal_ratio / 2)
+        else: 
+            i_left = i
+        i_right = i + ceil(temporal_ratio / 2)
+        
+        for j in range(0, shape[1], spatial_ratio):
+            if j > temporal_ratio:
+                j_left = j - floor(spatial_ratio / 2)
+            else:
+                j_left = j
+            j_right = j + ceil(spatial_ratio / 2)
+            
+            # print(f'{i_left}:{i_right}, {j_left}:{j_right}')
+            ds_data[i // temporal_ratio, j // spatial_ratio] = \
+                np.mean(data[i_left:i_right, j_left:j_right])
+    
+    return ds_data
+
+
+def downsample_file(file_path, output_path, target_sps, target_spatial_res):
+    tdms = TdmsReader(file_path)
+    props = tdms.get_properties()
+    
+    sps = props.get('SamplingFrequency[Hz]')
+    spatial_res = props.get('SpatialResolution[m]')
+    data = tdms.get_data(0, tdms.fileinfo['n_channels'])
+    
+    if (temporal_ratio := int(sps/target_sps)) != sps/target_sps:             # reversed as time-reciprocal
+        print(f'Target sps not a factor of current sps, some data will be lost.')
+    if (spatial_ratio := int(target_spatial_res/spatial_res)) != target_spatial_res/spatial_res:
+        print(f'Target spatial res not a factor of current spatial res, some data will be lost.')
+    resize_data = resize(data, output_shape=(data.shape[0] / temporal_ratio, data.shape[1] / spatial_ratio))
+    
+    # TODO: write to TDMS file (how?)
+
+
+def max_min_strain_rate(data, channel_bounds=None):
+    """Takes in a 2D numpy array of TDMS data and returns the min and max values
+
+    Keyword arguments:
+        data -- A numpy array containing TDMS data
+    """
+    max_val = 0
+    max_idx = 0
+    min_val = 0
+    min_idx = 0
+
+    for sample in data:
+        if channel_bounds != None:
+            sample = sample[channel_bounds[0]:channel_bounds[1]]
+        max = sample.max()
+        min = sample.min()
+        if max > max_val:
+            max_val = max
+            max_idx = np.where(sample == max)[0]
+
+        if min < min_val:
+            min_val = min
+            min_idx = np.where(sample == min)[0]
+
+    if channel_bounds != None: 
+        max_idx += channel_bounds[0]
+        min_idx += channel_bounds[0]
+    
+    return max_val, max_idx, min_val, min_idx
+
+
+# print(f'temporal_ratio: {temporal_ratio}, spatial_ratio: {spatial_ratio}')
+
+# data = np.empty(shape=(10, 7))
+# for i in range(1, 11):
+#     data[i-1] = [i, i*2, i*4, i*5, i*10, random(), random()]
+# print(data)
+downsample_file("../../temp_data_store/Snippets/FirstData_UTC_20231109_134947.573.tdms", None, 100, 1.3)
