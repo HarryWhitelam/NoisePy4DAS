@@ -65,7 +65,7 @@ def scale(data, props):
         data -- numpy array containing TDMS data
         props -- properties struct from TDMS reader
     """
-    data = data * 1.8192
+    data = data * 1/8192
     data = (116 * data * props.get('SamplingFrequency[Hz]')) / props.get('GaugeLength')
     return data
 

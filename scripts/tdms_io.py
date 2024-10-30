@@ -2,15 +2,12 @@ import sys
 sys.path.append("./src")
 sys.path.append("./DASstore")
 
+from TDMS_Read import TdmsReader
 import os
 import numpy as np
-import pandas as pd
 from datetime import datetime, timedelta
 from math import floor, ceil
-from TDMS_Read import TdmsReader
-import matplotlib.pyplot as plt
-from time import time
-from random import random
+from skimage.transform import resize
 
 
 def get_tdms_array(dir_path):
@@ -114,7 +111,7 @@ def scale(data, props):
         data -- numpy array containing TDMS data
         props -- properties struct from TDMS reader
     """
-    data = data * 1.8192
+    data = data * 1/8192
     data = (116 * data * props.get('SamplingFrequency[Hz]')) / props.get('GaugeLength')
     return data
 
@@ -146,6 +143,23 @@ def mean_downsample(data, temporal_ratio, spatial_ratio):
                 np.mean(data[i_left:i_right, j_left:j_right])
     
     return ds_data
+
+
+def downsample_file(file_path, output_path, target_sps, target_spatial_res):
+    tdms = TdmsReader(file_path)
+    props = tdms.get_properties()
+    
+    sps = props.get('SamplingFrequency[Hz]')
+    spatial_res = props.get('SpatialResolution[m]')
+    data = tdms.get_data(0, tdms.fileinfo['n_channels'])
+    
+    if (temporal_ratio := int(sps/target_sps)) != sps/target_sps:             # reversed as time-reciprocal
+        print(f'Target sps not a factor of current sps, some data will be lost.')
+    if (spatial_ratio := int(target_spatial_res/spatial_res)) != target_spatial_res/spatial_res:
+        print(f'Target spatial res not a factor of current spatial res, some data will be lost.')
+    resize_data = resize(data, output_shape=(data.shape[0] / temporal_ratio, data.shape[1] / spatial_ratio))
+    
+    # TODO: write to TDMS file (how?)
 
 
 def max_min_strain_rate(data, channel_bounds=None):
@@ -185,3 +199,4 @@ def max_min_strain_rate(data, channel_bounds=None):
 # for i in range(1, 11):
 #     data[i-1] = [i, i*2, i*4, i*5, i*10, random(), random()]
 # print(data)
+downsample_file("../../temp_data_store/Snippets/FirstData_UTC_20231109_134947.573.tdms", None, 100, 1.3)

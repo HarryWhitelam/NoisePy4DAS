@@ -23,7 +23,7 @@ def downsample_comparison():
     props = tdms.get_properties()
 
     sps = props.get('SamplingFrequency[Hz]')
-    spatial_res = 0.25
+    spatial_res = props.get('SpatialResolution[m]')
     target_sps = sps
     target_spatial_res = 2
 
