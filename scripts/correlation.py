@@ -11,13 +11,13 @@ from correlation_funcs import *
 
 
 
-dir_path = "../../../../gpfs/data/DAS_data/Data/"
-# dir_path = "../../temp_data_store/"
+# dir_path = "../../../../gpfs/data/DAS_data/Data/"
+dir_path = "../../temp_data_store/FirstData/"
 task_t0 = datetime(year = 2024, month = 1, day = 19,
                    hour = 15, minute = 19, second = 7, microsecond = 0)
 n_minute = 360
 
-corrs = []
+# corrs = []
 # freq_range = [[1.0, 49.9], [1.0, 10.0], [10.0, 25.0], [25.0, 49.9]]
 # freq_range = [[0.01, 0.04], [0.04, 0.1], [0.1, 1.0], [1.0, 49.9]]
 # n_minute_range = [10, 60, 120, 360]
@@ -34,7 +34,7 @@ corrs = []
 
 
 
-### SINGLE RUN: 
+## SINGLE RUN:
 prepro_para = set_prepro_parameters(dir_path, target_spatial_res=1)
 tdms_array, timestamps = get_tdms_array()
 
