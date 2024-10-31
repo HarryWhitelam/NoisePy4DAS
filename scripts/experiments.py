@@ -2,7 +2,7 @@ import sys
 sys.path.append("./src")
 sys.path.append("./DASstore")
 from visualisation import image_comparison, spectral_comparison, numerical_comparison
-from tdms_io import scale, slice_downsample, mean_downsample, max_min_strain_rate, downsample_tdms, read_das_mseed
+from tdms_io import scale, slice_downsample, mean_downsample, max_min_strain_rate, downsample_tdms, read_das_file
 
 from time import time
 from TDMS_Read import TdmsReader
@@ -123,21 +123,44 @@ def mseed_downsample_comparison(tdms_path):
     
     print(f'Beginning load check, no downsampling.')
     downsample_tdms(tdms_path, save_as='MSEED', out_dir="../../temp_data_store/downsamples/", target_sps=None, target_spatial_res=None)
-    mseed_data, stats = read_das_mseed("../../temp_data_store/downsamples/FirstData_UTC_20231109_134947.573.mseed")
+    mseed_data, stats = read_das_file("../../temp_data_store/downsamples/FirstData_UTC_20231109_134947.573.mseed")
     print(np.array_equal(tdms_data, mseed_data))
     
-    print(f'Beginning downsample check, to 2m spacings.')
-    downsample_tdms(tdms_path, save_as='MSEED', out_dir="../../temp_data_store/downsamples/", target_sps=None, target_spatial_res=2)
-    mseed_data, stats = read_das_mseed("../../temp_data_store/downsamples/FirstData_UTC_20231109_134947.573.mseed")
+    print(f'Beginning downsample check, to 1m spacings.')
+    downsample_tdms(tdms_path, save_as='MSEED', out_dir="../../temp_data_store/downsamples/", target_sps=None, target_spatial_res=1)
+    downsample_tdms(tdms_path, save_as='SEGY', out_dir="../../temp_data_store/downsamples/", target_sps=None, target_spatial_res=1)
+    downsample_tdms(tdms_path, save_as='SU', out_dir="../../temp_data_store/downsamples/", target_sps=None, target_spatial_res=1)
+    downsample_tdms(tdms_path, save_as='PICKLE', out_dir="../../temp_data_store/downsamples/", target_sps=None, target_spatial_res=1)
+    
+    mseed_data, stats = read_das_file("../../temp_data_store/downsamples/FirstData_UTC_20231109_134947.573.mseed")
+    segy_data, stats = read_das_file("../../temp_data_store/downsamples/FirstData_UTC_20231109_134947.573.segy")
+    su_data, stats = read_das_file("../../temp_data_store/downsamples/FirstData_UTC_20231109_134947.573.su")
+    pickle_data, stats = read_das_file("../../temp_data_store/downsamples/FirstData_UTC_20231109_134947.573.pickle")
     
     data_dict = {
         'tdms_data': tdms_data,
         'mseed_data': mseed_data,
+        'segy_data': segy_data,
+        'su_data': su_data,
+        'pickle_data': pickle_data,
     }
     # image_comparison(data_dict.copy(), ['tdms_data', 'mseed_data'], method='all', cmap='bwr')
     spectral_comparison(data_dict, fs=props.get('SamplingFrequency[Hz]'), find_nearest=True)
     numerical_comparison(data_dict)
 
 
+def format_size_comparisons(tdms_path):
+    tdms = TdmsReader(tdms_path)
+    props = tdms.get_properties()
+    tdms_data = tdms.get_data()
+    tdms_data = scale(tdms_data, props)
+    
+    downsample_tdms(tdms_path, save_as='MSEED', out_dir="../../temp_data_store/downsamples/", target_sps=None, target_spatial_res=1)
+    downsample_tdms(tdms_path, save_as='SEGY', out_dir="../../temp_data_store/downsamples/", target_sps=None, target_spatial_res=1)
+    downsample_tdms(tdms_path, save_as='SU', out_dir="../../temp_data_store/downsamples/", target_sps=None, target_spatial_res=1)
+    downsample_tdms(tdms_path, save_as='PICKLE', out_dir="../../temp_data_store/downsamples/", target_sps=None, target_spatial_res=1)
+
+
 # initial_downsample_comparison()
+# format_size_comparisons("../../temp_data_store/Snippets/FirstData_UTC_20231109_134947.573.tdms")
 mseed_downsample_comparison("../../temp_data_store/Snippets/FirstData_UTC_20231109_134947.573.tdms")

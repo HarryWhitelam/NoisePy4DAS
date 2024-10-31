@@ -184,6 +184,8 @@ def downsample_tdms(file_path:str, save_as:str=None, out_dir:str=None, target_sp
     for count, channel in enumerate(data.T):
         stats.station = str(count)
         trace = Trace(channel, stats)
+        if save_as in ['SEGY', 'SU']:
+            trace.data = np.require(trace.data, dtype=np.float32)
         trace.data = np.ascontiguousarray(trace.data)
         stream += trace
     
@@ -193,7 +195,7 @@ def downsample_tdms(file_path:str, save_as:str=None, out_dir:str=None, target_sp
         stream.write(out_name, format=save_as)
 
 
-def read_das_mseed(file_path:str):
+def read_das_file(file_path:str):
     stream = read(file_path)
     stats = stream[0].stats
     
