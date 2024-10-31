@@ -2,7 +2,7 @@ import sys
 sys.path.append("./src")
 sys.path.append("./DASstore")
 from visualisation import image_comparison, spectral_comparison, numerical_comparison
-from tdms_io import scale, slice_downsample, mean_downsample, max_min_strain_rate
+from tdms_io import scale, slice_downsample, mean_downsample, max_min_strain_rate, downsample_tdms, read_das_mseed
 
 from time import time
 from TDMS_Read import TdmsReader
@@ -10,10 +10,9 @@ from datetime import datetime
 import numpy as np
 import pandas as pd
 import matplotlib.pyplot as plt
-from skimage.io import imread, imshow
 from skimage.transform import resize
 
-def downsample_comparison():
+def initial_downsample_comparison():
     t1 = time()
 
     # file_path =  "../../temp_data_store/Linewalk/LineWalkData_UTC_20240110_120340.208.tdms"
@@ -109,11 +108,36 @@ def downsample_comparison():
         max_strain, max_channel, min_strain, min_channel = max_min_strain_rate(data)
         print(f"Min Strain: {min_strain} at channel {min_channel}, Max Strain: {max_strain} at channel {max_channel}")
 
-    image_comparison(data_dict.copy(), method='all', cmap='bwr')            # .copy() because dict is mutable, and we add records in image_comparison
+    image_comparison(data_dict.copy(), ['sliced', 'mean'], method='all', cmap='bwr')            # .copy() because dict is mutable, and we add records in image_comparison
     spectral_comparison(data_dict, fs=sps, find_nearest=True)
     numerical_comparison(data_dict)
     
     print(f'\nTotal time: {time() - t1}')
 
 
-downsample_comparison()
+def mseed_downsample_comparison(tdms_path):
+    tdms = TdmsReader(tdms_path)
+    props = tdms.get_properties()
+    tdms_data = tdms.get_data()
+    tdms_data = scale(tdms_data, props)
+    
+    print(f'Beginning load check, no downsampling.')
+    downsample_tdms(tdms_path, save_as='MSEED', out_dir="../../temp_data_store/downsamples/", target_sps=None, target_spatial_res=None)
+    mseed_data, stats = read_das_mseed("../../temp_data_store/downsamples/FirstData_UTC_20231109_134947.573.mseed")
+    print(np.array_equal(tdms_data, mseed_data))
+    
+    print(f'Beginning downsample check, to 2m spacings.')
+    downsample_tdms(tdms_path, save_as='MSEED', out_dir="../../temp_data_store/downsamples/", target_sps=None, target_spatial_res=2)
+    mseed_data, stats = read_das_mseed("../../temp_data_store/downsamples/FirstData_UTC_20231109_134947.573.mseed")
+    
+    data_dict = {
+        'tdms_data': tdms_data,
+        'mseed_data': mseed_data,
+    }
+    # image_comparison(data_dict.copy(), ['tdms_data', 'mseed_data'], method='all', cmap='bwr')
+    spectral_comparison(data_dict, fs=props.get('SamplingFrequency[Hz]'), find_nearest=True)
+    numerical_comparison(data_dict)
+
+
+# initial_downsample_comparison()
+mseed_downsample_comparison("../../temp_data_store/Snippets/FirstData_UTC_20231109_134947.573.tdms")

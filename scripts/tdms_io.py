@@ -6,7 +6,7 @@ from TDMS_Read import TdmsReader
 import os
 import warnings
 import numpy as np
-from obspy import Stream, Trace
+from obspy import Stream, Trace, read
 from obspy.core.trace import Stats
 from obspy.core.utcdatetime import UTCDateTime
 from datetime import datetime, timedelta
@@ -64,17 +64,17 @@ def get_time_subset(tdms_array:np.ndarray, start_time:datetime, timestamps:np.nd
     # timestamps MUST be orted, and align with TDMS array (i.e. timestamps[n] represents tdms_array[n]
     start_idx = get_closest_index(timestamps, start_time)
     if abs((start_time - timestamps[start_idx]).total_seconds()) > tolerance:
-        print(f"Error: first tdms is over {tolerance} seconds away from the given start time.")
+        warnings.warn(f"Error: first tdms is over {tolerance} seconds away from the given start time.")
         return
     
     end_time = timestamps[start_idx] + delta - timedelta(seconds=tpf)
     end_idx = get_closest_index(timestamps, end_time)
     if (end_time - timestamps[end_idx]).total_seconds() > tolerance:
-        print(f"WARNING: end tdms is over {tolerance} seconds away from the calculated end time.")
+        warnings.warn(f"WARNING: end tdms is over {tolerance} seconds away from the calculated end time.")
     # print(f"Given t={start_time}, snippet selected from {timestamps[start_idx]} to {timestamps[end_idx]}!")
     
     if (end_idx - start_idx + 1) != (delta.seconds/tpf):
-        print(f"WARNING: time subset not continuous; only {(end_idx - start_idx + 1)*tpf} seconds represented.")
+        warnings.warn(f"WARNING: time subset not continuous; only {(end_idx - start_idx + 1)*tpf} seconds represented.")
     # for i in range(start_idx, end_idx+1):
     #     print(timestamps[i])
     
@@ -167,13 +167,14 @@ def downsample_tdms(file_path:str, save_as:str=None, out_dir:str=None, target_sp
     tdms = TdmsReader(file_path)
     props = tdms.get_properties()
     data = tdms.get_data()
+    data = scale(data, props)
     
     if target_sps or target_spatial_res:
         data = downsample_data(data, props, target_sps, target_spatial_res)
     
     # NOTE: This is starting as just one Stats object for ALL traces in the stream, this may have to change
     stats = Stats({
-        'network': 'CLF',
+        'network': 'DS',
         'sampling_rate': props.get('SamplingFrequency[Hz]'),
         'npts': data.shape[0],
         'starttime': UTCDateTime(props.get('GPSTimeStamp')),
@@ -190,6 +191,20 @@ def downsample_tdms(file_path:str, save_as:str=None, out_dir:str=None, target_sp
         out_name = os.path.splitext(file_path.split('/')[-1])[0] + '.' + save_as.lower()
         if out_dir: out_name = out_dir + out_name
         stream.write(out_name, format=save_as)
+
+
+def read_das_mseed(file_path:str):
+    stream = read(file_path)
+    stats = stream[0].stats
+    
+    npts = stats.npts           # temporal axis
+    ncha = len(stream)          # spatial axis
+    data = np.empty(shape=(npts, ncha))
+    
+    for count, trace in enumerate(stream):
+        data[:, count] = trace.data
+    
+    return data, stats
 
 
 def max_min_strain_rate(data:np.ndarray, channel_bounds:list=None):
@@ -221,13 +236,3 @@ def max_min_strain_rate(data:np.ndarray, channel_bounds:list=None):
         min_idx += channel_bounds[0]
     
     return max_val, max_idx, min_val, min_idx
-
-
-# print(f'temporal_ratio: {temporal_ratio}, spatial_ratio: {spatial_ratio}')
-
-# data = np.empty(shape=(10, 7))
-# for i in range(1, 11):
-#     data[i-1] = [i, i*2, i*4, i*5, i*10, random(), random()]
-# print(data)
-# downsample_file("../../temp_data_store/Snippets/FirstData_UTC_20231109_134947.573.tdms", None, 100, 1.3)
-downsample_tdms("../../temp_data_store/Snippets/FirstData_UTC_20231109_134947.573.tdms", save_as='MSEED', out_dir="../../temp_data_store/downsamples/", target_sps=None, target_spatial_res=2)
