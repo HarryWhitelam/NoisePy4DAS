@@ -148,44 +148,49 @@ def mean_downsample(data:np.ndarray, temporal_ratio:int, spatial_ratio:int):
     return ds_data
 
 
-def downsample_file(file_path:str, output_path:str, target_sps:float, target_spatial_res:float):
-    tdms = TdmsReader(file_path)
-    props = tdms.get_properties()
-    print(props)
-    
+def downsample_data(data:np.ndarray, props:dict, target_sps:float, target_spatial_res:float):
     sps = props.get('SamplingFrequency[Hz]')
     spatial_res = props.get('SpatialResolution[m]')
-    data = tdms.get_data(0, tdms.fileinfo['n_channels'])
+    
+    if not target_sps: target_sps = sps
+    if not target_spatial_res: target_spatial_res = spatial_res
     
     if (temporal_ratio := int(sps/target_sps)) != sps/target_sps:             # reversed as time-reciprocal
         print(f'Target sps not a factor of current sps, some data will be lost.')
     if (spatial_ratio := int(target_spatial_res/spatial_res)) != target_spatial_res/spatial_res:
         print(f'Target spatial res not a factor of current spatial res, some data will be lost.')
-    resize_data = resize(data, output_shape=(data.shape[0] / temporal_ratio, data.shape[1] / spatial_ratio))
-    
-    # TODO: write to TDMS file (how?)
+    return resize(data, output_shape=(data.shape[0] / temporal_ratio, data.shape[1] / spatial_ratio))
 
 
-def tdms_to_stream(file_path:str):
+def downsample_tdms(file_path:str, save_as:str=None, out_dir:str=None, target_sps:int=None, target_spatial_res:int=None):
     tdms = TdmsReader(file_path)
     props = tdms.get_properties()
     data = tdms.get_data()
-    print(data.shape)
+    
+    if target_sps or target_spatial_res:
+        print(f'Data before: {data.shape}')
+        data = downsample_data(data, props, target_sps, target_spatial_res)
+        print(f'Data after:  {data.shape}')
     
     # NOTE: This is starting as just one Stats object for ALL traces in the stream, this may have to change
-    stats = Stats()
-    stats.network = 'CLF'       # (hehe cliff)
-    stats.sampling_rate = props.get('SamplingFrequency[Hz]')
-    stats.npts = data.shape[0]
-    stats.starttime = UTCDateTime(props.get('GPSTimeStamp'))
-    # stats.endtime = stats.starttime + (data.shape[0] / stats.sampling_rate)       # redundant? calculated automatically? 
+    stats = Stats({
+        'network': 'CLF',
+        'sampling_rate': props.get('SamplingFrequency[Hz]'),
+        'npts': data.shape[0],
+        'starttime': UTCDateTime(props.get('GPSTimeStamp')),
+    })
     
     stream = Stream()
     for count, channel in enumerate(data.T):
         stats.station = str(count)
-        stream += Trace(channel, stats)
+        trace = Trace(channel, stats)
+        trace.data = np.ascontiguousarray(trace.data)
+        stream += trace
     
-    print(stream)
+    if save_as:
+        out_name = os.path.splitext(file_path.split('/')[-1])[0] + '.' + save_as.lower()
+        if out_dir: out_name = out_dir + out_name
+        stream.write(out_name, format=save_as)
 
 
 def max_min_strain_rate(data:np.ndarray, channel_bounds:list=None):
@@ -226,4 +231,4 @@ def max_min_strain_rate(data:np.ndarray, channel_bounds:list=None):
 #     data[i-1] = [i, i*2, i*4, i*5, i*10, random(), random()]
 # print(data)
 # downsample_file("../../temp_data_store/Snippets/FirstData_UTC_20231109_134947.573.tdms", None, 100, 1.3)
-tdms_to_stream("../../temp_data_store/Snippets/FirstData_UTC_20231109_134947.573.tdms")
+downsample_tdms("../../temp_data_store/Snippets/FirstData_UTC_20231109_134947.573.tdms", save_as='MSEED', out_dir="../../temp_data_store/downsamples/", target_sps=None, target_spatial_res=2)
