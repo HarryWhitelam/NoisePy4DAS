@@ -4,6 +4,7 @@ sys.path.append("./DASstore")
 
 from TDMS_Read import TdmsReader
 import os
+import warnings
 import numpy as np
 from obspy import Stream, Trace
 from obspy.core.trace import Stats
@@ -156,9 +157,9 @@ def downsample_data(data:np.ndarray, props:dict, target_sps:float, target_spatia
     if not target_spatial_res: target_spatial_res = spatial_res
     
     if (temporal_ratio := int(sps/target_sps)) != sps/target_sps:             # reversed as time-reciprocal
-        print(f'Target sps not a factor of current sps, some data will be lost.')
+        warnings.warn(f'Target sps not a factor of current sps, some data will be lost. Resultant ratio cast to {temporal_ratio}.')
     if (spatial_ratio := int(target_spatial_res/spatial_res)) != target_spatial_res/spatial_res:
-        print(f'Target spatial res not a factor of current spatial res, some data will be lost.')
+        warnings.warn(f'Target spatial res not a factor of current spatial res, some data will be lost. Resultant ratio cast to {spatial_ratio}.')
     return resize(data, output_shape=(data.shape[0] / temporal_ratio, data.shape[1] / spatial_ratio))
 
 
@@ -168,9 +169,7 @@ def downsample_tdms(file_path:str, save_as:str=None, out_dir:str=None, target_sp
     data = tdms.get_data()
     
     if target_sps or target_spatial_res:
-        print(f'Data before: {data.shape}')
         data = downsample_data(data, props, target_sps, target_spatial_res)
-        print(f'Data after:  {data.shape}')
     
     # NOTE: This is starting as just one Stats object for ALL traces in the stream, this may have to change
     stats = Stats({
