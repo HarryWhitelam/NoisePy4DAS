@@ -370,11 +370,12 @@ def taper(data):
         if npts*0.05>20:wlen = 20
         else:wlen = int(npts*0.05)
         # taper values
-        func = _get_function_from_entry_point('taper', 'hann')
+        # func = _get_function_from_entry_point('taper', 'hann')        # HW: edited out bc scipy layout changed (windows moved into scipy.signal.windows)
+        from scipy.signal.windows import hann
         if 2*wlen == npts:
-            taper_sides = func(2*wlen)
+            taper_sides = hann(2*wlen)
         else:
-            taper_sides = func(2*wlen+1)
+            taper_sides = hann(2*wlen+1)
         # taper window
         win  = np.hstack((taper_sides[:wlen], np.ones(npts-2*wlen),taper_sides[len(taper_sides) - wlen:]))
         data *= win
@@ -384,11 +385,12 @@ def taper(data):
         if npts*0.05>20:wlen = 20
         else:wlen = int(npts*0.05)
         # taper values
-        func = _get_function_from_entry_point('taper', 'hann')
+        # func = _get_function_from_entry_point('taper', 'hann')        # HW: edited out bc scipy layout changed (windows moved into scipy.signal.windows)
+        from scipy.signal.windows import hann
         if 2*wlen == npts:
-            taper_sides = func(2*wlen)
+            taper_sides = hann(2*wlen)
         else:
-            taper_sides = func(2*wlen + 1)
+            taper_sides = hann(2*wlen + 1)
         # taper window
         win  = np.hstack((taper_sides[:wlen], np.ones(npts-2*wlen),taper_sides[len(taper_sides) - wlen:]))
         for ii in range(data.shape[0]):

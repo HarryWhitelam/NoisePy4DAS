@@ -15,7 +15,7 @@ from correlation_funcs import *
 dir_path = "../../temp_data_store/FirstData/"
 task_t0 = datetime(year = 2024, month = 1, day = 19,
                    hour = 15, minute = 19, second = 7, microsecond = 0)
-n_minute = 360
+n_minute = 1
 
 # corrs = []
 # freq_range = [[1.0, 49.9], [1.0, 10.0], [10.0, 25.0], [25.0, 49.9]]
@@ -36,7 +36,7 @@ n_minute = 360
 
 ## SINGLE RUN: 
 prepro_para = set_prepro_parameters(dir_path, target_spatial_res=1)
-tdms_array, timestamps = get_tdms_array()
+tdms_array, timestamps = get_tdms_array(dir_path)
 
 corr_full = correlation(tdms_array, prepro_para, timestamps, task_t0, save_corr=False)
 plot_correlation(corr_full, prepro_para)

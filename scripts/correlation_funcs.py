@@ -9,15 +9,10 @@ import os
 import time
 from math import floor, ceil
 from datetime import datetime, timedelta
-from dateutil.parser import parse
-from bisect import bisect_left
 
-import h5py
 import numpy as np
 import DAS_module
 import matplotlib.pyplot as plt
-import matplotlib as mpl
-import obspy
 from tqdm import tqdm
 
 # from dasstore.zarr import Client

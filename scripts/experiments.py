@@ -115,7 +115,7 @@ def initial_downsample_comparison():
     print(f'\nTotal time: {time() - t1}')
 
 
-def mseed_downsample_comparison(tdms_path):
+def downsample_comparison(tdms_path):
     tdms = TdmsReader(tdms_path)
     props = tdms.get_properties()
     tdms_data = tdms.get_data()
@@ -163,4 +163,4 @@ def format_size_comparisons(tdms_path):
 
 # initial_downsample_comparison()
 # format_size_comparisons("../../temp_data_store/Snippets/FirstData_UTC_20231109_134947.573.tdms")
-mseed_downsample_comparison("../../temp_data_store/Snippets/FirstData_UTC_20231109_134947.573.tdms")
+downsample_comparison("../../temp_data_store/Snippets/FirstData_UTC_20231109_134947.573.tdms")

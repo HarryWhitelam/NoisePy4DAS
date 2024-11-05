@@ -14,61 +14,10 @@ from datetime import datetime, timedelta
 import tdms_io
 from TDMS_Read import TdmsReader
 
-
-def get_closest_index(timestamps, time):
-    """retrieves the index of the closest timestamp within timestamps to time
-
-    Args:
-        timestamps (ndarray): _description_
-        time (timestamp): _description_
-
-    Returns:
-        _type_: _description_
-    """    
-    # array must be sorted
-    idx = timestamps.searchsorted(time)
-    idx = np.clip(idx, 1, len(timestamps)-1)
-    idx -= time - timestamps[idx-1] < timestamps[idx] - time
-    return idx
+from tdms_io import get_tdms_array
 
 
-def get_tdms_array(dir_path):
-    tdms_array = np.empty(int(len([filename for filename in os.listdir(dir_path) if filename.endswith(".tdms")])), dtype=TdmsReader)
-    timestamps = np.empty(len(tdms_array), dtype=datetime)
-
-    for count, file in enumerate([filename for filename in os.listdir(dir_path) if filename.endswith(".tdms")]):
-        if file.endswith('.tdms'):
-            tdms = TdmsReader(dir_path + file)
-            tdms_array[count] = dir_path + file
-            timestamps[count] = tdms.get_properties().get('GPSTimeStamp')
-    timestamps.sort()
-    print(f'{len(timestamps)} files available from {timestamps[0]} to {timestamps[-1]}')
-
-    return [x for y, x in sorted(zip(np.array(timestamps), tdms_array))], timestamps
-
-
-def get_time_subset(dir_path, start_time, tpf, delta, tolerance=300):
-    tdms_array, timestamps = get_tdms_array(dir_path)
-    
-    # tolerence is the time in s that the closest timestamp can be away from the desired start_time
-    start_idx = get_closest_index(timestamps, start_time)
-    if abs((start_time - timestamps[start_idx]).total_seconds()) > tolerance:
-        print(f"Error: first tdms is over {tolerance} seconds away from the given start time.")
-        return
-    
-    end_time = timestamps[start_idx] + delta - timedelta(seconds=tpf)
-    end_idx = get_closest_index(timestamps, end_time)
-    if (end_time - timestamps[end_idx]).total_seconds() > tolerance:
-        print(f"WARNING: end tdms is over {tolerance} seconds away from the calculated end time.")
-    # print(f"Given t={start_time}, snippet selected from {timestamps[start_idx]} to {timestamps[end_idx]}!")
-    
-    if (end_idx - start_idx + 1) != (delta.seconds/tpf):
-        print(f"WARNING: time subset not continuous; only {(end_idx - start_idx + 1)*tpf} seconds represented.")
-    
-    return tdms_array[start_idx:end_idx+1]
-
-
-def load_data(file_paths):
+def load_data(file_paths:list):
     stream = Stream()
     for file_path in file_paths:
         spool = dascore.spool(file_path)
@@ -77,7 +26,7 @@ def load_data(file_paths):
     return stream
 
 
-def load_data(dir_path):
+def load_data(dir_path:str):
     stream = Stream()    
     for file in os.listdir(dir_path):
         if file.endswith(".tdms"):
@@ -163,13 +112,13 @@ def get_dispersion(traces,dx,cmin,cmax,dc,fmax):
 dir_path = "../temp_data_store/"
 start_time = '2024-01-19T15:19:07'
 
-# prepro_para = {
-#     'cha1': 2000,
-#     'cha2': 7999,
-#     'sps': 100, 
-#     'spatial_ratio': int(1/0.25),      # int(target_spatial_res/spatial_res)
-#     'cc_len': 60
-# }
+prepro_para = {
+    'cha1': 2000,
+    'cha2': 7999,
+    'sps': 100, 
+    'spatial_ratio': int(1/0.25),      # int(target_spatial_res/spatial_res)
+    'cc_len': 60
+}
 
 
 dx = 1
