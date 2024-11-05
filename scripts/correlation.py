@@ -37,7 +37,7 @@ n_minute = 360
 ## SINGLE RUN:
 print("Beginning setup!")
 prepro_para = set_prepro_parameters(dir_path, target_spatial_res=1, cha1=2000, cha2=7999)
-tdms_array, timestamps = get_tdms_array()
+tdms_array, timestamps = get_tdms_array(dir_path)
 
 print("Beginning correlation!")
 corr_full = correlation(tdms_array, prepro_para, timestamps, task_t0, save_corr=True)
