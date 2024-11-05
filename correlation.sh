@@ -8,5 +8,5 @@
 #SBATCH -e results/correlation-%j.err
 
 # module load python/anaconda/2023.07/3.11.4
-# conda activate SeaDASxCorr
-python scripts/correlation_funcs.py
+# conda activate seismic
+python scripts/correlation.py

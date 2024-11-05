@@ -11,8 +11,8 @@ from correlation_funcs import *
 
 
 
-# dir_path = "../../../../gpfs/data/DAS_data/Data/"
-dir_path = "../../temp_data_store/FirstData/"
+dir_path = "../../../../gpfs/data/DAS_data/Data/"
+# dir_path = "../../temp_data_store/FirstData/"
 task_t0 = datetime(year = 2024, month = 1, day = 19,
                    hour = 15, minute = 19, second = 7, microsecond = 0)
 n_minute = 360
@@ -35,8 +35,11 @@ n_minute = 360
 
 
 ## SINGLE RUN:
-prepro_para = set_prepro_parameters(dir_path, target_spatial_res=1)
+print("Beginning setup!")
+prepro_para = set_prepro_parameters(dir_path, target_spatial_res=1, cha1=2000, cha2=7999)
 tdms_array, timestamps = get_tdms_array()
 
-corr_full = correlation(tdms_array, prepro_para, timestamps, task_t0, save_corr=False)
+print("Beginning correlation!")
+corr_full = correlation(tdms_array, prepro_para, timestamps, task_t0, save_corr=True)
 plot_correlation(corr_full, prepro_para)
+print("Finished!")
