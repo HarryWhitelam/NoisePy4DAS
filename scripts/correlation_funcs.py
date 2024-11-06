@@ -122,7 +122,7 @@ def get_dir_properties(dir_path):
     return tdms_file.get_properties()
 
 
-def set_prepro_parameters(dir_path, freqmin=1, freqmax=49.9, target_spatial_res=5, cha1=4000, cha2=7999, n_minute=60):
+def set_prepro_parameters(dir_path, task_t0, freqmin=1, freqmax=49.9, target_spatial_res=5, cha1=4000, cha2=7999, n_minute=60):
     properties = get_dir_properties(dir_path)
     
     cha_spacing = properties.get('SpatialResolution[m]') * properties.get('Fibre Length Multiplier')
@@ -175,11 +175,12 @@ def set_prepro_parameters(dir_path, freqmin=1, freqmax=49.9, target_spatial_res=
         'spatial_ratio':spatial_ratio, 
         'n_pair':n_pair,
         'n_lag':n_lag,
-        'n_minute':n_minute
+        'n_minute':n_minute,
+        'task_t0':task_t0,
     }
 
 
-def correlation(tdms_array, prepro_para, timestamps, task_t0, save_corr=False):
+def correlation(tdms_array, prepro_para, timestamps, task_t0):
     n_lag, n_pair, cha1, cha2, effective_cha2, cha_list, n_minute = prepro_para.get('n_lag'), prepro_para.get('n_pair'), prepro_para.get('cha1'), prepro_para.get('cha2'), prepro_para.get('effective_cha2'), prepro_para.get('cha_list'), prepro_para.get('n_minute')
     
     corr_full = np.zeros([n_lag, n_pair], dtype = np.float32)

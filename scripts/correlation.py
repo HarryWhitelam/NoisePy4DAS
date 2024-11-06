@@ -35,7 +35,7 @@ n_minute = 1
 
 
 ## SINGLE RUN: 
-prepro_para = set_prepro_parameters(dir_path, target_spatial_res=1)
+prepro_para = set_prepro_parameters(dir_path, task_t0, target_spatial_res=1)
 tdms_array, timestamps = get_tdms_array(dir_path)
 
 corr_full = correlation(tdms_array, prepro_para, timestamps, task_t0, save_corr=False)
