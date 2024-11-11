@@ -122,7 +122,7 @@ def get_dir_properties(dir_path):
     return tdms_file.get_properties()
 
 
-def set_prepro_parameters(dir_path, freqmin=1, freqmax=49.9, target_spatial_res=5, cha1=4000, cha2=7999, n_minute=60):
+def set_prepro_parameters(dir_path, task_t0, freqmin=1, freqmax=49.9, target_spatial_res=5, cha1=4000, cha2=7999, n_minute=60):
     properties = get_dir_properties(dir_path)
     
     cha_spacing = properties.get('SpatialResolution[m]') * properties.get('Fibre Length Multiplier')
@@ -175,11 +175,12 @@ def set_prepro_parameters(dir_path, freqmin=1, freqmax=49.9, target_spatial_res=
         'spatial_ratio':spatial_ratio, 
         'n_pair':n_pair,
         'n_lag':n_lag,
-        'n_minute':n_minute
+        'n_minute':n_minute,
+        'task_t0':task_t0,
     }
 
 
-def correlation(tdms_array, prepro_para, timestamps, task_t0, save_corr=False):
+def correlation(tdms_array, prepro_para, timestamps, task_t0):
     n_lag, n_pair, cha1, cha2, effective_cha2, cha_list, n_minute = prepro_para.get('n_lag'), prepro_para.get('n_pair'), prepro_para.get('cha1'), prepro_para.get('cha2'), prepro_para.get('effective_cha2'), prepro_para.get('cha_list'), prepro_para.get('n_minute')
     
     corr_full = np.zeros([n_lag, n_pair], dtype = np.float32)
@@ -285,17 +286,18 @@ def plot_correlation(corr, prepro_para, cmap_param='bwr', save_corr=False):
     # follow convention of: {timestamp}_{t length}_{channels}.png
     t_start = task_t0 - timedelta(minutes=n_minute)
     plt.tight_layout()
-    plt.savefig(f'./results/figures/{t_start}_{n_minute}-mins_f{freqmin}:{freqmax}__{cha1}:{cha2}_{target_spatial_res}m.png')
+    plt.savefig(f'./results/figures/{t_start}_{n_minute}mins_f{freqmin}:{freqmax}__{cha1}:{cha2}_{target_spatial_res}m.png')
     if save_corr:
-        np.savetxt(f'{t_start}_{n_minute}-mins_f{freqmin}:{freqmax}__{cha1}:{cha2}_{target_spatial_res}m.txt', corr, delimiter=",")
+        np.savetxt(f'{t_start}_{n_minute}mins_f{freqmin}:{freqmax}__{cha1}:{cha2}_{target_spatial_res}m.txt', corr, delimiter=",")
 
 
-def plot_multiple_correlations(corrs, prepro_para, vars, cmap_param='bwr', save_corr=False):
+def plot_multiple_correlations(corrs, prepro_para, vars, experiment_var, cmap_param='bwr', save_corr=False):
     cha1, cha2, effective_cha2, spatial_ratio, cha_spacing, target_spatial_res, freqmin, freqmax, maxlag, n_minute, task_t0 = prepro_para.get('cha1'), prepro_para.get('cha2'), prepro_para.get('effective_cha2'), prepro_para.get('spatial_ratio'), prepro_para.get('cha_spacing'), prepro_para.get('target_spatial_res'), prepro_para.get('freqmin'), prepro_para.get('freqmax'), prepro_para.get('maxlag'), prepro_para.get('n_minute'), prepro_para.get('task_t0')
 
-    fig, axs = plt.subplots(2, ceil(len(corrs)/2), figsize=(15, 10))
+    nrows = len(vars) // 2 + (len(vars) % 2 > 0)
+    fig, axs = plt.subplots(2, nrows, figsize=(15, 10))
     for ax, corr, var in zip(axs.ravel(), corrs, vars):
-        if isinstance(var, list):
+        if experiment_var == 'channels':
             cha1, cha2 = var[0], var[1]       # for channel experiments (correct labelling)
             effective_cha2 = floor(cha1 + (cha2 - cha1) / spatial_ratio)
 
@@ -322,11 +324,21 @@ def plot_multiple_correlations(corrs, prepro_para, vars, cmap_param='bwr', save_
         twiny.set_yticks(np.linspace(0, cha2 - cha1, 4), 
                                     [int(i* cha_spacing) for i in np.linspace(cha1, cha2, 4)])
         twiny.set_ylabel("Distance along cable (m)", fontsize = 12)
-        plt.title(f"Channels {var}")
+        plt.title(f"{experiment_var}: {var}")
     
     # follow convention of: {t_start}_{n_minute}mins_f{freqmin}:{freqmax}__{cha1}:{cha2}_{target_spatial_res}m
     t_start = task_t0 - timedelta(minutes=n_minute)
     plt.tight_layout()
-    plt.savefig(f'./results/figures/{t_start}_f{freqmin}:{freqmax}__{cha1}:{cha2}_{target_spatial_res}m__stack_length_experiment_no_cbar.png')
+    match experiment_var:
+        case 'channels':
+            plt.savefig(f'./results/figures/{t_start}_{n_minute}mins_f{freqmin}:{freqmax}__{target_spatial_res}m__{experiment_var}_experiment.png')
+        case 'frequencies':
+            plt.savefig(f'./results/figures/{t_start}_{n_minute}mins__{cha1}:{cha2}_{target_spatial_res}m__{experiment_var}_experiment.png')
+        case 'stack_length':
+            plt.savefig(f'./results/figures/{t_start}_f{freqmin}:{freqmax}__{cha1}:{cha2}_{target_spatial_res}m__{experiment_var}_experiment.png')
+        case 'spatial_res':
+            plt.savefig(f'./results/figures/{t_start}_{n_minute}mins_f{freqmin}:{freqmax}__{cha1}:{cha2}__{experiment_var}_experiment.png')
+        case _:
+            plt.savefig(f'./results/figures/{t_start}_{n_minute}mins_f{freqmin}:{freqmax}__{cha1}:{cha2}_{target_spatial_res}m.png')
     if save_corr:
         np.savetxt(f'{t_start}_{n_minute}mins_f{freqmin}:{freqmax}__{cha1}:{cha2}_{target_spatial_res}m.txt', corrs[0].T, delimiter=",")
