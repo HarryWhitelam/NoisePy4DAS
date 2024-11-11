@@ -309,7 +309,7 @@ def plot_multiple_correlations(corrs, prepro_para, vars, experiment_var, cmap_pa
 
         plt.sca(ax)
         plt.imshow(corr[:, :(effective_cha2 - cha1)].T, aspect = 'auto', cmap = cmap_param, 
-                vmax = 1, vmin = -1, origin = 'lower', interpolation=None)
+                vmax = 1, vmin = -1, origin = 'lower', interpolation=None)      # vmax, vmin changes from 2e-2, -2e-2 respectively
 
         _ =plt.yticks((np.linspace(cha1, cha2, 4) - cha1)/spatial_ratio, 
                     [int(i) for i in np.linspace(cha1, cha2, 4)], fontsize = 12)

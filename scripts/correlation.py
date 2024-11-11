@@ -16,9 +16,9 @@ def channels_experiment():
     
     for chas in channels_range:
         print(f'Channels experiment subsection: {chas}')
-        prepro_para = set_prepro_parameters(dir_path, cha1=chas[0], cha2=chas[1])
+        prepro_para = set_prepro_parameters(dir_path, task_t0, cha1=chas[0], cha2=chas[1])
         tdms_array, timestamps = get_tdms_array(dir_path)
-        corr_full = correlation(tdms_array, prepro_para, timestamps, task_t0)
+        corr_full = correlation(tdms_array, prepro_para, timestamps)
         corrs.append(corr_full)
 
     plot_multiple_correlations(corrs, prepro_para, channels_range, 'channels', save_corr=False)
@@ -30,9 +30,9 @@ def frequency_experiment():
     
     for freqs in freq_range:
         print(f'Frequency experiment band: {freqs}')
-        prepro_para = set_prepro_parameters(dir_path, freqmin=freqs[0], freqmax=freqs[1])
+        prepro_para = set_prepro_parameters(dir_path, task_t0, freqmin=freqs[0], freqmax=freqs[1])
         tdms_array, timestamps = get_tdms_array(dir_path)
-        corr_full = correlation(tdms_array, prepro_para, timestamps, task_t0)
+        corr_full = correlation(tdms_array, prepro_para, timestamps)
         corrs.append(corr_full)
 
     plot_multiple_correlations(corrs, prepro_para, freq_range, 'frequencies', save_corr=False)
@@ -44,9 +44,9 @@ def stack_length_experiment():
     
     for stack_length in stack_length_range:
         print(f'Stack length experiment: {stack_length}')
-        prepro_para = set_prepro_parameters(dir_path, n_minute=stack_length)
+        prepro_para = set_prepro_parameters(dir_path, task_t0, n_minute=stack_length)
         tdms_array, timestamps = get_tdms_array(dir_path)
-        corr_full = correlation(tdms_array, prepro_para, timestamps, task_t0)
+        corr_full = correlation(tdms_array, prepro_para, timestamps)
         corrs.append(corr_full)
 
     plot_multiple_correlations(corrs, prepro_para, stack_length_range, 'stack_length', save_corr=False)
@@ -58,9 +58,9 @@ def spatial_res_experiment():
     
     for spatial_res in spatial_res_range:
         print(f'Spatial resolution experiment: {spatial_res}')
-        prepro_para = set_prepro_parameters(dir_path, target_spatial_res=spatial_res)
+        prepro_para = set_prepro_parameters(dir_path, task_t0, target_spatial_res=spatial_res)
         tdms_array, timestamps = get_tdms_array(dir_path)
-        corr_full = correlation(tdms_array, prepro_para, timestamps, task_t0)
+        corr_full = correlation(tdms_array, prepro_para, timestamps)
         corrs.append(corr_full)
 
     plot_multiple_correlations(corrs, prepro_para, spatial_res_range, 'spatial_res', save_corr=False)
@@ -78,5 +78,5 @@ frequency_experiment()
 # prepro_para = set_prepro_parameters(dir_path, task_t0, target_spatial_res=1)
 # tdms_array, timestamps = get_tdms_array(dir_path)
 
-# corr_full = correlation(tdms_array, prepro_para, timestamps, task_t0, save_corr=False)
+# corr_full = correlation(tdms_array, prepro_para, timestamps, save_corr=False)
 # plot_correlation(corr_full, prepro_para)
