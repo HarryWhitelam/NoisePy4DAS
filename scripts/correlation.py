@@ -25,7 +25,7 @@ n_minute = 360
 # channels_range = [[2000, 3499], [3500, 4999], [5000, 6499], [6500, 7999]]
 # for chas in channels_range:
 #     print(f'Starting channels experiment: {chas}')
-#     prepro_para = set_prepro_parameters(dir_path, cha1=chas[0], cha2=chas[1], target_spatial_res=5)
+#     prepro_para = set_prepro_parameters(dir_path, task_t0, cha1=chas[0], cha2=chas[1], target_spatial_res=5)
 #     tdms_array, timestamps = get_tdms_array(dir_path)
 #     corr_full = correlation(tdms_array, prepro_para, timestamps, task_t0)
 #     corrs.append(corr_full)
@@ -36,10 +36,10 @@ n_minute = 360
 
 ## SINGLE RUN:
 print("Beginning setup!")
-prepro_para = set_prepro_parameters(dir_path, target_spatial_res=1, cha1=2000, cha2=7999)
+prepro_para = set_prepro_parameters(dir_path, task_t0, target_spatial_res=1, cha1=2000, cha2=7999)
 tdms_array, timestamps = get_tdms_array(dir_path)
 
 print("Beginning correlation!")
-corr_full = correlation(tdms_array, prepro_para, timestamps, task_t0, save_corr=True)
-plot_correlation(corr_full, prepro_para)
+corr_full = correlation(tdms_array, prepro_para, timestamps, task_t0)
+plot_correlation(corr_full, prepro_para, save_corr=True)
 print("Finished!")
