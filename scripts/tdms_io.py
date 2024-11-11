@@ -4,13 +4,18 @@ sys.path.append("./DASstore")
 
 from TDMS_Read import TdmsReader
 import os
+import warnings
 import numpy as np
+from obspy import Stream, Trace, read
+from obspy.core.trace import Stats
+from obspy.core.utcdatetime import UTCDateTime
+from obspy.io.segy.segy import SEGYTraceHeader, SEGYFile
 from datetime import datetime, timedelta
 from math import floor, ceil
 from skimage.transform import resize
 
 
-def get_tdms_array(dir_path):
+def get_tdms_array(dir_path:str):
     tdms_array = np.empty(int(len([filename for filename in os.listdir(dir_path) if filename.endswith(".tdms")])), dtype=TdmsReader)
         # tdms_array = np.empty(len(os.listdir(dir_path)), TdmsReader)
     timestamps = np.empty(len(tdms_array), dtype=datetime)
@@ -26,12 +31,12 @@ def get_tdms_array(dir_path):
     return [x for y, x in sorted(zip(np.array(timestamps), tdms_array))], timestamps
 
 
-def get_closest_index(timestamps, time):
+def get_closest_index(timestamps:np.ndarray, time:datetime):
     """retrieves the index of the closest timestamp within timestamps to time
 
     Args:
         timestamps (ndarray): _description_
-        time (timestamp): _description_
+        time (datetime): _description_
 
     Returns:
         _type_: _description_
@@ -43,7 +48,7 @@ def get_closest_index(timestamps, time):
     return idx
 
 
-def get_dir_properties(dir_path):
+def get_dir_properties(dir_path:str):
     with os.scandir(dir_path) as files:
         for file in files:
             if file.is_file():
@@ -55,22 +60,22 @@ def get_dir_properties(dir_path):
 
 
 # returns a delta-long array of tdms files starting at the timestamp given
-def get_time_subset(tdms_array, start_time, timestamps, tpf, delta, tolerance=300):
+def get_time_subset(tdms_array:np.ndarray, start_time:datetime, timestamps:np.ndarray, tpf:int, delta:int, tolerance:int=300):
     # tolerence is the time in s that the closest timestamp can be away from the desired start_time
     # timestamps MUST be orted, and align with TDMS array (i.e. timestamps[n] represents tdms_array[n]
     start_idx = get_closest_index(timestamps, start_time)
     if abs((start_time - timestamps[start_idx]).total_seconds()) > tolerance:
-        print(f"Error: first tdms is over {tolerance} seconds away from the given start time.")
+        warnings.warn(f"Error: first tdms is over {tolerance} seconds away from the given start time.")
         return
     
     end_time = timestamps[start_idx] + delta - timedelta(seconds=tpf)
     end_idx = get_closest_index(timestamps, end_time)
     if (end_time - timestamps[end_idx]).total_seconds() > tolerance:
-        print(f"WARNING: end tdms is over {tolerance} seconds away from the calculated end time.")
+        warnings.warn(f"WARNING: end tdms is over {tolerance} seconds away from the calculated end time.")
     # print(f"Given t={start_time}, snippet selected from {timestamps[start_idx]} to {timestamps[end_idx]}!")
     
     if (end_idx - start_idx + 1) != (delta.seconds/tpf):
-        print(f"WARNING: time subset not continuous; only {(end_idx - start_idx + 1)*tpf} seconds represented.")
+        warnings.warn(f"WARNING: time subset not continuous; only {(end_idx - start_idx + 1)*tpf} seconds represented.")
     # for i in range(start_idx, end_idx+1):
     #     print(timestamps[i])
     
@@ -78,7 +83,7 @@ def get_time_subset(tdms_array, start_time, timestamps, tpf, delta, tolerance=30
 
 
 # returns a duration of data (default is 60s)
-def get_data_from_array(tdms_array, prepro_para, start_time, timestamps):
+def get_data_from_array(tdms_array:list, prepro_para:dict, start_time:datetime, timestamps:np.ndarray):
     cha1, cha2, sps, spatial_ratio, duration = prepro_para.get('cha1'), prepro_para.get('cha2'), prepro_para.get('sps'), prepro_para.get('spatial_ratio'), prepro_para.get('duration')
 
     # make it so that if start_time is not a timestamp, the first minute in the array is returned
@@ -102,7 +107,7 @@ def get_data_from_array(tdms_array, prepro_para, start_time, timestamps):
     return tdata
 
 
-def scale(data, props):
+def scale(data:np.ndarray, props:dict):
     """Takes in TDMS data and its properties using them to scale the data as it is compressed within the file format. Returns scaled data
 
     strainrate nm/m/s = 116 * iDAS values * sampling freq (Hz) / gauge lenth (m)
@@ -120,7 +125,7 @@ def slice_downsample(data, temporal_ratio, spatial_ratio):
     return data[::temporal_ratio, ::spatial_ratio]
 
 
-def mean_downsample(data, temporal_ratio, spatial_ratio):
+def mean_downsample(data:np.ndarray, temporal_ratio:int, spatial_ratio:int):
     shape = data.shape
     ds_data = np.empty(shape=(ceil(shape[0]/temporal_ratio), ceil(shape[1]/spatial_ratio)))
     
@@ -145,24 +150,72 @@ def mean_downsample(data, temporal_ratio, spatial_ratio):
     return ds_data
 
 
-def downsample_file(file_path, output_path, target_sps, target_spatial_res):
-    tdms = TdmsReader(file_path)
-    props = tdms.get_properties()
-    
+def downsample_data(data:np.ndarray, props:dict, target_sps:float, target_spatial_res:float):
     sps = props.get('SamplingFrequency[Hz]')
     spatial_res = props.get('SpatialResolution[m]')
-    data = tdms.get_data(0, tdms.fileinfo['n_channels'])
+    
+    if not target_sps: target_sps = sps
+    if not target_spatial_res: target_spatial_res = spatial_res
     
     if (temporal_ratio := int(sps/target_sps)) != sps/target_sps:             # reversed as time-reciprocal
-        print(f'Target sps not a factor of current sps, some data will be lost.')
+        warnings.warn(f'Target sps not a factor of current sps, some data will be lost. Resultant ratio cast to {temporal_ratio}.')
     if (spatial_ratio := int(target_spatial_res/spatial_res)) != target_spatial_res/spatial_res:
-        print(f'Target spatial res not a factor of current spatial res, some data will be lost.')
-    resize_data = resize(data, output_shape=(data.shape[0] / temporal_ratio, data.shape[1] / spatial_ratio))
+        warnings.warn(f'Target spatial res not a factor of current spatial res, some data will be lost. Resultant ratio cast to {spatial_ratio}.')
+    return resize(data, output_shape=(data.shape[0] / temporal_ratio, data.shape[1] / spatial_ratio))
+
+
+def downsample_tdms(file_path:str, save_as:str=None, out_dir:str=None, target_sps:int=None, target_spatial_res:int=None):
+    tdms = TdmsReader(file_path)
+    props = tdms.get_properties()
+    data = tdms.get_data()
+    data = scale(data, props)
     
-    # TODO: write to TDMS file (how?)
+    if target_sps or target_spatial_res:
+        data = downsample_data(data, props, target_sps, target_spatial_res)
+        if target_sps:         props.update({'SamplingFrequency[Hz]': target_sps})
+        if target_spatial_res: props.update({'SpatialResolution[m]': target_spatial_res})
+    
+    # NOTE: This is starting as just one Stats object for ALL traces in the stream, this may have to change
+    stats = Stats({
+        'network': 'DS',
+        'sampling_rate': props.get('SamplingFrequency[Hz]'),
+        'npts': data.shape[0],
+        'starttime': UTCDateTime(props.get('GPSTimeStamp')),
+    })
+    stats.update(props)
+    
+    stream = Stream()
+    for count, channel in enumerate(data.T):
+        stats.station = str(count)
+        trace = Trace(channel, stats)
+        if save_as in ['SEGY', 'SU']:
+            trace.data = np.require(trace.data, dtype=np.float32)
+        trace.data = np.ascontiguousarray(trace.data)
+        stream += trace
+    
+    if save_as:
+        out_name = os.path.splitext(file_path.split('/')[-1])[0] + '.' + save_as.lower()
+        if out_dir: out_name = out_dir + out_name
+        stream.write(out_name, format=save_as)
 
 
-def max_min_strain_rate(data, channel_bounds=None):
+def read_das_file(file_path:str):
+    stream = read(file_path)
+    stats = stream[0].stats
+    print(file_path, '\n', stats)
+    input("HALT")
+    
+    npts = stats.npts           # temporal axis
+    ncha = len(stream)          # spatial axis
+    data = np.empty(shape=(npts, ncha))
+    
+    for count, trace in enumerate(stream):
+        data[:, count] = trace.data
+    
+    return data, stats
+
+
+def max_min_strain_rate(data:np.ndarray, channel_bounds:list=None):
     """Takes in a 2D numpy array of TDMS data and returns the min and max values
 
     Keyword arguments:
@@ -191,12 +244,3 @@ def max_min_strain_rate(data, channel_bounds=None):
         min_idx += channel_bounds[0]
     
     return max_val, max_idx, min_val, min_idx
-
-
-# print(f'temporal_ratio: {temporal_ratio}, spatial_ratio: {spatial_ratio}')
-
-# data = np.empty(shape=(10, 7))
-# for i in range(1, 11):
-#     data[i-1] = [i, i*2, i*4, i*5, i*10, random(), random()]
-# print(data)
-downsample_file("../../temp_data_store/Snippets/FirstData_UTC_20231109_134947.573.tdms", None, 100, 1.3)

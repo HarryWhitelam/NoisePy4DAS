@@ -109,12 +109,12 @@ def animated_spectrogram(tdms_array, prepro_para, task_t0, timestamps):
     ani.save(f'psd_{prepro_para.get("cha1")}:{prepro_para.get("cha2")}_{prepro_para.get("spatial_ratio")*0.25}m.gif', writer='pillow')
 
 
-def image_comparison(data_dict, method='all', ncols=2, cmap='gray'):
+def image_comparison(data_dict, comp_ids, method='all', ncols=2, cmap='gray'):
     data_list = list(data_dict.values())
     if method in ('diff', 'all'):
-        data_dict['diff'] = compare_images(data_list[1], data_list[2], method='diff')
+        data_dict['diff'] = compare_images(data_dict.get(comp_ids[0]), data_dict.get(comp_ids[1]), method='diff')
     if method in ('blend', 'all'):
-        data_dict['blend'] = compare_images(data_list[1], data_list[2], method='blend')
+        data_dict['blend'] = compare_images(data_dict.get(comp_ids[0]), data_dict.get(comp_ids[1]), method='blend')
     
     nrows = len(data_dict) // ncols + (len(data_dict) % ncols > 0)
     
