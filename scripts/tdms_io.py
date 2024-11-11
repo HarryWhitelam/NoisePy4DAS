@@ -9,6 +9,7 @@ import numpy as np
 from obspy import Stream, Trace, read
 from obspy.core.trace import Stats
 from obspy.core.utcdatetime import UTCDateTime
+from obspy.io.segy.segy import SEGYTraceHeader, SEGYFile
 from datetime import datetime, timedelta
 from math import floor, ceil
 from skimage.transform import resize
@@ -171,6 +172,8 @@ def downsample_tdms(file_path:str, save_as:str=None, out_dir:str=None, target_sp
     
     if target_sps or target_spatial_res:
         data = downsample_data(data, props, target_sps, target_spatial_res)
+        if target_sps:         props.update({'SamplingFrequency[Hz]': target_sps})
+        if target_spatial_res: props.update({'SpatialResolution[m]': target_spatial_res})
     
     # NOTE: This is starting as just one Stats object for ALL traces in the stream, this may have to change
     stats = Stats({
@@ -179,6 +182,7 @@ def downsample_tdms(file_path:str, save_as:str=None, out_dir:str=None, target_sp
         'npts': data.shape[0],
         'starttime': UTCDateTime(props.get('GPSTimeStamp')),
     })
+    stats.update(props)
     
     stream = Stream()
     for count, channel in enumerate(data.T):
@@ -198,6 +202,8 @@ def downsample_tdms(file_path:str, save_as:str=None, out_dir:str=None, target_sp
 def read_das_file(file_path:str):
     stream = read(file_path)
     stats = stream[0].stats
+    print(file_path, '\n', stats)
+    input("HALT")
     
     npts = stats.npts           # temporal axis
     ncha = len(stream)          # spatial axis
