@@ -26,7 +26,7 @@ def channels_experiment():
 
 def frequency_experiment():
     corrs = []
-    freq_range = [[0.001, 1.0], [1.0, 5.0], [5.0, 10.0], [10.0, 15.0], [15.0, 20.0], [20.0, 25.0]]
+    freq_range = [[0.001, 50.0], [0.001, 1.0], [1.0, 5.0], [5.0, 10.0], [10.0, 15.0], [15.0, 20.0], [20.0, 25.0], [25.0, 50.0]]
     
     for freqs in freq_range:
         print(f'Frequency experiment band: {freqs}')
