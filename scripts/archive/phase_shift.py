@@ -7,14 +7,12 @@ import os
 import matplotlib.pyplot as plt
 import numpy as np
 import scipy
+from scipy.signal.windows import hann
 from obspy import Stream, Trace
 from obspy.core.trace import Stats
 import dascore
 from datetime import datetime, timedelta
-import tdms_io
 from TDMS_Read import TdmsReader
-
-from tdms_io import get_tdms_array
 
 
 def load_data(file_paths:list):
@@ -45,7 +43,6 @@ def load_xcorr(file_path):
     stats.npts = 1601
     for i in range(0, xdata.shape[1]):
         stream.append(Trace(xdata[:, i], stats))
-    print(stream)
     return stream
 
 
@@ -108,8 +105,8 @@ def get_dispersion(traces,dx,cmin,cmax,dc,fmax):
 
 
 # dir_path = "/home/harry/Documents/0. PhD/DiSTANS/temp_data_store/"
-# dir_path = "../../../data/DAS_data/Data/"		# changed from "../../../../gpfs/data/DAS_data/Data", should work? 
-dir_path = "../temp_data_store/"
+# dir_path = "../../../data/DAS_data/Data/"
+dir_path = "../../temp_data_store/"
 start_time = '2024-01-19T15:19:07'
 
 prepro_para = {
@@ -131,7 +128,7 @@ fmax = 100.0
 # tdms_array, timestamps = tdms_io.get_tdms_array(dir_path)
 # tdata = tdms_io.get_data_from_array(tdms_array, prepro_para, task_t0, timestamps)
 # stream = load_data(dir_path)
-stream = load_xcorr('test_stack.txt')
+stream = load_xcorr('../../temp_data_store/test_stack.txt')
 
 # tdms_array = get_time_subset(dir_path, start_time, tpf=10, delta=timedelta(minutes=1))
 f, c, img, fmax_idx, U, t = get_dispersion(stream, dx, cmin, cmax, dc, fmax)
