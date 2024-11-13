@@ -30,7 +30,7 @@ def frequency_experiment():
     
     for freqs in freq_range:
         print(f'Frequency experiment band: {freqs}')
-        prepro_para = set_prepro_parameters(dir_path, task_t0, freqmin=freqs[0], freqmax=freqs[1])
+        prepro_para = set_prepro_parameters(dir_path, task_t0, freqmin=freqs[0], freqmax=freqs[1], cha1=2000, cha2=7999)
         tdms_array, timestamps = get_tdms_array(dir_path)
         corr_full = correlation(tdms_array, prepro_para, timestamps)
         corrs.append(corr_full)

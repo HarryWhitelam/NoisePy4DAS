@@ -125,5 +125,15 @@ stream = load_xcorr('test_stack.txt')
 f, c, img, fmax_idx, U, t = get_dispersion(stream, dx, cmin, cmax, dc, fmax)
 
 im, ax = plt.subplots(figsize=(7.0,5.0))
-ax.imshow(img[:,:],aspect='auto',origin='lower',extent=(f[0],f[fmax_idx],c[0],c[-1]),interpolation='bilinear')
+ax.imshow(img[:,:],aspect='auto',origin='lower', extent=(f[0], f[fmax_idx-1], c[0], c[-1]), interpolation='bilinear')
 im.savefig('./results/figures/test_dispersion.png')
+
+im, ax = plt.subplots(figsize=(7.0,5.0))
+ax.imshow(img[:,:],aspect='auto',origin='lower', interpolation='bilinear')
+im.savefig('./results/figures/test_dispersion_no_extent.png')
+
+img.tofile('./results/checkpoints/phase_shift_img.txt', sep=',')
+f.tofile('./results/checkpoints/phase_shift_f.txt',   sep=',')
+U.tofile('./results/checkpoints/phase_shift_U.txt',   sep=',')
+c.tofile('./results/checkpoints/phase_shift_c.txt',   sep=',')
+t.tofile('./results/checkpoints/phase_shift_t.txt',   sep=',')

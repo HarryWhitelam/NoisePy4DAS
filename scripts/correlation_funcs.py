@@ -313,11 +313,15 @@ def plot_multiple_correlations(corrs, prepro_para, vars, experiment_var, cmap_pa
         plt.xlabel("Time lag (sec)", fontsize = 12)
         # bar = plt.colorbar(pad = 0.1, format = lambda x, pos: '{:.1f}'.format(x*100))
         # bar.set_label('Cross-correlation Coefficient ($\\times10^{-2}$)', fontsize = 8)
+        ax.label_outer()
 
         twiny = plt.gca().twinx()
         twiny.set_yticks(np.linspace(0, cha2 - cha1, 4), 
                                     [int(i* cha_spacing) for i in np.linspace(cha1, cha2, 4)])
         twiny.set_ylabel("Distance along cable (m)", fontsize = 12)
+        twiny.label_outer()
+        
+        plt.tight_layout()
         plt.title(f"{experiment_var}: {var}")
     
     # follow convention of: {t_start}_{n_minute}mins_f{freqmin}:{freqmax}__{cha1}:{cha2}_{target_spatial_res}m
