@@ -308,7 +308,6 @@ def plot_multiple_correlations(corrs, prepro_para, vars, experiment_var, cmap_pa
         _ =plt.yticks((np.linspace(cha1, cha2, 4) - cha1)/spatial_ratio, 
                     [int(i) for i in np.linspace(cha1, cha2, 4)], fontsize = 12)
         plt.ylabel("Channel number", fontsize = 12)
-        # _ = plt.xticks(np.arange(0, maxlag*200+1, 200), (np.arange(0, 801, 100) - 400)/50, fontsize = 12)
         _ = plt.xticks(np.arange(0, maxlag*200+1, 200), np.arange(-maxlag, maxlag+1, 2), fontsize=12)
         plt.xlabel("Time lag (sec)", fontsize = 12)
         # bar = plt.colorbar(pad = 0.1, format = lambda x, pos: '{:.1f}'.format(x*100))
@@ -326,7 +325,6 @@ def plot_multiple_correlations(corrs, prepro_para, vars, experiment_var, cmap_pa
     
     # follow convention of: {t_start}_{n_minute}mins_f{freqmin}:{freqmax}__{cha1}:{cha2}_{target_spatial_res}m
     t_start = task_t0 - timedelta(minutes=n_minute)
-    plt.tight_layout()
     match experiment_var:
         case 'channels':
             plt.savefig(f'./results/figures/{t_start}_{n_minute}mins_f{freqmin}:{freqmax}__{target_spatial_res}m__{experiment_var}_experiment.png')

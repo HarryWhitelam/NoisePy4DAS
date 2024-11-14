@@ -7,32 +7,29 @@ import os
 import matplotlib.pyplot as plt
 import numpy as np
 import scipy
-from scipy.signal.windows import hann
 from obspy import Stream, Trace
 from obspy.core.trace import Stats
-import dascore
-from datetime import datetime, timedelta
-from TDMS_Read import TdmsReader
+# import dascore
 
 
-def load_data(file_paths:list):
-    stream = Stream()
-    for file_path in file_paths:
-        spool = dascore.spool(file_path)
-        for patch in spool:
-            stream += patch.io.to_obspy()
-    return stream
+# def load_data(file_paths:list):
+#     stream = Stream()
+#     for file_path in file_paths:
+#         spool = dascore.spool(file_path)
+#         for patch in spool:
+#             stream += patch.io.to_obspy()
+#     return stream
 
 
-def load_data(dir_path:str):
-    stream = Stream()    
-    for file in os.listdir(dir_path):
-        if file.endswith(".tdms"):
-            file_path = os.path.join(dir_path, file)
-            spool = dascore.spool(file_path)
-            for patch in spool:
-                stream += patch.io.to_obspy()
-    return stream
+# def load_data(dir_path:str):
+#     stream = Stream()    
+#     for file in os.listdir(dir_path):
+#         if file.endswith(".tdms"):
+#             file_path = os.path.join(dir_path, file)
+#             spool = dascore.spool(file_path)
+#             for patch in spool:
+#                 stream += patch.io.to_obspy()
+#     return stream
 
 
 def load_xcorr(file_path):
