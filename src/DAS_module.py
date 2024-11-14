@@ -490,7 +490,7 @@ def whiten(data, fft_para):
         # TODO: THIS IS AWFUL FIX THIS TOMORROW PLEASE -> fixed by removing (two lines below) and just keeping printed warning.
     if len(J) < smooth_N:
     #     smooth_N = len(J)
-        print(f'WARNING: not enough frequency bins in range {freqmin}:{freqmax}. Smoothing length: {smooth_N}'; starting num bins: {len(J)};, end='')
+        print(f'WARNING: not enough frequency bins in range {freqmin}:{freqmax}. Smoothing length: {smooth_N}; starting num bins: {len(J)}; ', end='')
         zero_padding_factor = ceil(smooth_N / len(J))         # attempted to make dynamic
         Nfft = Nfft * zero_padding_factor
         data = np.pad(data, (0, Nfft - data.shape[axis]), mode='constant')
