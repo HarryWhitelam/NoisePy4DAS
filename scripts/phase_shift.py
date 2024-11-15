@@ -46,8 +46,9 @@ def load_xcorr(file_path):
 def get_fft(traces, dt, nt):
     """ Get temporal Fourier transform for each of the traces
     """
-    f = scipy.fftpack.fftfreq(nt,dt) #f = np.linspace(0.0, 1.0/(2.0*dt), nt//2)
-    U = scipy.fftpack.fft(traces)
+    f = scipy.fft.fftfreq(nt,dt) #f = np.linspace(0.0, 1.0/(2.0*dt), nt//2)
+    U = scipy.fft.fft(traces)
+    print(f'U: {U}')
     if np.size(U.shape) > 1:
         return U[:,0:nt//2], f[0:nt//2]
     else:
@@ -88,14 +89,23 @@ def get_dispersion(traces,dx,cmin,cmax,dc,fmax):
     # print(f'f: {f}')
     img = np.zeros((len(c),fmax_idx))
     x = np.linspace(0.0, (nr-1)*dx, nr)
-    if fmax_idx >= len(f):
+    if fmax_idx > len(f):
         print(f'WARNING: maximum frequency too high. fmax_idx: {fmax_idx}; len(f): {len(f)}')
+    epsilon = 1e-10
     for fi in range(fmax_idx): # loop over frequency range
         for ci in range(len(c)): # loop over phase velocity range
             k = 2.0*np.pi*f[fi]/(c[ci])
             num_zeroes = np.count_nonzero(U[:,fi]==0)
             if num_zeroes:
                 print(f'num zeroes: {num_zeroes}')
+            if np.any(np.isnan(U[:, fi])) or np.any(np.isinf(U[:, fi])):
+                print(f"Warning: NaN or inf in U[:, {fi}]")
+            if np.any(np.isnan(x)) or np.any(np.isinf(x)) or np.any(dx == 0):
+                print("Warning: Invalid values in x or dx")
+            if np.any(np.isnan(k * x)) or np.any(np.isinf(k * x)):
+                print(f"Warning: Invalid values in k*x at frequency index {fi}")
+            if np.any(np.abs(U[:, fi]) < epsilon):
+                print(f"Warning: Small or zero values in U[:, {fi}]")
             img[ci,fi] = np.abs(np.dot(dx * np.exp(1.0j*k*x), U[:,fi]/np.abs(U[:,fi])))
 
     return f,c,img,fmax_idx,U,t

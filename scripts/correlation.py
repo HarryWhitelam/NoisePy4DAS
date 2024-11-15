@@ -26,17 +26,17 @@ def channels_experiment():
 
 def frequency_experiment():
     corrs = []
-    # freq_range = [[0.001, 50.0], [0.001, 1.0], [1.0, 5.0], [5.0, 10.0], [10.0, 15.0], [15.0, 20.0], [20.0, 25.0], [25.0, 50.0]]
-    freq_range = [[0.001, 50.0], [0.001, 1.0], [1.0, 5.0], [5.0, 10.0]]     # smaller batch for testing
+    freq_range = [[0.001, 50.0], [0.001, 1.0], [1.0, 5.0], [5.0, 10.0], [10.0, 15.0], [15.0, 20.0], [20.0, 25.0], [25.0, 50.0]]
+    # freq_range = [[0.001, 50.0], [0.001, 1.0], [1.0, 5.0], [5.0, 10.0]]     # smaller batch for testing
     
     for freqs in freq_range:
         print(f'Frequency experiment band: {freqs}')
-        prepro_para = set_prepro_parameters(dir_path, task_t0, freqmin=freqs[0], freqmax=freqs[1], cha1=4000, cha2=7999, target_spatial_res=10)
+        prepro_para = set_prepro_parameters(dir_path, task_t0, freqmin=freqs[0], freqmax=freqs[1], cha1=3850, cha2=5249, n_minute=360, target_spatial_res=1)
         tdms_array, timestamps = get_tdms_array(dir_path)
         corr_full = correlation(tdms_array, prepro_para, timestamps)
         corrs.append(corr_full)
 
-    plot_multiple_correlations(corrs, prepro_para, freq_range, 'frequencies', save_corr=False)
+    plot_multiple_correlations(corrs, prepro_para, freq_range, 'frequencies', save_corr=True)
 
 
 def stack_length_experiment():
