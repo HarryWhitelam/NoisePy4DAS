@@ -484,11 +484,7 @@ def whiten(data, fft_para):
     freqVec = scipy.fftpack.fftfreq(Nfft, d=delta)[:Nfft // 2]
     # print(f'freqVec: {freqVec}')
     J = np.where((freqVec >= freqmin) & (freqVec <= freqmax))[0]
-    # ADDED FIX FOR SMOOTH_N: MIGHT NOT WORK NEEDS TESTING
-        # CONFIRMED THIS WON'T WORK: N needs to = maximum period at LEAST; ideally a multiple!
-        # TODO: THIS IS AWFUL FIX THIS TOMORROW PLEASE -> fixed by removing (two lines below) and just keeping printed warning.
     if len(J) < smooth_N:
-    #     smooth_N = len(J)
         print(f'WARNING: not enough frequency bins in range {freqmin}:{freqmax}. Num bins: {len(J)}; smoothing length: {smooth_N}')
         print(f'WARNING: zero-padding signal to increase low-freq resolution.')
         zero_padding_factor = 4  # Adjust this factor as needed

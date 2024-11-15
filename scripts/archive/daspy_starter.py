@@ -42,8 +42,8 @@ gps_path = '../../Deployment/gps_coords.csv'
 # print(track_pt)
 # print(known_pt)
 
-track_pt = np.loadtxt('res/track_pts.csv', delimiter=',', skiprows=1, usecols=(2,1), comments='#') # read in the track points and swap the two columns (let longitude precede latitude)
-known_pt = np.loadtxt('res/known_pts.csv', delimiter=',', skiprows=1, usecols=(1,0,2), comments='#')
+track_pt = np.loadtxt('results/track_pts.csv', delimiter=',', skiprows=1, usecols=(2,1), comments='#') # read in the track points and swap the two columns (let longitude precede latitude)
+known_pt = np.loadtxt('results/known_pts.csv', delimiter=',', skiprows=1, usecols=(1,0,2), comments='#')
 # print(track_pt)
 # print(known_pt)
 
@@ -52,12 +52,19 @@ track_pt = track_pt[::-1]       # upside down :(
 # print(test_track_pt.shape)
 
 interp_ch = location_interpolation(known_pt, track_pt=track_pt, dx=0.25)
-print(interp_ch) # longitude, latitude, and channel number
+# print(interp_ch) # longitude, latitude, and channel number
 interp_ch_df = pd.DataFrame(interp_ch, columns=['lon', 'lat', 'channel_no'])[['lat', 'lon', 'channel_no']]      # rearranged for lat, lon, ch_no
-# interp_ch_df.to_csv('res/interp_ch_pts.csv', index=False)
+# interp_ch_df.to_csv('results/interp_ch_pts.csv', index=False)
 
 plt.scatter(interp_ch[:,0], interp_ch[:,1], c=interp_ch[:,2], cmap='jet')
 plt.scatter(track_pt[:,0], track_pt[:,1], c='k', s=1)
+
+### HIGHLIGHTS
+highlight_mask = np.isin(interp_ch[:, 2], [3850, 5250])
+highlight_ch = interp_ch[highlight_mask, :]
+plt.scatter(highlight_ch[:,0], highlight_ch[:,1], c='red', s=10)
+print(highlight_ch)
+
 plt.gca().set_aspect('equal')
 plt.title('Interpolated channel location')
 plt.show()

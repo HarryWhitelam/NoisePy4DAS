@@ -341,4 +341,4 @@ def plot_multiple_correlations(corrs, prepro_para, vars, experiment_var, cmap_pa
         case _:
             plt.savefig(f'./results/figures/{t_start}_{n_minute}mins_f{freqmin}:{freqmax}__{cha1}:{cha2}_{target_spatial_res}m.png')
     if save_corr:
-        np.savetxt(f'{t_start}_{n_minute}mins_f{freqmin}:{freqmax}__{cha1}:{cha2}_{target_spatial_res}m.txt', corrs[0].T, delimiter=",")
+        np.savetxt(f'{t_start}_{n_minute}mins_f{freqmin}:{freqmax}__{cha1}:{cha2}_{target_spatial_res}m.txt', corrs[0], delimiter=",")
