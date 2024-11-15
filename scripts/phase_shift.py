@@ -128,6 +128,7 @@ fmax = 50.0     # down from 100 for fmax testing
 
 
 stream = load_xcorr('test_stack.txt')
+# stream = load_xcorr('../../temp_data_store/test_stack.txt')
 
 f, c, img, fmax_idx, U, t = get_dispersion(stream, dx, cmin, cmax, dc, fmax)
 

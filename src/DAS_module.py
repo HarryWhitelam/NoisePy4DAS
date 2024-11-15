@@ -485,11 +485,7 @@ def whiten(data, fft_para):
     freqVec = scipy.fftpack.fftfreq(Nfft, d=delta)[:Nfft // 2]
     # print(f'freqVec: {freqVec}')
     J = np.where((freqVec >= freqmin) & (freqVec <= freqmax))[0]
-    # ADDED FIX FOR SMOOTH_N: MIGHT NOT WORK NEEDS TESTING
-        # CONFIRMED THIS WON'T WORK: N needs to = maximum period at LEAST; ideally a multiple!
-        # TODO: THIS IS AWFUL FIX THIS TOMORROW PLEASE -> fixed by removing (two lines below) and just keeping printed warning.
     if len(J) < smooth_N:
-    #     smooth_N = len(J)
         print(f'WARNING: not enough frequency bins in range {freqmin}:{freqmax}. Smoothing length: {smooth_N}; starting num bins: {len(J)}; ', end='')
         zero_padding_factor = ceil(smooth_N / len(J))         # attempted to make dynamic
         Nfft = Nfft * zero_padding_factor
