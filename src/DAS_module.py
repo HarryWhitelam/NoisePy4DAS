@@ -3,6 +3,7 @@ import glob
 # import h5py
 import scipy
 import numpy as np
+from math import ceil
 from numba import jit
 from scipy.fft import next_fast_len
 from obspy.signal.filter import bandpass
@@ -485,15 +486,14 @@ def whiten(data, fft_para):
     # print(f'freqVec: {freqVec}')
     J = np.where((freqVec >= freqmin) & (freqVec <= freqmax))[0]
     if len(J) < smooth_N:
-        print(f'WARNING: not enough frequency bins in range {freqmin}:{freqmax}. Num bins: {len(J)}; smoothing length: {smooth_N}')
-        print(f'WARNING: zero-padding signal to increase low-freq resolution.')
-        zero_padding_factor = 4  # Adjust this factor as needed
+        print(f'WARNING: not enough frequency bins in range {freqmin}:{freqmax}. Smoothing length: {smooth_N}; starting num bins: {len(J)}; ', end='')
+        zero_padding_factor = ceil(smooth_N / len(J))         # attempted to make dynamic
         Nfft = Nfft * zero_padding_factor
         data = np.pad(data, (0, Nfft - data.shape[axis]), mode='constant')
         freqVec = scipy.fftpack.fftfreq(Nfft, d=delta)[:Nfft // 2]
         J = np.where((freqVec >= freqmin) & (freqVec <= freqmax))[0]
-        print(f'Num bins after zero-padding: {len(J)}')
-    
+        print(f'Num bins after zero-padding: {len(J)}. ')
+
     low = J[0] - Napod
     if low <= 0:
         low = 1

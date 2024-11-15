@@ -301,34 +301,30 @@ def plot_multiple_correlations(corrs, prepro_para, vars, experiment_var, cmap_pa
             cha1, cha2 = var[0], var[1]       # for channel experiments (correct labelling)
             effective_cha2 = floor(cha1 + (cha2 - cha1) / spatial_ratio)
 
-        # NOTE PRINTS HERE TO INVESTIGATE CHANNEL NUMBER ROLE!!!
-        # print(f'cha1, cha2, effective_cha2: {cha1}, {cha2}, {effective_cha2}')
-        # print(f'corr shape: {corr.shape}')
-        # print(f'trimmed corr: {corr[:, :(effective_cha2 - cha1)].shape}')
-        # CHANGES END HERE
-
         plt.sca(ax)
         plt.imshow(corr[:, :(effective_cha2 - cha1)].T, aspect = 'auto', cmap = cmap_param, 
-                vmax = 1, vmin = -1, origin = 'lower', interpolation=None)      # vmax, vmin changes from 2e-2, -2e-2 respectively
+                vmax = 2e-2, vmin = -2e-2, origin = 'lower', interpolation=None)      # vmax, vmin original values of 2e-2, -2e-2 respectively
 
         _ =plt.yticks((np.linspace(cha1, cha2, 4) - cha1)/spatial_ratio, 
                     [int(i) for i in np.linspace(cha1, cha2, 4)], fontsize = 12)
         plt.ylabel("Channel number", fontsize = 12)
-        # _ = plt.xticks(np.arange(0, maxlag*200+1, 200), (np.arange(0, 801, 100) - 400)/50, fontsize = 12)
         _ = plt.xticks(np.arange(0, maxlag*200+1, 200), np.arange(-maxlag, maxlag+1, 2), fontsize=12)
         plt.xlabel("Time lag (sec)", fontsize = 12)
-        bar = plt.colorbar(pad = 0.1, format = lambda x, pos: '{:.1f}'.format(x*100))
-        bar.set_label('Cross-correlation Coefficient ($\\times10^{-2}$)', fontsize = 8)
+        # bar = plt.colorbar(pad = 0.1, format = lambda x, pos: '{:.1f}'.format(x*100))
+        # bar.set_label('Cross-correlation Coefficient ($\\times10^{-2}$)', fontsize = 8)
+        ax.label_outer()
 
         twiny = plt.gca().twinx()
         twiny.set_yticks(np.linspace(0, cha2 - cha1, 4), 
                                     [int(i* cha_spacing) for i in np.linspace(cha1, cha2, 4)])
         twiny.set_ylabel("Distance along cable (m)", fontsize = 12)
+        twiny.label_outer()
+        
+        plt.tight_layout()
         plt.title(f"{experiment_var}: {var}")
     
     # follow convention of: {t_start}_{n_minute}mins_f{freqmin}:{freqmax}__{cha1}:{cha2}_{target_spatial_res}m
     t_start = task_t0 - timedelta(minutes=n_minute)
-    plt.tight_layout()
     match experiment_var:
         case 'channels':
             plt.savefig(f'./results/figures/{t_start}_{n_minute}mins_f{freqmin}:{freqmax}__{target_spatial_res}m__{experiment_var}_experiment.png')
