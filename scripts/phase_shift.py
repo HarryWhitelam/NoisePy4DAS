@@ -127,20 +127,21 @@ dc = 10.0
 fmax = 50.0     # down from 100 for fmax testing
 
 
-stream = load_xcorr('test_stack.txt')
+corr_path = '2024-01-19 09:19:07_360mins_f1:49.9__3850:5750_1m.txt'
+stream = load_xcorr(corr_path)
 
 f, c, img, fmax_idx, U, t = get_dispersion(stream, dx, cmin, cmax, dc, fmax)
 
+out_name = corr_path[:-4] + '_dispersion.png'
+
 im, ax = plt.subplots(figsize=(7.0,5.0))
 ax.imshow(img[:,:],aspect='auto',origin='lower', extent=(f[0], f[fmax_idx-1], c[0], c[-1]), interpolation='bilinear')
-im.savefig('./results/figures/test_dispersion.png')
+ax.set_xlabel("Frequency (Hz)")
+ax.set_ylabel("Phase velocity (m/s)")
+im.savefig(f'./results/figures/{out_name}')
 
-im, ax = plt.subplots(figsize=(7.0,5.0))
-ax.imshow(img[:,:],aspect='auto',origin='lower', interpolation='bilinear')
-im.savefig('./results/figures/test_dispersion_no_extent.png')
-
-img.tofile('./results/checkpoints/phase_shift_img.txt', sep=',')
-f.tofile('./results/checkpoints/phase_shift_f.txt',   sep=',')
-U.tofile('./results/checkpoints/phase_shift_U.txt',   sep=',')
-c.tofile('./results/checkpoints/phase_shift_c.txt',   sep=',')
-t.tofile('./results/checkpoints/phase_shift_t.txt',   sep=',')
+# img.tofile('./results/checkpoints/phase_shift_img.txt', sep=',')
+# f.tofile('./results/checkpoints/phase_shift_f.txt',   sep=',')
+# U.tofile('./results/checkpoints/phase_shift_U.txt',   sep=',')
+# c.tofile('./results/checkpoints/phase_shift_c.txt',   sep=',')
+# t.tofile('./results/checkpoints/phase_shift_t.txt',   sep=',')

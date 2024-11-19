@@ -141,7 +141,7 @@ def set_prepro_parameters(dir_path, task_t0, freqmin=1, freqmax=49.9, target_spa
     smoothspect_N      = 100               # moving window length to smooth spectrum amplitude (points)
     maxlag             = 4                 # lags of cross-correlation to save (sec)
 
-    max_over_std       = 20                # threshold to remove window of bad signals: set it to 10*9 if prefer not to remove them
+    max_over_std       = 30                # threshold to remove window of bad signals: set it to 10*9 if prefer not to remove them     19/11/24: CHANGED FROM 20 FOR TESTING
 
     cc_len             = 60                # correlate length in second
     # step               = 60                # stepping length in second [not used]
@@ -211,6 +211,10 @@ def correlation(tdms_array, prepro_para, timestamps):
                                 (trace_stdS > 0) &
                         (np.isnan(trace_stdS) == 0))[0]
         if not len(ind):
+            ### debugging max over std errors
+            print(f"max_over_std check: {np.where(trace_stdS < prepro_para['max_over_std'])[0]}")
+            print(f"      over 0 check: {np.where(trace_stdS > 0)[0]}")
+            print(f"       isnan check: {np.where(np.isnan(trace_stdS) == 0)[0]}")
             raise ValueError('the max_over_std criteria is too high which results in no data')
         sta = cha_list[ind]
         white_spect = data[ind]
@@ -288,7 +292,8 @@ def plot_correlation(corr, prepro_para, cmap_param='bwr', save_corr=False):
     plt.tight_layout()
     plt.savefig(f'./results/figures/{t_start}_{n_minute}mins_f{freqmin}:{freqmax}__{cha1}:{cha2}_{target_spatial_res}m.png')
     if save_corr:
-        np.savetxt(f'{t_start}_{n_minute}mins_f{freqmin}:{freqmax}__{cha1}:{cha2}_{target_spatial_res}m.txt', corr, delimiter=",")
+        np.savetxt(f'{t_start}_{n_minute}mins_f{freqmin}:{freqmax}__{cha1}:{cha2}_{target_spatial_res}m.txt', corr[:, :(effective_cha2 - cha1)], delimiter=",")
+        print(f'Saving corr output: (effective_cha2 - cha1): {effective_cha2} - {cha1} = {effective_cha2 - cha1}')
 
 
 def plot_multiple_correlations(corrs, prepro_para, vars, experiment_var, cmap_param='bwr', save_corr=False):
@@ -337,4 +342,4 @@ def plot_multiple_correlations(corrs, prepro_para, vars, experiment_var, cmap_pa
         case _:
             plt.savefig(f'./results/figures/{t_start}_{n_minute}mins_f{freqmin}:{freqmax}__{cha1}:{cha2}_{target_spatial_res}m.png')
     if save_corr:
-        np.savetxt(f'{t_start}_{n_minute}mins_f{freqmin}:{freqmax}__{cha1}:{cha2}_{target_spatial_res}m.txt', corrs[0], delimiter=",")
+        np.savetxt(f'{t_start}_{n_minute}mins_f{freqmin}:{freqmax}__{cha1}:{cha2}_{target_spatial_res}m.txt', corrs[0][:, :(effective_cha2 - cha1)], delimiter=",")

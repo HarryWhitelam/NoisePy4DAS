@@ -31,7 +31,7 @@ def frequency_experiment():
     
     for freqs in freq_range:
         print(f'Frequency experiment band: {freqs}')
-        prepro_para = set_prepro_parameters(dir_path, task_t0, freqmin=freqs[0], freqmax=freqs[1], cha1=3850, cha2=5249, n_minute=360, target_spatial_res=1)
+        prepro_para = set_prepro_parameters(dir_path, task_t0, freqmin=freqs[0], freqmax=freqs[1], cha1=3850, cha2=7999, n_minute=360, target_spatial_res=1)
         tdms_array, timestamps = get_tdms_array(dir_path)
         corr_full = correlation(tdms_array, prepro_para, timestamps)
         corrs.append(corr_full)
@@ -72,12 +72,13 @@ task_t0 = datetime(year = 2024, month = 1, day = 19,
                    hour = 15, minute = 19, second = 7, microsecond = 0)
 n_minute = 360
 
-frequency_experiment()
+# frequency_experiment()
 
 
 ## SINGLE RUN: 
-# prepro_para = set_prepro_parameters(dir_path, task_t0, target_spatial_res=1)
-# tdms_array, timestamps = get_tdms_array(dir_path)
+print("max over std bumped up to 30 for testing")
+prepro_para = set_prepro_parameters(dir_path, task_t0, target_spatial_res=1, cha1=3850, cha2=7999, n_minute=360)
+tdms_array, timestamps = get_tdms_array(dir_path)
 
-# corr_full = correlation(tdms_array, prepro_para, timestamps, save_corr=False)
-# plot_correlation(corr_full, prepro_para)
+corr_full = correlation(tdms_array, prepro_para, timestamps)
+plot_correlation(corr_full, prepro_para, save_corr=True)
