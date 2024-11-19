@@ -135,9 +135,10 @@ f, c, img, fmax_idx, U, t = get_dispersion(stream, dx, cmin, cmax, dc, fmax)
 out_name = corr_path[:-4] + '_dispersion.png'
 
 im, ax = plt.subplots(figsize=(7.0,5.0))
-ax.imshow(img[:,:],aspect='auto',origin='lower', extent=(f[0], f[fmax_idx-1], c[0], c[-1]), interpolation='bilinear')
+ax.imshow(img[:,:],aspect='auto', origin='lower', extent=(f[0], f[fmax_idx-1], c[0], c[-1]), interpolation='bilinear')
 ax.set_xlabel("Frequency (Hz)")
 ax.set_ylabel("Phase velocity (m/s)")
+bar = plt.colorbar(pad = 0.1) # if bad add in "format = format = lambda x, pos: '{:.1f}'.format(x*100)"
 im.savefig(f'./results/figures/{out_name}')
 
 # img.tofile('./results/checkpoints/phase_shift_img.txt', sep=',')
