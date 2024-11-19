@@ -187,4 +187,4 @@ def numerical_comparison(data_dict):
 
 # animated_spectrogram(tdms_array, prepro_para, task_t0, timestamps)
 
-# plot_gps_coords('res/linewalk_gps.csv')
+plot_gps_coords('results/linewalk_gps.csv')
