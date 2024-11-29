@@ -111,6 +111,22 @@ def get_dispersion(traces,dx,cmin,cmax,dc,fmax):
     return f,c,img,fmax_idx,U,t
 
 
+def print_freq_c_summaries(img, c, fs=None):
+    if not fs:
+        fs = [1, 5, 10, 15, 20, 30, 40, 50]
+    for f in fs:
+        max_c = c[np.argmax(img[:,f])]
+        min_c = c[np.argmin(img[:,f])]
+        print(f'c responses at {f} Hz: max {max_c} m/s; min {min_c} m/s')
+
+
+def get_max_cs(img, c):
+    max_cs = []
+    for f in img.T:
+        max_cs.append(np.argmax(f))
+    return max_cs
+
+
 prepro_para = {
     'cha1': 2000,
     'cha2': 7999,
@@ -126,7 +142,6 @@ cmax = 8000.0
 dc = 10.0
 fmax = 50.0     # down from 100 for fmax testing
 
-
 stream = load_xcorr('test_stack.txt')
 # stream = load_xcorr('../../temp_data_store/test_stack.txt')
 
@@ -134,14 +149,9 @@ f, c, img, fmax_idx, U, t = get_dispersion(stream, dx, cmin, cmax, dc, fmax)
 
 im, ax = plt.subplots(figsize=(7.0,5.0))
 ax.imshow(img[:,:],aspect='auto',origin='lower', extent=(f[0], f[fmax_idx-1], c[0], c[-1]), interpolation='bilinear')
+ax.plot(get_max_cs(img, c), color='black')
 im.savefig('./results/figures/test_dispersion.png')
 
 im, ax = plt.subplots(figsize=(7.0,5.0))
 ax.imshow(img[:,:],aspect='auto',origin='lower', interpolation='bilinear')
 im.savefig('./results/figures/test_dispersion_no_extent.png')
-
-img.tofile('./results/checkpoints/phase_shift_img.txt', sep=',')
-f.tofile('./results/checkpoints/phase_shift_f.txt',   sep=',')
-U.tofile('./results/checkpoints/phase_shift_U.txt',   sep=',')
-c.tofile('./results/checkpoints/phase_shift_c.txt',   sep=',')
-t.tofile('./results/checkpoints/phase_shift_t.txt',   sep=',')
