@@ -3,7 +3,7 @@
 #SBATCH --mail-user=gfs19eku@uea.ac.uk
 #SBATCH -p compute-64-512
 #SBATCH --mem=48G
-#SBATCH --time=4-00:00
+#SBATCH --time=7-00:00
 #SBATCH -o results/correlation-%j.out
 #SBATCH -e results/correlation-%j.err
 

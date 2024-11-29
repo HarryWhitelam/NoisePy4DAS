@@ -6,6 +6,7 @@ sys.path.append("./DASstore")
 import os
 import matplotlib.pyplot as plt
 import numpy as np
+import numpy.polynomial.polynomial as poly
 import scipy
 from obspy import Stream, Trace
 from obspy.core.trace import Stats
@@ -48,7 +49,6 @@ def get_fft(traces, dt, nt):
     """
     f = scipy.fft.fftfreq(nt,dt) #f = np.linspace(0.0, 1.0/(2.0*dt), nt//2)
     U = scipy.fft.fft(traces)
-    print(f'U: {U}')
     if np.size(U.shape) > 1:
         return U[:,0:nt//2], f[0:nt//2]
     else:
@@ -108,6 +108,9 @@ def get_dispersion(traces,dx,cmin,cmax,dc,fmax):
                 print(f"Warning: Small or zero values in U[:, {fi}]")
             img[ci,fi] = np.abs(np.dot(dx * np.exp(1.0j*k*x), U[:,fi]/np.abs(U[:,fi])))
 
+        ### 21/11/24: attempting frequency normalisation
+        # img[:, fi] /= np.max(img[:, fi])
+    
     return f,c,img,fmax_idx,U,t
 
 
@@ -120,10 +123,10 @@ def print_freq_c_summaries(img, c, fs=None):
         print(f'c responses at {f} Hz: max {max_c} m/s; min {min_c} m/s')
 
 
-def get_max_cs(img, c):
+def get_max_cs(img, c, fmax_idx):
     max_cs = []
-    for f in img.T:
-        max_cs.append(np.argmax(f))
+    for f in img[:, 0:fmax_idx].T:
+        max_cs.append(c[np.argmax(f)])
     return max_cs
 
 
@@ -138,20 +141,33 @@ prepro_para = {
 
 dx = 1
 cmin = 50.0
-cmax = 8000.0
-dc = 10.0
+cmax = 1500.0   # 27/11 dropped from 4000.0 to 1500.0
+dc = 5.0       # 27/11 changed from 10.0 to 5.0
 fmax = 50.0     # down from 100 for fmax testing
 
-stream = load_xcorr('test_stack.txt')
-# stream = load_xcorr('../../temp_data_store/test_stack.txt')
+### FREQ NORM DISABLED!!!
+
+# corr_path = './results/saved_corrs/2024-01-19 09:19:07_360mins_f1:49.9__3850:7999_1m.txt'
+corr_path = './results/saved_corrs/2024-01-19 09:19:07_360mins_f1:49.9__3850:5750_1m.txt'
+stream = load_xcorr(corr_path)
 
 f, c, img, fmax_idx, U, t = get_dispersion(stream, dx, cmin, cmax, dc, fmax)
 
-im, ax = plt.subplots(figsize=(7.0,5.0))
-ax.imshow(img[:,:],aspect='auto',origin='lower', extent=(f[0], f[fmax_idx-1], c[0], c[-1]), interpolation='bilinear')
-ax.plot(get_max_cs(img, c), color='black')
-im.savefig('./results/figures/test_dispersion.png')
+out_name = corr_path.split('/')[3][:-4] + '_dispersion.png'
 
-im, ax = plt.subplots(figsize=(7.0,5.0))
-ax.imshow(img[:,:],aspect='auto',origin='lower', interpolation='bilinear')
-im.savefig('./results/figures/test_dispersion_no_extent.png')
+fig, ax = plt.subplots(figsize=(7.0,5.0))
+im = ax.imshow(img[:,:],aspect='auto', origin='lower', extent=(f[0], f[fmax_idx-1], c[0], c[-1]), interpolation='bilinear')
+
+### max amplitude plot + line of best fit
+max_cs = get_max_cs(img, c, fmax_idx)
+ax.plot(f, max_cs, color='black')
+coefs = poly.polyfit(f, max_cs, 4)
+ffit = poly.polyval(f, coefs)
+plt.plot(f, ffit, color='red')
+
+ax.set_xlabel("Frequency (Hz)")
+ax.set_ylabel("Phase velocity (m/s)")
+bar = fig.colorbar(im, ax=ax, pad = 0.1) # if bad add in "format = format = lambda x, pos: '{:.1f}'.format(x*100)"
+fig.savefig(f'./results/figures/{out_name}')
+
+print_freq_c_summaries(img, c)
