@@ -76,8 +76,7 @@ n_minute = 360
 
 
 ## SINGLE RUN: 
-print("max over std bumped up to 30 for testing")
-prepro_para = set_prepro_parameters(dir_path, task_t0, target_spatial_res=1, cha1=3850, cha2=7999, n_minute=360)
+prepro_para = set_prepro_parameters(dir_path, task_t0, target_spatial_res=0.25, cha1=3850, cha2=5750, n_minute=360)
 tdms_array, timestamps = get_tdms_array(dir_path)
 
 corr_full = correlation(tdms_array, prepro_para, timestamps)

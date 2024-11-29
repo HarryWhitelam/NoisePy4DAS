@@ -141,7 +141,7 @@ def set_prepro_parameters(dir_path, task_t0, freqmin=1, freqmax=49.9, target_spa
     smoothspect_N      = 100               # moving window length to smooth spectrum amplitude (points)
     maxlag             = 4                 # lags of cross-correlation to save (sec)
 
-    max_over_std       = 30                # threshold to remove window of bad signals: set it to 10*9 if prefer not to remove them     19/11/24: CHANGED FROM 20 FOR TESTING
+    max_over_std       = 30                # threshold to remove window of bad signals: set it to 10*9 if prefer not to remove them
 
     cc_len             = 60                # correlate length in second
     # step               = 60                # stepping length in second [not used]
@@ -290,10 +290,10 @@ def plot_correlation(corr, prepro_para, cmap_param='bwr', save_corr=False):
     # follow convention of: {timestamp}_{t length}_{channels}.png
     t_start = task_t0 - timedelta(minutes=n_minute)
     plt.tight_layout()
-    plt.savefig(f'./results/figures/{t_start}_{n_minute}mins_f{freqmin}:{freqmax}__{cha1}:{cha2}_{target_spatial_res}m.png')
+    out_name = f'{t_start}_{n_minute}mins_f{freqmin}:{freqmax}__{cha1}:{cha2}_{target_spatial_res}m'
+    plt.savefig(f'./results/figures/{out_name}.png')
     if save_corr:
-        np.savetxt(f'{t_start}_{n_minute}mins_f{freqmin}:{freqmax}__{cha1}:{cha2}_{target_spatial_res}m.txt', corr[:, :(effective_cha2 - cha1)], delimiter=",")
-        print(f'Saving corr output: (effective_cha2 - cha1): {effective_cha2} - {cha1} = {effective_cha2 - cha1}')
+        np.savetxt(f'./results/saved_corrs/{out_name}.txt', corr[:, :(effective_cha2 - cha1)], delimiter=",")
 
 
 def plot_multiple_correlations(corrs, prepro_para, vars, experiment_var, cmap_param='bwr', save_corr=False):
@@ -333,13 +333,18 @@ def plot_multiple_correlations(corrs, prepro_para, vars, experiment_var, cmap_pa
     match experiment_var:
         case 'channels':
             plt.savefig(f'./results/figures/{t_start}_{n_minute}mins_f{freqmin}:{freqmax}__{target_spatial_res}m__{experiment_var}_experiment.png')
+            out_name = f'{t_start}_{n_minute}mins_f{freqmin}:{freqmax}__{vars[0][0]}:{vars[0][1]}_{target_spatial_res}m'
         case 'frequencies':
             plt.savefig(f'./results/figures/{t_start}_{n_minute}mins__{cha1}:{cha2}_{target_spatial_res}m__{experiment_var}_experiment.png')
+            out_name = f'{t_start}_{n_minute}mins_f{vars[0][0]}:{vars[0][1]}__{cha1}:{cha2}_{target_spatial_res}m'
         case 'stack_length':
             plt.savefig(f'./results/figures/{t_start}_f{freqmin}:{freqmax}__{cha1}:{cha2}_{target_spatial_res}m__{experiment_var}_experiment.png')
+            out_name = f'{t_start}_{vars[0]}mins_f{freqmin}:{freqmax}__{cha1}:{cha2}_{target_spatial_res}m'
         case 'spatial_res':
             plt.savefig(f'./results/figures/{t_start}_{n_minute}mins_f{freqmin}:{freqmax}__{cha1}:{cha2}__{experiment_var}_experiment.png')
+            out_name = f'{t_start}_{n_minute}mins_f{freqmin}:{freqmax}__{cha1}:{cha2}_{vars[0]}m'
         case _:
             plt.savefig(f'./results/figures/{t_start}_{n_minute}mins_f{freqmin}:{freqmax}__{cha1}:{cha2}_{target_spatial_res}m.png')
+            out_name = f'{t_start}_{n_minute}mins_f{freqmin}:{freqmax}__{cha1}:{cha2}_{target_spatial_res}m'
     if save_corr:
-        np.savetxt(f'{t_start}_{n_minute}mins_f{freqmin}:{freqmax}__{cha1}:{cha2}_{target_spatial_res}m.txt', corrs[0][:, :(effective_cha2 - cha1)], delimiter=",")
+        np.savetxt(f'./results/saved_corrs/{out_name}.txt', corrs[0][:, :(effective_cha2 - cha1)], delimiter=",")
