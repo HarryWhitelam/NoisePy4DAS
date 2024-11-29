@@ -211,6 +211,9 @@ def correlation(tdms_array, prepro_para, timestamps):
                                 (trace_stdS > 0) &
                         (np.isnan(trace_stdS) == 0))[0]
         if not len(ind):
+            print(f"max_over_std check:	{np.where(trace_stdS < prepro_para['max_over_std'])[0]}")
+            print(f"      over 0 check: {np.where(trace_stdS > 0)[0]}")
+            print(f"       isnan check: {np.where(np.isnan(trace_stdS) == 0)[0]}")
             raise ValueError('the max_over_std criteria is too high which results in no data')
         sta = cha_list[ind]
         white_spect = data[ind]
@@ -288,7 +291,7 @@ def plot_correlation(corr, prepro_para, cmap_param='bwr', save_corr=False):
     plt.tight_layout()
     plt.savefig(f'./results/figures/{t_start}_{n_minute}mins_f{freqmin}:{freqmax}__{cha1}:{cha2}_{target_spatial_res}m.png')
     if save_corr:
-        np.savetxt(f'{t_start}_{n_minute}mins_f{freqmin}:{freqmax}__{cha1}:{cha2}_{target_spatial_res}m.txt', corr, delimiter=",")
+        np.savetxt(f'{t_start}_{n_minute}mins_f{freqmin}:{freqmax}__{cha1}:{cha2}_{target_spatial_res}m.txt', corr[:, :(effective_cha2- cha1)], delimiter=",")
 
 
 def plot_multiple_correlations(corrs, prepro_para, vars, experiment_var, cmap_param='bwr', save_corr=False):
@@ -337,4 +340,4 @@ def plot_multiple_correlations(corrs, prepro_para, vars, experiment_var, cmap_pa
         case _:
             plt.savefig(f'./results/figures/{t_start}_{n_minute}mins_f{freqmin}:{freqmax}__{cha1}:{cha2}_{target_spatial_res}m.png')
     if save_corr:
-        np.savetxt(f'{t_start}_{n_minute}mins_f{freqmin}:{freqmax}__{cha1}:{cha2}_{target_spatial_res}m.txt', corrs[0], delimiter=",")
+        np.savetxt(f'{t_start}_{n_minute}mins_f{freqmin}:{freqmax}__{cha1}:{cha2}_{target_spatial_res}m.txt', corrs[0][:, :(effective_cha2- cha1)], delimiter=",")
