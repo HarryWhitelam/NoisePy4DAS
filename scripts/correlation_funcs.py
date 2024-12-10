@@ -85,7 +85,7 @@ def correlation(dir_path, prepro_para):
     first_file = os.listdir(dir_path)[0]
     if first_file.endswith('.tdms'):
         file_array, timestamps = get_tdms_array(dir_path)
-    elif first_file.endswith('.segy') or first_file.endswith('.su'):
+    elif first_file.endswith(('.segy', '.su')):
         file_array, timestamps = get_segy_array(dir_path)
     
     corr_full = np.zeros([n_lag, n_pair], dtype = np.float32)

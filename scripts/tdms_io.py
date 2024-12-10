@@ -17,27 +17,28 @@ from skimage.transform import resize
 
 
 def get_tdms_array(dir_path:str):
-    tdms_array = np.empty(int(len([filename for filename in os.listdir(dir_path) if filename.endswith(".tdms")])), dtype=TdmsReader)
-        # tdms_array = np.empty(len(os.listdir(dir_path)), TdmsReader)
+    tdms_array = [None] * int(len([filename for filename in os.listdir(dir_path) if filename.endswith(".tdms")]))
     timestamps = np.empty(len(tdms_array), dtype=datetime)
-
     for count, file in enumerate([filename for filename in os.listdir(dir_path) if filename.endswith(".tdms")]):
         tdms = TdmsReader(dir_path + file)
         tdms_array[count] = tdms
         timestamps[count] = tdms.get_properties().get('GPSTimeStamp')
+    tdms_array = [x for y, x in sorted(zip(timestamps, tdms_array))]
     timestamps.sort()
     print(f'{len(timestamps)} files available from {timestamps[0]} to {timestamps[-1]}')
-
-    return [x for y, x in sorted(zip(np.array(timestamps), tdms_array))], timestamps
+    return np.array(tdms_array, dtype=TdmsReader), timestamps
 
 
 def get_segy_array(dir_path):
-    segy_array = np.empty(len(os.listdir(dir_path)), TdmsReader)
+    segy_array = [None] * int(len([filename for filename in os.listdir(dir_path) if filename.endswith(('.segy', '.su'))]))
     timestamps = np.empty(len(segy_array), dtype=datetime)
-    
-    for count, file in enumerate(os.listdir(dir_path)):
-        if file.endswith('.segy') or file.endswith('.su'):
-            pass
+    for count, file in enumerate([filename for filename in os.listdir(dir_path) if filename.endswith(('.segy', '.su'))]):
+        segy_array[count] = file
+        timestamps[count] = datetime.strptime(file.split('UTC')[-1].split('.')[0].replace('_', ''), '%Y%m%d%H%M%S')     # FIXME: this is v hard coded (will only work with our naming structure)
+    segy_array = [x for y, x in sorted(zip(timestamps, segy_array))]
+    timestamps.sort()
+    print(f'{len(timestamps)} files available from {timestamps[0]} to {timestamps[-1]}')
+    return np.array(segy_array), timestamps
 
 
 def get_closest_index(timestamps:np.ndarray, time:datetime):
@@ -174,6 +175,8 @@ def downsample_data(data:np.ndarray, props:dict, target_sps:float, target_spatia
 
 
 def downsample_tdms(file_path:str, save_as:str=None, out_dir:str=None, target_sps:int=None, target_spatial_res:int=None):
+    if not file_path.endswith('.tdms'):
+        return
     tdms = TdmsReader(file_path)
     props = tdms.get_properties()
     data = tdms.get_data()
@@ -256,7 +259,7 @@ def max_min_strain_rate(data:np.ndarray, channel_bounds:list=None):
 
 ### downsample test for HPC data: 
 # dir_path = "../../../../gpfs/data/DAS_data/30mins/"
-dir_path = './'
+dir_path = '../../temp_data_store/FirstData/'
 out_dir = os.path.join(dir_path, 'segys/')
 directory = os.fsencode(dir_path)
 
@@ -265,16 +268,16 @@ props_bool = False      # boolean to only export properties once
 for file in os.listdir(directory):
     file_path = os.path.join(dir_path, os.fsdecode(file))
     
-    if not props_bool:
-        tdms = TdmsReader(file_path)
-        file_info = tdms.fileinfo
-        tdms._read_properties()
-        properties = tdms.get_properties()
+    # if not props_bool:
+    #     tdms = TdmsReader(file_path)
+    #     file_info = tdms.fileinfo
+    #     tdms._read_properties()
+    #     properties = tdms.get_properties()
 
-        with open(os.path.join(out_dir, 'properties.p'), 'wb') as prop_path:
-            pickle.dump(properties, prop_path)
+    #     with open(os.path.join(out_dir, 'properties.p'), 'wb') as prop_path:
+    #         pickle.dump(properties, prop_path)
 
-        with open(os.path.join(out_dir, 'file_info.p'), 'wb') as file_info_path:
-            pickle.dump(file_info, file_info_path)
+    #     with open(os.path.join(out_dir, 'file_info.p'), 'wb') as file_info_path:
+    #         pickle.dump(file_info, file_info_path)
     
     downsample_tdms(file_path, save_as='SEGY', out_dir=out_dir, target_sps=None, target_spatial_res=1)
