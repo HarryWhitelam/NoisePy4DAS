@@ -256,28 +256,30 @@ def max_min_strain_rate(data:np.ndarray, channel_bounds:list=None):
     return max_val, max_idx, min_val, min_idx
 
 
+if __name__ == '__main__':
+    ### downsample test for HPC data: 
+    dir_path = "../../../../gpfs/data/DAS_data/30mins/"
+    out_dir = os.path.join(dir_path, 'segys/')
+    dir_list = os.listdir(os.fsencode(dir_path))
 
-### downsample test for HPC data: 
-# dir_path = "../../../../gpfs/data/DAS_data/30mins/"
-dir_path = '../../temp_data_store/FirstData/'
-out_dir = os.path.join(dir_path, 'segys/')
-directory = os.fsencode(dir_path)
+    pbar = tqdm(range(len(dir_list)))
 
-
-props_bool = False      # boolean to only export properties once
-for file in os.listdir(directory):
-    file_path = os.path.join(dir_path, os.fsdecode(file))
+    props_bool = False      # boolean to only export properties once
+    for file_idx in pbar:
+        file_path = os.path.join(dir_path, os.fsdecode(dir_list[file_idx]))
+        if not os.path.isfile(file_path): continue
+        
+        if not props_bool:
+            tdms = TdmsReader(file_path)
+            file_info = tdms.fileinfo
+            tdms._read_properties()
+            properties = tdms.get_properties()
     
-    # if not props_bool:
-    #     tdms = TdmsReader(file_path)
-    #     file_info = tdms.fileinfo
-    #     tdms._read_properties()
-    #     properties = tdms.get_properties()
-
-    #     with open(os.path.join(out_dir, 'properties.p'), 'wb') as prop_path:
-    #         pickle.dump(properties, prop_path)
-
-    #     with open(os.path.join(out_dir, 'file_info.p'), 'wb') as file_info_path:
-    #         pickle.dump(file_info, file_info_path)
+            with open(os.path.join(out_dir, 'properties.p'), 'wb') as prop_path:
+                pickle.dump(properties, prop_path)
     
-    downsample_tdms(file_path, save_as='SEGY', out_dir=out_dir, target_sps=None, target_spatial_res=1)
+            with open(os.path.join(out_dir, 'file_info.p'), 'wb') as file_info_path:
+                pickle.dump(file_info, file_info_path)
+            props_bool = True
+    
+        downsample_tdms(file_path, save_as='SEGY', out_dir=out_dir, target_sps=None, target_spatial_res=1)
