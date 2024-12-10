@@ -70,7 +70,6 @@ dir_path = "../../../../gpfs/data/DAS_data/Data/"
 # dir_path = "../../temp_data_store/FirstData/"
 task_t0 = datetime(year = 2024, month = 1, day = 19,
                    hour = 15, minute = 19, second = 7, microsecond = 0)
-n_minute = 360
 
 # frequency_experiment()
 

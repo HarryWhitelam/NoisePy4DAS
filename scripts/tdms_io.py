@@ -6,10 +6,10 @@ from TDMS_Read import TdmsReader
 import os
 import warnings
 import numpy as np
+import pickle
 from obspy import Stream, Trace, read
 from obspy.core.trace import Stats
 from obspy.core.utcdatetime import UTCDateTime
-from obspy.io.segy.segy import SEGYTraceHeader, SEGYFile
 from datetime import datetime, timedelta
 from math import floor, ceil
 from skimage.transform import resize
@@ -244,3 +244,28 @@ def max_min_strain_rate(data:np.ndarray, channel_bounds:list=None):
         min_idx += channel_bounds[0]
     
     return max_val, max_idx, min_val, min_idx
+
+
+
+### downsample test for HPC data: 
+dir_path = "../../../../gpfs/data/DAS_data/30mins/"
+out_dir = os.path.join(dir_path, 'segys/')
+directory = os.fsencode(dir_path)
+
+props_bool = False      # boolean to only export properties once
+for file in os.listdir(directory):
+    file_path = os.path.join(dir_path, os.fsdecode(file))
+    
+    if not props_bool:
+        tdms = TdmsReader(file_path)
+        file_info = tdms.fileinfo
+        tdms._read_properties()
+        properties = tdms.get_properties()
+
+        with open(os.path.join(out_dir, 'properties.p'), 'wb') as prop_path:
+            pickle.dump(properties, prop_path)
+
+        with open(os.path.join(out_dir, 'file_info.p'), 'wb') as file_info_path:
+            pickle.dump(file_info, file_info_path)
+    
+    downsample_tdms(file_path, save_as='SEGY', out_dir=out_dir, target_sps=None, target_spatial_res=1)
