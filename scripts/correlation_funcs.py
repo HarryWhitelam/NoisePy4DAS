@@ -7,7 +7,7 @@ sys.path.append("./DASstore")
 
 import os
 import time
-from math import floor, ceil
+from math import floor
 from datetime import datetime, timedelta
 
 import numpy as np
@@ -17,109 +17,7 @@ from tqdm import tqdm
 
 # from dasstore.zarr import Client
 from TDMS_Read import TdmsReader
-
-
-def get_tdms_array(dir_path):
-    tdms_array = np.empty(len(os.listdir(dir_path)), TdmsReader)
-    timestamps = np.empty(len(tdms_array), dtype=datetime)
-
-    for count, file in enumerate(os.listdir(dir_path)):
-        if file.endswith('.tdms'):
-            tdms = TdmsReader(dir_path + file)
-            tdms_array[count] = tdms
-            timestamps[count] = tdms.get_properties().get('GPSTimeStamp')
-    timestamps.sort()
-    print(f'{len(timestamps)} files available from {timestamps[0]} to {timestamps[-1]}')
-
-    return [x for y, x in sorted(zip(np.array(timestamps), tdms_array))], timestamps
-
-
-def get_closest_index(timestamps, time):
-    """retrieves the index of the closest timestamp within timestamps to time
-
-    Args:
-        timestamps (ndarray): _description_
-        time (timestamp): _description_
-
-    Returns:
-        _type_: _description_
-    """    
-    # array must be sorted
-    idx = timestamps.searchsorted(time)
-    idx = np.clip(idx, 1, len(timestamps)-1)
-    idx -= time - timestamps[idx-1] < timestamps[idx] - time
-    return idx
-
-
-def scale(data, props):
-    """Takes in TDMS data and its properties using them to scale the data as it is compressed within the file format. Returns scaled data
-
-    strainrate nm ms = 116 * iDAS values * sampling freq (Hz) / gauge length (m)
-
-    Keyword arguments:
-        data -- numpy array containing TDMS data
-        props -- properties struct from TDMS reader
-    """
-    data = data / 8192
-    data = (116 * data * props.get('SamplingFrequency[Hz]')) / props.get('GaugeLength')
-    return data
-
-
-# returns a delta-long array of tdms files starting at the timestamp given
-def get_time_subset(tdms_array, start_time, timestamps, tpf, delta=timedelta(seconds=60), tolerance=300):
-    # tolerence is the time in s that the closest timestamp can be away from the desired start_time
-    # timestamps MUST be orted, and align with TDMS array (i.e. timestamps[n] represents tdms_array[n]
-    start_idx = get_closest_index(timestamps, start_time)
-    if abs((start_time - timestamps[start_idx]).total_seconds()) > tolerance:
-        print(f"WARNING: first tdms is over {tolerance} seconds away from the given start time.")
-    
-    end_time = timestamps[start_idx] + delta - timedelta(seconds=tpf)
-    end_idx = get_closest_index(timestamps, end_time)
-    if (end_time - timestamps[end_idx]).total_seconds() > tolerance:
-        print(f"WARNING: end tdms is over {tolerance} seconds away from the calculated end time.")
-    # print(f"Given t={start_time}, snippet selected from {timestamps[start_idx]} to {timestamps[end_idx]}!")
-    
-    if (end_idx - start_idx + 1) != (delta.seconds/tpf):
-        print(f"WARNING: time subset not continuous; only {(end_idx - start_idx + 1)*tpf} seconds represented.")
-    
-    return tdms_array[start_idx:end_idx+1]
-
-
-# returns a duration of data (default is 60s)
-def get_data_from_array(tdms_array, channels, prepro_para, start_time, timestamps, duration=60):
-    cha1, cha2, sps, spatial_ratio = prepro_para.get('cha1'), prepro_para.get('cha2'), prepro_para.get('sps'), prepro_para.get('spatial_ratio')
-
-    # make it so that if start_time is not a timestamp, the first minute in the array is returned
-    current_time = 0
-    tdms_t_size = tdms_array[0].get_data(channels[0], channels[1]).shape[0]
-    minute_data = np.empty((int(duration * sps), ceil((cha2-cha1+1)/spatial_ratio)))
-    
-    if type(start_time) is datetime:
-        tdms_array = get_time_subset(tdms_array, start_time, timestamps, tpf=tdms_t_size/sps, delta=timedelta(seconds=duration), tolerance=30)   # tpf = time per file
-    
-    while current_time != duration and len(tdms_array) != 0:
-        # data = tdms_array.pop(0).get_data(cha1, cha2)
-        tdms = tdms_array.pop(0)
-        props = tdms.get_properties()
-        data = tdms.get_data(cha1, cha2)
-        data = scale(data, props)
-        data = data[:, ::spatial_ratio]
-        current_row = current_time * sps
-        minute_data[int(current_row):int(current_row+(tdms_t_size)), :] = data
-        current_time += tdms_t_size/sps
-    
-    return minute_data
-
-
-def get_dir_properties(dir_path):
-    with os.scandir(dir_path) as files:
-        for file in files:
-            if file.is_file():
-                file_path = file.path
-                break
-    tdms_file = TdmsReader(file_path)
-    tdms_file._read_properties()
-    return tdms_file.get_properties()
+from tdms_io import get_tdms_array, get_segy_array, get_data_from_array, get_dir_properties
 
 
 def set_prepro_parameters(dir_path, task_t0, freqmin=1, freqmax=49.9, target_spatial_res=5, cha1=4000, cha2=7999, n_minute=60):
@@ -180,8 +78,15 @@ def set_prepro_parameters(dir_path, task_t0, freqmin=1, freqmax=49.9, target_spa
     }
 
 
-def correlation(tdms_array, prepro_para, timestamps):
+def correlation(dir_path, prepro_para):
     n_lag, n_pair, cha1, cha2, effective_cha2, cha_list, n_minute, task_t0 = prepro_para.get('n_lag'), prepro_para.get('n_pair'), prepro_para.get('cha1'), prepro_para.get('cha2'), prepro_para.get('effective_cha2'), prepro_para.get('cha_list'), prepro_para.get('n_minute'), prepro_para.get('task_t0')
+    
+    ### FIXME: these funcs require a LOT of listdir calls, could be made more efficient in the future
+    first_file = os.listdir(dir_path)[0]
+    if first_file.endswith('.tdms'):
+        file_array, timestamps = get_tdms_array(dir_path)
+    elif first_file.endswith(('.segy', '.su')):
+        file_array, timestamps = get_segy_array(dir_path)
     
     corr_full = np.zeros([n_lag, n_pair], dtype = np.float32)
     stack_full = np.zeros([1, n_pair], dtype = np.int32)
@@ -192,7 +97,7 @@ def correlation(tdms_array, prepro_para, timestamps):
     for imin in pbar:
         t0 = time.time()
         pbar.set_description(f"Processing {task_t0}")
-        tdata = get_data_from_array(tdms_array, [cha1, cha2], prepro_para, task_t0, timestamps)
+        tdata = get_data_from_array(file_array, [cha1, cha2], prepro_para, task_t0, timestamps)
         task_t0 += timedelta(minutes = 1)
         
         t_query += time.time() - t0

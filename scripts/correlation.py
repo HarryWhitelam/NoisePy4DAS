@@ -76,7 +76,6 @@ task_t0 = datetime(year = 2024, month = 1, day = 19,
 
 ## SINGLE RUN: 
 prepro_para = set_prepro_parameters(dir_path, task_t0, target_spatial_res=0.25, cha1=3850, cha2=5750, n_minute=360)
-tdms_array, timestamps = get_tdms_array(dir_path)
 
-corr_full = correlation(tdms_array, prepro_para, timestamps)
+corr_full = correlation(dir_path, prepro_para)
 plot_correlation(corr_full, prepro_para, save_corr=True)
