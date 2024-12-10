@@ -17,18 +17,7 @@ from tqdm import tqdm
 
 # from dasstore.zarr import Client
 from TDMS_Read import TdmsReader
-from tdms_io import get_tdms_array, get_segy_array, get_data_from_array
-
-
-def get_dir_properties(dir_path):
-    with os.scandir(dir_path) as files:
-        for file in files:
-            if file.is_file():
-                file_path = file.path
-                break
-    tdms_file = TdmsReader(file_path)
-    tdms_file._read_properties()
-    return tdms_file.get_properties()
+from tdms_io import get_tdms_array, get_segy_array, get_data_from_array, get_dir_properties
 
 
 def set_prepro_parameters(dir_path, task_t0, freqmin=1, freqmax=49.9, target_spatial_res=5, cha1=4000, cha2=7999, n_minute=60):
