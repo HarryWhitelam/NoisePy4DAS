@@ -96,6 +96,8 @@ def get_data_from_array(tdms_array, channels, prepro_para, start_time, timestamp
     
     if type(start_time) is datetime:
         tdms_array = get_time_subset(tdms_array, start_time, timestamps, tpf=tdms_t_size/sps, delta=timedelta(seconds=duration), tolerance=30)   # tpf = time per file
+    else: 
+        print(f'WARNING: start_time is not a datetime object, correct start time not specified within data. start_time: {start_time}')
     
     while current_time != duration and len(tdms_array) != 0:
         # data = tdms_array.pop(0).get_data(cha1, cha2)
