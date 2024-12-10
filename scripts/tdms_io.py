@@ -7,6 +7,7 @@ import os
 import warnings
 import numpy as np
 import pickle
+from tqdm import tqdm
 from obspy import Stream, Trace, read
 from obspy.core.trace import Stats
 from obspy.core.utcdatetime import UTCDateTime
@@ -21,14 +22,22 @@ def get_tdms_array(dir_path:str):
     timestamps = np.empty(len(tdms_array), dtype=datetime)
 
     for count, file in enumerate([filename for filename in os.listdir(dir_path) if filename.endswith(".tdms")]):
-        if file.endswith('.tdms'):
-            tdms = TdmsReader(dir_path + file)
-            tdms_array[count] = tdms
-            timestamps[count] = tdms.get_properties().get('GPSTimeStamp')
+        tdms = TdmsReader(dir_path + file)
+        tdms_array[count] = tdms
+        timestamps[count] = tdms.get_properties().get('GPSTimeStamp')
     timestamps.sort()
     print(f'{len(timestamps)} files available from {timestamps[0]} to {timestamps[-1]}')
 
     return [x for y, x in sorted(zip(np.array(timestamps), tdms_array))], timestamps
+
+
+def get_segy_array(dir_path):
+    segy_array = np.empty(len(os.listdir(dir_path)), TdmsReader)
+    timestamps = np.empty(len(segy_array), dtype=datetime)
+    
+    for count, file in enumerate(os.listdir(dir_path)):
+        if file.endswith('.segy') or file.endswith('.su'):
+            pass
 
 
 def get_closest_index(timestamps:np.ndarray, time:datetime):
@@ -60,7 +69,7 @@ def get_dir_properties(dir_path:str):
 
 
 # returns a delta-long array of tdms files starting at the timestamp given
-def get_time_subset(tdms_array:np.ndarray, start_time:datetime, timestamps:np.ndarray, tpf:int, delta:int, tolerance:int=300):
+def get_time_subset(tdms_array:np.ndarray, start_time:datetime, timestamps:np.ndarray, tpf:int, delta:timedelta=timedelta(seconds=60), tolerance:int=300):
     # tolerence is the time in s that the closest timestamp can be away from the desired start_time
     # timestamps MUST be orted, and align with TDMS array (i.e. timestamps[n] represents tdms_array[n]
     start_idx = get_closest_index(timestamps, start_time)
@@ -83,18 +92,18 @@ def get_time_subset(tdms_array:np.ndarray, start_time:datetime, timestamps:np.nd
 
 
 # returns a duration of data (default is 60s)
-def get_data_from_array(tdms_array:list, prepro_para:dict, start_time:datetime, timestamps:np.ndarray):
-    cha1, cha2, sps, spatial_ratio, duration = prepro_para.get('cha1'), prepro_para.get('cha2'), prepro_para.get('sps'), prepro_para.get('spatial_ratio'), prepro_para.get('duration')
+def get_data_from_array(tdms_array:list, prepro_para:dict, start_time:datetime, timestamps:np.ndarray, duration:timedelta):
+    cha1, cha2, sps, spatial_ratio = prepro_para.get('cha1'), prepro_para.get('cha2'), prepro_para.get('sps'), prepro_para.get('spatial_ratio')
 
     # make it so that if start_time is not a timestamp, the first minute in the array is returned
     current_time = 0
     tdms_t_size = tdms_array[0].get_data(cha1, cha2).shape[0]
-    tdata = np.empty((int(duration * sps), floor((cha2-cha1+1)/spatial_ratio)))
+    tdata = np.empty((int(duration.seconds * sps), floor((cha2-cha1+1)/spatial_ratio)))
     
     if type(start_time) is datetime:
-        tdms_array = get_time_subset(tdms_array, start_time, timestamps, tpf=tdms_t_size/sps, delta=timedelta(seconds=duration), tolerance=30)   # tpf = time per file
+        tdms_array = get_time_subset(tdms_array, start_time, timestamps, tpf=tdms_t_size/sps, delta=duration, tolerance=30)   # tpf = time per file
     
-    while current_time != duration and len(tdms_array) != 0:
+    while current_time != duration.seconds and len(tdms_array) != 0:
         tdms = tdms_array.pop(0)
         props = tdms.get_properties()
         data = tdms.get_data(cha1, cha2)
@@ -202,8 +211,6 @@ def downsample_tdms(file_path:str, save_as:str=None, out_dir:str=None, target_sp
 def read_das_file(file_path:str):
     stream = read(file_path)
     stats = stream[0].stats
-    print(file_path, '\n', stats)
-    input("HALT")
     
     npts = stats.npts           # temporal axis
     ncha = len(stream)          # spatial axis
@@ -248,9 +255,11 @@ def max_min_strain_rate(data:np.ndarray, channel_bounds:list=None):
 
 
 ### downsample test for HPC data: 
-dir_path = "../../../../gpfs/data/DAS_data/30mins/"
+# dir_path = "../../../../gpfs/data/DAS_data/30mins/"
+dir_path = './'
 out_dir = os.path.join(dir_path, 'segys/')
 directory = os.fsencode(dir_path)
+
 
 props_bool = False      # boolean to only export properties once
 for file in os.listdir(directory):
