@@ -271,7 +271,7 @@ if __name__ == '__main__':
             file_info = tdms.fileinfo
             tdms._read_properties()
             properties = tdms.get_properties()
-    
+
             with open(os.path.join(out_dir, 'properties.p'), 'wb') as prop_path:
                 pickle.dump(properties, prop_path)
     
