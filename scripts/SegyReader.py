@@ -61,3 +61,8 @@ class SegyReader:
             data[:, count] = trace.data
         
         return data
+
+    def _read_properties(self):
+        ### This is a redundant function, the TdmsReader needs to run this before props can be added. 
+        ### This function PURELY exists to prevent errors. It offers NO functionality at present. 
+        return
