@@ -222,7 +222,7 @@ def get_das_dir_properties(path:str, is_file_path:bool=False):
     
     props = {}
     with open(path, 'rb') as props_path:
-        pickle.dump(props, props_path)
+        props = pickle.load(props_path)
     return props
 
 
@@ -280,7 +280,7 @@ if __name__ == '__main__':
     dir_path = "../../../../gpfs/data/DAS_data/30mins/"
     out_dir = os.path.join(dir_path, 'segys/')
     dir_list = os.listdir(os.fsencode(dir_path))
-
+    
     pbar = tqdm(range(len(dir_list)))
 
     props_bool = False      # boolean to only export properties once
