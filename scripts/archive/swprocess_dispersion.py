@@ -34,8 +34,8 @@ dir_path = "/home/harry/Documents/0. PhD/DiSTANS/su_das/"
 # }
 # task_t0 = datetime(year = 2023, month = 11, day = 9, 
 #                    hour = 13, minute = 42, second = 57)
-# tdms_array, timestamps = tdms_io.get_tdms_array(dir_path)
-# tdata = tdms_io.get_data_from_array(tdms_array, prepro_para, task_t0, timestamps)
+# reader_array, timestamps = tdms_io.get_reader_array(dir_path)
+# tdata = tdms_io.get_data_from_array(reader_array, prepro_para, task_t0, timestamps)
 
 ### importing the stack data!
 tdata = np.loadtxt('test_stack.txt', delimiter=',')
