@@ -26,7 +26,7 @@ def get_tdms_array(dir_path:str):
     tdms_array = [x for y, x in sorted(zip(timestamps, tdms_array))]
     timestamps.sort()
     print(f'{len(timestamps)} files available from {timestamps[0]} to {timestamps[-1]}')
-    return np.array(tdms_array, dtype=TdmsReader), timestamps
+    return tdms_array, timestamps
 
 
 def get_segy_array(dir_path):
@@ -38,7 +38,7 @@ def get_segy_array(dir_path):
     segy_array = [x for y, x in sorted(zip(timestamps, segy_array))]
     timestamps.sort()
     print(f'{len(timestamps)} files available from {timestamps[0]} to {timestamps[-1]}')
-    return np.array(segy_array), timestamps
+    return segy_array, timestamps
 
 
 def get_closest_index(timestamps:np.ndarray, time:datetime):
@@ -93,21 +93,25 @@ def get_time_subset(tdms_array:np.ndarray, start_time:datetime, timestamps:np.nd
 
 
 # returns a duration of data (default is 60s)
-def get_data_from_array(tdms_array:list, prepro_para:dict, start_time:datetime, timestamps:np.ndarray, duration:timedelta):
+def get_data_from_array(data_array:list, prepro_para:dict, start_time:datetime, timestamps:np.ndarray, duration:timedelta):
     cha1, cha2, sps, spatial_ratio = prepro_para.get('cha1'), prepro_para.get('cha2'), prepro_para.get('sps'), prepro_para.get('spatial_ratio')
 
     # make it so that if start_time is not a timestamp, the first minute in the array is returned
     current_time = 0
-    tdms_t_size = tdms_array[0].get_data(cha1, cha2).shape[0]
-    tdata = np.empty((int(duration.seconds * sps), floor((cha2-cha1+1)/spatial_ratio)))
+    if isinstance(data_array[0], TdmsReader):
+        tdms_t_size = data_array[0].get_data(cha1, cha2).shape[0]
+    elif isinstance(data_array[0], str):
+        tdms_t_size = read_das_file(data_array[0])[0].shape[0]
+    tdata = np.empty((int(duration.seconds * sps), ceil((cha2-cha1+1)/spatial_ratio)))
+    data_array = get_time_subset(data_array, start_time, timestamps, tpf=tdms_t_size/sps, delta=duration, tolerance=30)   # tpf = time per file
     
-    if type(start_time) is datetime:
-        tdms_array = get_time_subset(tdms_array, start_time, timestamps, tpf=tdms_t_size/sps, delta=duration, tolerance=30)   # tpf = time per file
-    
-    while current_time != duration.seconds and len(tdms_array) != 0:
-        tdms = tdms_array.pop(0)
-        props = tdms.get_properties()
-        data = tdms.get_data(cha1, cha2)
+    while current_time != duration.seconds and len(data_array) != 0:
+        data_file = data_array.pop(0)
+        if isinstance(data_file, TdmsReader):
+            props = data_file.get_properties()
+            data = data_file.get_data(cha1, cha2)
+        elif isinstance(data_file, str):
+            data, props = read_das_file(data_file)
         data = scale(data, props)
         data = data[:, ::spatial_ratio]
         current_row = current_time * sps
@@ -211,8 +215,23 @@ def downsample_tdms(file_path:str, save_as:str=None, out_dir:str=None, target_sp
         stream.write(out_name, format=save_as)
 
 
+def get_das_dir_properties(path:str, is_file_path:bool=False):
+    if is_file_path:
+        path = path.rsplit('/', 1)[0] + '/'
+    path += 'properties.p'
+    
+    props = {}
+    with open(path, 'rb') as props_path:
+        pickle.dump(props, props_path)
+    return props
+
+
 def read_das_file(file_path:str):
-    stream = read(file_path)
+    props = get_das_dir_properties(file_path, is_file_path=True)
+    print(props)
+    print(type(props))
+    
+    stream = read(file_path)    
     stats = stream[0].stats
     
     npts = stats.npts           # temporal axis
@@ -222,7 +241,7 @@ def read_das_file(file_path:str):
     for count, trace in enumerate(stream):
         data[:, count] = trace.data
     
-    return data, stats
+    return data, props
 
 
 def max_min_strain_rate(data:np.ndarray, channel_bounds:list=None):

@@ -97,7 +97,7 @@ def correlation(dir_path, prepro_para):
     for imin in pbar:
         t0 = time.time()
         pbar.set_description(f"Processing {task_t0}")
-        tdata = get_data_from_array(file_array, [cha1, cha2], prepro_para, task_t0, timestamps)
+        tdata = get_data_from_array(file_array, prepro_para, task_t0, timestamps, duration=timedelta(seconds=60))
         task_t0 += timedelta(minutes = 1)
         
         t_query += time.time() - t0
