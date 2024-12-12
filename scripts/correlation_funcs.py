@@ -17,7 +17,7 @@ from tqdm import tqdm
 
 # from dasstore.zarr import Client
 from TDMS_Read import TdmsReader
-from tdms_io import get_tdms_array, get_segy_array, get_data_from_array, get_dir_properties
+from tdms_io import get_reader_array, get_segy_array, get_data_from_array, get_dir_properties
 
 
 def set_prepro_parameters(dir_path, task_t0, freqmin=1, freqmax=49.9, target_spatial_res=5, cha1=4000, cha2=7999, n_minute=60):
@@ -84,7 +84,7 @@ def correlation(dir_path, prepro_para):
     ### FIXME: these funcs require a LOT of listdir calls, could be made more efficient in the future
     first_file = os.listdir(dir_path)[0]
     if first_file.endswith('.tdms'):
-        file_array, timestamps = get_tdms_array(dir_path)
+        file_array, timestamps = get_reader_array(dir_path)
     elif first_file.endswith(('.segy', '.su')):
         file_array, timestamps = get_segy_array(dir_path)
     

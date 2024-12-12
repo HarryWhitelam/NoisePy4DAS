@@ -3,12 +3,13 @@ sys.path.append("./src")
 sys.path.append("./DASstore")
 
 from TDMS_Read import TdmsReader
+from SegyReader import SegyReader
 import os
 import warnings
 import numpy as np
 import pickle
 from tqdm import tqdm
-from obspy import Stream, Trace, read
+from obspy import Stream, Trace
 from obspy.core.trace import Stats
 from obspy.core.utcdatetime import UTCDateTime
 from datetime import datetime, timedelta
@@ -16,29 +17,35 @@ from math import floor, ceil
 from skimage.transform import resize
 
 
-def get_tdms_array(dir_path:str):
-    tdms_array = [None] * int(len([filename for filename in os.listdir(dir_path) if filename.endswith(".tdms")]))
-    timestamps = np.empty(len(tdms_array), dtype=datetime)
-    for count, file in enumerate([filename for filename in os.listdir(dir_path) if filename.endswith(".tdms")]):
-        tdms = TdmsReader(dir_path + file)
-        tdms_array[count] = tdms
-        timestamps[count] = tdms.get_properties().get('GPSTimeStamp')
-    tdms_array = [x for y, x in sorted(zip(timestamps, tdms_array))]
+def get_reader_array(dir_path:str):
+    dir_list = [filename for filename in os.listdir(dir_path) if filename.endswith(file_ext)]
+    file_ext = '.' + dir_list[0].rsplit('.', 1)[1]
+    reader_array = [None] * int(len(dir_list))
+    timestamps = np.empty(len(reader_array), dtype=datetime)
+    for count, file in enumerate(dir_list):
+        match file_ext:
+            case '.tdms':
+                reader = TdmsReader(dir_path + file)
+            case '.segy':
+                reader = SegyReader(dir_path + file)
+        reader_array[count] = reader
+        timestamps[count] = reader.get_properties().get('GPSTimeStamp')
+    reader_array = [x for y, x in sorted(zip(timestamps, reader_array))]
     timestamps.sort()
     print(f'{len(timestamps)} files available from {timestamps[0]} to {timestamps[-1]}')
-    return tdms_array, timestamps
+    return reader_array, timestamps
 
 
-def get_segy_array(dir_path):
-    segy_array = [None] * int(len([filename for filename in os.listdir(dir_path) if filename.endswith(('.segy', '.su'))]))
-    timestamps = np.empty(len(segy_array), dtype=datetime)
-    for count, file in enumerate([filename for filename in os.listdir(dir_path) if filename.endswith(('.segy', '.su'))]):
-        segy_array[count] = file
-        timestamps[count] = datetime.strptime(file.split('UTC')[-1].split('.')[0].replace('_', ''), '%Y%m%d%H%M%S')     # FIXME: this is v hard coded (will only work with our naming structure)
-    segy_array = [x for y, x in sorted(zip(timestamps, segy_array))]
-    timestamps.sort()
-    print(f'{len(timestamps)} files available from {timestamps[0]} to {timestamps[-1]}')
-    return segy_array, timestamps
+# def get_segy_array(dir_path):
+#     segy_array = [None] * int(len([filename for filename in os.listdir(dir_path) if filename.endswith(('.segy', '.su'))]))
+#     timestamps = np.empty(len(segy_array), dtype=datetime)
+#     for count, file in enumerate([filename for filename in os.listdir(dir_path) if filename.endswith(('.segy', '.su'))]):
+#         segy_array[count] = file
+#         timestamps[count] = datetime.strptime(file.split('UTC')[-1].split('.')[0].replace('_', ''), '%Y%m%d%H%M%S')     # FIXME: this is v hard coded (will only work with our naming structure)
+#     segy_array = [x for y, x in sorted(zip(timestamps, segy_array))]
+#     timestamps.sort()
+#     print(f'{len(timestamps)} files available from {timestamps[0]} to {timestamps[-1]}')
+#     return segy_array, timestamps
 
 
 def get_closest_index(timestamps:np.ndarray, time:datetime):
@@ -63,25 +70,30 @@ def get_dir_properties(dir_path:str):
         for file in files:
             if file.is_file():
                 file_path = file.path
+                file_ext = '.' + file_path.rsplit('.', 1)[1]
                 break
-    tdms_file = TdmsReader(file_path)
-    tdms_file._read_properties()
-    return tdms_file.get_properties()
+    match file_ext:
+        case '.tdms':
+            file_reader = TdmsReader(file_path)
+        case '.segy':
+            file_reader = SegyReader(file_path)
+    file_reader._read_properties()
+    return file_reader.get_properties()
 
 
-# returns a delta-long array of tdms files starting at the timestamp given
-def get_time_subset(tdms_array:np.ndarray, start_time:datetime, timestamps:np.ndarray, tpf:int, delta:timedelta=timedelta(seconds=60), tolerance:int=300):
+# returns a delta-long array of reader files starting at the timestamp given
+def get_time_subset(reader_array:np.ndarray, start_time:datetime, timestamps:np.ndarray, tpf:int, delta:timedelta=timedelta(seconds=60), tolerance:int=300):
     # tolerence is the time in s that the closest timestamp can be away from the desired start_time
-    # timestamps MUST be orted, and align with TDMS array (i.e. timestamps[n] represents tdms_array[n]
+    # timestamps MUST be orted, and align with reader array (i.e. timestamps[n] represents reader_array[n]
     start_idx = get_closest_index(timestamps, start_time)
     if abs((start_time - timestamps[start_idx]).total_seconds()) > tolerance:
-        warnings.warn(f"Error: first tdms is over {tolerance} seconds away from the given start time.")
+        warnings.warn(f"Error: first file is over {tolerance} seconds away from the given start time.")
         return
     
     end_time = timestamps[start_idx] + delta - timedelta(seconds=tpf)
     end_idx = get_closest_index(timestamps, end_time)
     if (end_time - timestamps[end_idx]).total_seconds() > tolerance:
-        warnings.warn(f"WARNING: end tdms is over {tolerance} seconds away from the calculated end time.")
+        warnings.warn(f"WARNING: end file is over {tolerance} seconds away from the calculated end time.")
     # print(f"Given t={start_time}, snippet selected from {timestamps[start_idx]} to {timestamps[end_idx]}!")
     
     if (end_idx - start_idx + 1) != (delta.seconds/tpf):
@@ -89,7 +101,7 @@ def get_time_subset(tdms_array:np.ndarray, start_time:datetime, timestamps:np.nd
     # for i in range(start_idx, end_idx+1):
     #     print(timestamps[i])
     
-    return tdms_array[start_idx:end_idx+1]
+    return reader_array[start_idx:end_idx+1]
 
 
 # returns a duration of data (default is 60s)
@@ -98,37 +110,31 @@ def get_data_from_array(data_array:list, prepro_para:dict, start_time:datetime, 
 
     # make it so that if start_time is not a timestamp, the first minute in the array is returned
     current_time = 0
-    if isinstance(data_array[0], TdmsReader):
-        tdms_t_size = data_array[0].get_data(cha1, cha2).shape[0]
-    elif isinstance(data_array[0], str):
-        tdms_t_size = read_das_file(data_array[0])[0].shape[0]
+    t_size = data_array[0].get_data(cha1, cha2).shape[0]
     tdata = np.empty((int(duration.seconds * sps), ceil((cha2-cha1+1)/spatial_ratio)))
-    data_array = get_time_subset(data_array, start_time, timestamps, tpf=tdms_t_size/sps, delta=duration, tolerance=30)   # tpf = time per file
+    data_array = get_time_subset(data_array, start_time, timestamps, tpf=t_size/sps, delta=duration, tolerance=30)   # tpf = time per file
     
     while current_time != duration.seconds and len(data_array) != 0:
         data_file = data_array.pop(0)
-        if isinstance(data_file, TdmsReader):
-            props = data_file.get_properties()
-            data = data_file.get_data(cha1, cha2)
-        elif isinstance(data_file, str):
-            data, props = read_das_file(data_file)
+        props = data_file.get_properties()
+        data = data_file.get_data(cha1, cha2)
         data = scale(data, props)
         data = data[:, ::spatial_ratio]
         current_row = current_time * sps
-        tdata[int(current_row):int(current_row+(tdms_t_size)), :] = data
-        current_time += tdms_t_size/sps
+        tdata[int(current_row):int(current_row+(t_size)), :] = data
+        current_time += t_size/sps
     
     return tdata
 
 
 def scale(data:np.ndarray, props:dict):
-    """Takes in TDMS data and its properties using them to scale the data as it is compressed within the file format. Returns scaled data
+    """Takes in DAS data and its properties using them to scale the data as it is compressed within the file format. Returns scaled data
 
     strainrate nm/m/s = 116 * iDAS values * sampling freq (Hz) / gauge lenth (m)
 
     Keyword arguments:
-        data -- numpy array containing TDMS data
-        props -- properties struct from TDMS reader
+        data -- numpy array containing DAS data
+        props -- properties struct from DAS reader
     """
     data = data / 8192
     data = (116 * data * props.get('SamplingFrequency[Hz]')) / props.get('GaugeLength')
@@ -180,6 +186,7 @@ def downsample_data(data:np.ndarray, props:dict, target_sps:float, target_spatia
 
 def downsample_tdms(file_path:str, save_as:str=None, out_dir:str=None, target_sps:int=None, target_spatial_res:int=None):
     if not file_path.endswith('.tdms'):
+        warnings.warn(f'Not TDMS file! Use other downsampler please.')
         return
     tdms = TdmsReader(file_path)
     props = tdms.get_properties()
@@ -215,40 +222,11 @@ def downsample_tdms(file_path:str, save_as:str=None, out_dir:str=None, target_sp
         stream.write(out_name, format=save_as)
 
 
-def get_das_dir_properties(path:str, is_file_path:bool=False):
-    if is_file_path:
-        path = path.rsplit('/', 1)[0] + '/'
-    path += 'properties.p'
-    
-    props = {}
-    with open(path, 'rb') as props_path:
-        props = pickle.load(props_path)
-    return props
-
-
-def read_das_file(file_path:str):
-    props = get_das_dir_properties(file_path, is_file_path=True)
-    print(props)
-    print(type(props))
-    
-    stream = read(file_path)    
-    stats = stream[0].stats
-    
-    npts = stats.npts           # temporal axis
-    ncha = len(stream)          # spatial axis
-    data = np.empty(shape=(npts, ncha))
-    
-    for count, trace in enumerate(stream):
-        data[:, count] = trace.data
-    
-    return data, props
-
-
 def max_min_strain_rate(data:np.ndarray, channel_bounds:list=None):
-    """Takes in a 2D numpy array of TDMS data and returns the min and max values
+    """Takes in a 2D numpy array of DAS data and returns the min and max values
 
     Keyword arguments:
-        data -- A numpy array containing TDMS data
+        data -- A numpy array containing DAS data
     """
     max_val = 0
     max_idx = 0

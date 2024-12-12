@@ -35,14 +35,14 @@ def plot_gps_coords(file_path):
     plt.show()
 
 
-def psd_with_channel_slicing(tdms_array, prepro_para, task_t0, timestamps, channel_slices):
+def psd_with_channel_slicing(reader_array, prepro_para, task_t0, timestamps, channel_slices):
     fig, axs = plt.subplots(2, ceil(len(channel_slices)/2), figsize=(15, 10))
     
     for ax, channels in zip(axs.ravel(), channel_slices):
         plt.sca(ax)
         prepro_para['cha1'], prepro_para['cha2'] = channels[0], channels[1]
         
-        tdata = tdms_io.get_data_from_array(tdms_array, prepro_para, task_t0, timestamps)
+        tdata = tdms_io.get_data_from_array(reader_array, prepro_para, task_t0, timestamps)
         print(tdata.shape)
         # f, t, Sxx = spectrogram(tdata, prepro_para.get('sps'), mode="psd")
         
@@ -70,7 +70,7 @@ def psd_with_channel_slicing(tdms_array, prepro_para, task_t0, timestamps, chann
     plt.show()
 
 
-def animated_spectrogram(tdms_array, prepro_para, task_t0, timestamps):
+def animated_spectrogram(reader_array, prepro_para, task_t0, timestamps):
     def update(channel_idx):
         channel_data = tdata[:, channel_idx]
         
@@ -81,7 +81,7 @@ def animated_spectrogram(tdms_array, prepro_para, task_t0, timestamps):
         return line, title
     
     n_channels = ceil((prepro_para.get('cha2') - prepro_para.get('cha1') + 1) / prepro_para.get('spatial_ratio'))
-    tdata = tdms_io.get_data_from_array(tdms_array, prepro_para, task_t0, timestamps)
+    tdata = tdms_io.get_data_from_array(reader_array, prepro_para, task_t0, timestamps)
     freqs, psd = welch(tdata[:, 0].T, fs=prepro_para.get('sps'))
     
     fig, ax = plt.subplots(figsize=(12, 6))
@@ -180,11 +180,11 @@ def numerical_comparison(data_dict):
 # }
 # task_t0 = datetime(year = 2023, month = 11, day = 9, 
 #                    hour = 13, minute = 42, second = 57)
-# tdms_array, timestamps = tdms_io.get_tdms_array(dir_path)
+# reader_array, timestamps = tdms_io.get_reader_array(dir_path)
 
 # channel_slices = [[1500, 1500], [3000, 3000], [5000, 5000], [7000, 7000]]
-# # psd_with_channel_slicing(tdms_array, prepro_para, task_t0, timestamps, channel_slices)
+# # psd_with_channel_slicing(reader_array, prepro_para, task_t0, timestamps, channel_slices)
 
-# animated_spectrogram(tdms_array, prepro_para, task_t0, timestamps)
+# animated_spectrogram(reader_array, prepro_para, task_t0, timestamps)
 
 plot_gps_coords('results/linewalk_gps.csv')
