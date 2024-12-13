@@ -71,11 +71,11 @@ dir_path = "../../../../gpfs/data/DAS_data/Data/"
 task_t0 = datetime(year = 2024, month = 1, day = 19,
                    hour = 15, minute = 19, second = 7, microsecond = 0)
 
-# frequency_experiment()
+frequency_experiment()
 
 
 ## SINGLE RUN: 
-prepro_para = set_prepro_parameters(dir_path, task_t0, target_spatial_res=0.25, cha1=3850, cha2=5750, n_minute=360)
+# prepro_para = set_prepro_parameters(dir_path, task_t0, target_spatial_res=1, cha1=3850, cha2=5750, n_minute=360)
 
-corr_full = correlation(dir_path, prepro_para)
-plot_correlation(corr_full, prepro_para, save_corr=True)
+# corr_full = correlation(dir_path, prepro_para)
+# plot_correlation(corr_full, prepro_para, save_corr=True)

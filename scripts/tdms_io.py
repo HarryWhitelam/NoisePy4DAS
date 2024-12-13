@@ -26,7 +26,9 @@ def get_tdms_array(dir_path:str):
     tdms_array = [x for y, x in sorted(zip(timestamps, tdms_array))]
     timestamps.sort()
     print(f'{len(timestamps)} files available from {timestamps[0]} to {timestamps[-1]}')
-    return np.array(tdms_array, dtype=TdmsReader), timestamps
+    ### TIMESTAMP MATCH CHECK: 
+    print(f"{len(tdms_array)} tdms files from {tdms_array[0].get_properties().get('GPSTimeStamp')} to {tdms_array[-1].get_properties().get('GPSTimeStamp')}")
+    return tdms_array, timestamps
 
 
 def get_segy_array(dir_path):
@@ -38,7 +40,7 @@ def get_segy_array(dir_path):
     segy_array = [x for y, x in sorted(zip(timestamps, segy_array))]
     timestamps.sort()
     print(f'{len(timestamps)} files available from {timestamps[0]} to {timestamps[-1]}')
-    return np.array(segy_array), timestamps
+    return segy_array, timestamps
 
 
 def get_closest_index(timestamps:np.ndarray, time:datetime):
@@ -99,7 +101,7 @@ def get_data_from_array(tdms_array:list, prepro_para:dict, start_time:datetime, 
     # make it so that if start_time is not a timestamp, the first minute in the array is returned
     current_time = 0
     tdms_t_size = tdms_array[0].get_data(cha1, cha2).shape[0]
-    tdata = np.empty((int(duration.seconds * sps), floor((cha2-cha1+1)/spatial_ratio)))
+    tdata = np.empty((int(duration.seconds * sps), ceil((cha2-cha1+1)/spatial_ratio)))
     
     if type(start_time) is datetime:
         tdms_array = get_time_subset(tdms_array, start_time, timestamps, tpf=tdms_t_size/sps, delta=duration, tolerance=30)   # tpf = time per file

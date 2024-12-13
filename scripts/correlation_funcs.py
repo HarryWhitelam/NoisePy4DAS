@@ -20,7 +20,7 @@ from TDMS_Read import TdmsReader
 from tdms_io import get_tdms_array, get_segy_array, get_data_from_array, get_dir_properties
 
 
-def set_prepro_parameters(dir_path, task_t0, freqmin=1, freqmax=49.9, target_spatial_res=5, cha1=4000, cha2=7999, n_minute=60):
+def set_prepro_parameters(dir_path, task_t0, freqmin=1, freqmax=49.9, target_spatial_res=5, cha1=4000, cha2=7999, n_minute=360):
     properties = get_dir_properties(dir_path)
     
     cha_spacing = properties.get('SpatialResolution[m]') * properties.get('Fibre Length Multiplier')
@@ -97,7 +97,7 @@ def correlation(dir_path, prepro_para):
     for imin in pbar:
         t0 = time.time()
         pbar.set_description(f"Processing {task_t0}")
-        tdata = get_data_from_array(file_array, [cha1, cha2], prepro_para, task_t0, timestamps)
+        tdata = get_data_from_array(file_array, prepro_para, task_t0, timestamps, duration=timedelta(seconds=60))
         task_t0 += timedelta(minutes = 1)
         
         t_query += time.time() - t0

@@ -143,8 +143,8 @@ prepro_para = {
 
 # corr_path = './results/saved_corrs/2024-01-19 09:19:07_360mins_f1:49.9__3850:7999_1m.txt'
 # corr_path = './results/saved_corrs/2024-01-19 09:19:07_360mins_f1:49.9__3850:5750_1m.txt'
-corr_path = './results/saved_corrs/2024-01-19 09:19:07_360mins_f1:49.9__3850:7999_0.25m.txt'
-# corr_path = './results/saved_corrs/2024-01-19 09:19:07_360mins_f1:49.9__3850:5750_0.25m.txt'
+# corr_path = './results/saved_corrs/2024-01-19 09:19:07_360mins_f1:49.9__3850:7999_0.25m.txt'
+corr_path = './results/saved_corrs/2024-01-19 09:19:07_360mins_f1:49.9__3850:5750_0.25m.txt'
 stream = load_xcorr(corr_path)
 
 corr_name = corr_path.split('/')[3][:-4]
@@ -152,9 +152,9 @@ out_name = corr_name + '_dispersion'
 
 dx = float(corr_name.split('_')[-1].strip('m'))      # 06/12 made modular on corr_path
 cmin = 50.0
-cmax = 1500.0   # 27/11 dropped from 4000.0 to 1500.0
+cmax = 5000.0   # 27/11 dropped from 4000.0 to 1500.0
 dc = 5.0       # 27/11 changed from 10.0 to 5.0
-fmax = 50.0     # down from 100 for fmax testing
+fmax = 20.0     # down from 100 for fmax testing
 
 f, c, img, fmax_idx, U, t = get_dispersion(stream, dx, cmin, cmax, dc, fmax)
 
@@ -169,7 +169,7 @@ bar = fig.colorbar(im, ax=ax, pad = 0.1) # if bad add in "format = format = lamb
 ### max amplitude plot + line of best fit
 max_cs = get_max_cs(img, c, fmax_idx)
 # ax.plot(f, max_cs, color='black')     # removed max amps for just a line of best fit
-coefs = poly.polyfit(f, max_cs, 4)
+coefs = poly.polyfit(f, max_cs, 5)      # changed to 5th degree polynomial
 ffit = poly.polyval(f, coefs)
 plt.plot(f, ffit, color='red')
 
