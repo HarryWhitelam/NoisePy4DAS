@@ -24,10 +24,8 @@ def get_reader_array(dir_path:str):
     timestamps = np.empty(len(reader_array), dtype=datetime)
     for count, file in enumerate(dir_list):
         match file_ext:
-            case '.tdms':
-                reader = TdmsReader(dir_path + file)
-            case '.segy':
-                reader = SegyReader(dir_path + file)
+            case '.tdms': reader = TdmsReader(dir_path + file)
+            case '.segy': reader = SegyReader(dir_path + file)
         reader_array[count] = reader
         timestamps[count] = reader.get_properties().get('GPSTimeStamp')
     reader_array = [x for y, x in sorted(zip(timestamps, reader_array))]
@@ -73,10 +71,8 @@ def get_dir_properties(dir_path:str):
                 file_ext = '.' + file_path.rsplit('.', 1)[1]
                 break
     match file_ext:
-        case '.tdms':
-            file_reader = TdmsReader(file_path)
-        case '.segy':
-            file_reader = SegyReader(file_path)
+        case '.tdms': file_reader = TdmsReader(file_path)
+        case '.segy': file_reader = SegyReader(file_path)
     file_reader._read_properties()
     return file_reader.get_properties()
 
