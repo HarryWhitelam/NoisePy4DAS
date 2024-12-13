@@ -31,19 +31,21 @@ def get_reader_array(dir_path:str):
     reader_array = [x for y, x in sorted(zip(timestamps, reader_array))]
     timestamps.sort()
     print(f'{len(timestamps)} files available from {timestamps[0]} to {timestamps[-1]}')
+    ### TIMESTAMP MATCH CHECK: 
+    print(f"{len(reader_array)} files from {reader_array[0].get_properties().get('GPSTimeStamp')} to {reader_array[-1].get_properties().get('GPSTimeStamp')}")
     return reader_array, timestamps
 
 
-# def get_segy_array(dir_path):
-#     segy_array = [None] * int(len([filename for filename in os.listdir(dir_path) if filename.endswith(('.segy', '.su'))]))
-#     timestamps = np.empty(len(segy_array), dtype=datetime)
-#     for count, file in enumerate([filename for filename in os.listdir(dir_path) if filename.endswith(('.segy', '.su'))]):
-#         segy_array[count] = file
-#         timestamps[count] = datetime.strptime(file.split('UTC')[-1].split('.')[0].replace('_', ''), '%Y%m%d%H%M%S')     # FIXME: this is v hard coded (will only work with our naming structure)
-#     segy_array = [x for y, x in sorted(zip(timestamps, segy_array))]
-#     timestamps.sort()
-#     print(f'{len(timestamps)} files available from {timestamps[0]} to {timestamps[-1]}')
-#     return segy_array, timestamps
+def get_segy_array(dir_path):
+    segy_array = [None] * int(len([filename for filename in os.listdir(dir_path) if filename.endswith(('.segy', '.su'))]))
+    timestamps = np.empty(len(segy_array), dtype=datetime)
+    for count, file in enumerate([filename for filename in os.listdir(dir_path) if filename.endswith(('.segy', '.su'))]):
+        segy_array[count] = file
+        timestamps[count] = datetime.strptime(file.split('UTC')[-1].split('.')[0].replace('_', ''), '%Y%m%d%H%M%S')     # FIXME: this is v hard coded (will only work with our naming structure)
+    segy_array = [x for y, x in sorted(zip(timestamps, segy_array))]
+    timestamps.sort()
+    print(f'{len(timestamps)} files available from {timestamps[0]} to {timestamps[-1]}')
+    return segy_array, timestamps
 
 
 def get_closest_index(timestamps:np.ndarray, time:datetime):
