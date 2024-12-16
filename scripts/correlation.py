@@ -17,8 +17,7 @@ def channels_experiment():
     for chas in channels_range:
         print(f'Channels experiment subsection: {chas}')
         prepro_para = set_prepro_parameters(dir_path, task_t0, cha1=chas[0], cha2=chas[1])
-        reader_array, timestamps = get_reader_array(dir_path)
-        corr_full = correlation(reader_array, prepro_para, timestamps)
+        corr_full = correlation(dir_path, prepro_para)
         corrs.append(corr_full)
 
     plot_multiple_correlations(corrs, prepro_para, channels_range, 'channels', save_corr=False)
@@ -32,8 +31,7 @@ def frequency_experiment():
     for freqs in freq_range:
         print(f'Frequency experiment band: {freqs}')
         prepro_para = set_prepro_parameters(dir_path, task_t0, freqmin=freqs[0], freqmax=freqs[1], cha1=3850, cha2=7999, n_minute=360, target_spatial_res=1)
-        reader_array, timestamps = get_reader_array(dir_path)
-        corr_full = correlation(reader_array, prepro_para, timestamps)
+        corr_full = correlation(dir_path, prepro_para)
         corrs.append(corr_full)
 
     plot_multiple_correlations(corrs, prepro_para, freq_range, 'frequencies', save_corr=True)
@@ -46,8 +44,7 @@ def stack_length_experiment():
     for stack_length in stack_length_range:
         print(f'Stack length experiment: {stack_length}')
         prepro_para = set_prepro_parameters(dir_path, task_t0, n_minute=stack_length)
-        reader_array, timestamps = get_reader_array(dir_path)
-        corr_full = correlation(reader_array, prepro_para, timestamps)
+        corr_full = correlation(dir_path, prepro_para)
         corrs.append(corr_full)
 
     plot_multiple_correlations(corrs, prepro_para, stack_length_range, 'stack_length', save_corr=False)
@@ -60,8 +57,7 @@ def spatial_res_experiment():
     for spatial_res in spatial_res_range:
         print(f'Spatial resolution experiment: {spatial_res}')
         prepro_para = set_prepro_parameters(dir_path, task_t0, target_spatial_res=spatial_res)
-        reader_array, timestamps = get_reader_array(dir_path)
-        corr_full = correlation(reader_array, prepro_para, timestamps)
+        corr_full = correlation(dir_path, prepro_para)
         corrs.append(corr_full)
 
     plot_multiple_correlations(corrs, prepro_para, spatial_res_range, 'spatial_res', save_corr=False)

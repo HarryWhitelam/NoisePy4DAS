@@ -2,14 +2,18 @@ import tdms_io
 import numpy as np
 import pandas as pd
 import geopandas as gpd
-from scipy.signal import spectrogram, welch
+from scipy.signal import welch, ShortTimeFFT
+from scipy.signal.windows import gaussian
 from scipy.fft import rfft, rfftfreq
+from obspy.signal.filter import bandpass
 from datetime import datetime, timedelta
 import matplotlib.pyplot as plt
 from matplotlib.animation import FuncAnimation
 from skimage.util import compare_images
 import contextily as cx
 from math import ceil
+
+from tdms_io import get_reader_array, get_data_from_array
 
 
 def dms_to_dd(degrees, minutes=0, seconds=0):
@@ -168,23 +172,67 @@ def numerical_comparison(data_dict):
         print(f'Closest {col}: {closest}')
 
 
-# dir_path = "../../temp_data_store/"
+def ts_spectrogram(dir_path:str, prepro_para:dict, start_time:datetime, end_time:datetime):
+    reader_array, timestamps = get_reader_array(dir_path)
+    
+    delta = end_time - start_time
+    data = get_data_from_array(reader_array, prepro_para, start_time, timestamps, duration=delta)[:, 0]
+    
+    data = np.float32(bandpass(data,
+                            0.9 * prepro_para.get('freqmin'),
+                            1.1 * prepro_para.get('freqmax'),
+                            df=prepro_para.get('sps'),
+                            corners=4,
+                            zerophase=True))
+    
+    print(data.shape)
+    N = data.shape[0]
+    g_std = 12
+    gaussian_win = gaussian(100, g_std, sym=True)
+    stft = ShortTimeFFT(gaussian_win, hop=2, fs=prepro_para.get('sps'), scale_to='psd')
+    spec = stft.spectrogram(data)
+    
+    print(spec.shape)
+    
+    fig1, ax1 = plt.subplots(figsize=(6., 4.))
+    t_lo, t_hi = stft.extent(N)[:2]
+    ax1.set_title(rf"Spectrogram ({stft.m_num*stft.T:g}$\,s$ Gaussian " +
+                rf"window, $\sigma_t={g_std*stft.T:g}\,$s)")
+    ax1.set(xlabel=f"Time $t$ in seconds ({stft.p_num(N)} slices, " +
+                rf"$\Delta t = {stft.delta_t:g}\,$s)",
+            ylabel=f"Freq. $f$ in Hz ({stft.f_pts} bins, " +
+                rf"$\Delta f = {stft.delta_f:g}\,$Hz)",
+            xlim=(t_lo, t_hi))
+    spec = 10 * np.log10(np.fmax(spec, 1e-4))
+    im1 = ax1.imshow(spec, origin='lower', aspect='auto',
+                     extent=stft.extent(N), cmap='magma')     # stft.extent(N)
+    plt.ylim(prepro_para.get('freqmin'), prepro_para.get('freqmax'))
+    fig1.colorbar(im1, label='Power Spectral Density ' + r"$20\,\log_{10}|S_x(t, f)|$ in dB")
+    plt.show()
+    
+
+dir_path = "../../temp_data_store/FirstData/"
 # dir_path = "../../../../gpfs/data/DAS_data/Data/"
-# properties = tdms_io.get_dir_properties(dir_path)
-# prepro_para = {
-#     'cha1': 2000,
-#     'cha2': 2399,
-#     'sps': properties.get('SamplingFrequency[Hz]'),
-#     'spatial_ratio': int(1 / properties.get('SpatialResolution[m]')),          # int(target_spatial_res/spatial_res)
-#     'duration': timedelta(seconds=120).total_seconds(),
-# }
-# task_t0 = datetime(year = 2023, month = 11, day = 9, 
-#                    hour = 13, minute = 42, second = 57)
-# reader_array, timestamps = tdms_io.get_reader_array(dir_path)
+properties = tdms_io.get_dir_properties(dir_path)
+prepro_para = {
+    'cha1': 4000,
+    'cha2': 4001,
+    'sps': properties.get('SamplingFrequency[Hz]'),
+    'spatial_ratio': int(1 / properties.get('SpatialResolution[m]')),          # int(target_spatial_res/spatial_res)
+    'duration': timedelta(seconds=60).total_seconds(),
+    'freqmax': 49.9,
+    'freqmin': 1,
+}
+task_t0 = datetime(year = 2023, month = 11, day = 9, 
+                   hour = 13, minute = 41, second = 17)
+ts_spectrogram(dir_path, prepro_para, task_t0, task_t0+timedelta(minutes=1))
+
+
+# reader_array, timestamps = get_reader_array(dir_path)
 
 # channel_slices = [[1500, 1500], [3000, 3000], [5000, 5000], [7000, 7000]]
 # # psd_with_channel_slicing(reader_array, prepro_para, task_t0, timestamps, channel_slices)
 
 # animated_spectrogram(reader_array, prepro_para, task_t0, timestamps)
 
-plot_gps_coords('results/linewalk_gps.csv')
+# plot_gps_coords('results/linewalk_gps.csv')
