@@ -6,6 +6,7 @@ sys.path.append("./src")
 sys.path.append("./DASstore")
 
 import os
+from warnings import warn
 import time
 from math import floor
 from datetime import datetime, timedelta
@@ -17,7 +18,7 @@ from tqdm import tqdm
 
 # from dasstore.zarr import Client
 from TDMS_Read import TdmsReader
-from tdms_io import get_reader_array, get_segy_array, get_data_from_array, get_dir_properties
+from tdms_io import get_reader_array, get_data_from_array, get_dir_properties
 
 
 def set_prepro_parameters(dir_path, task_t0, freqmin=1, freqmax=49.9, target_spatial_res=5, cha1=4000, cha2=7999, n_minute=360):
@@ -78,7 +79,7 @@ def set_prepro_parameters(dir_path, task_t0, freqmin=1, freqmax=49.9, target_spa
     }
 
 
-def correlation(dir_path, prepro_para):
+def correlation(dir_path, prepro_para, corr_path=None):
     n_lag, n_pair, cha1, cha2, effective_cha2, cha_list, n_minute, task_t0 = prepro_para.get('n_lag'), prepro_para.get('n_pair'), prepro_para.get('cha1'), prepro_para.get('cha2'), prepro_para.get('effective_cha2'), prepro_para.get('cha_list'), prepro_para.get('n_minute'), prepro_para.get('task_t0')
     
     ### FIXME: these funcs require a LOT of listdir calls, could be made more efficient in the future
@@ -139,9 +140,17 @@ def correlation(dir_path, prepro_para):
             stack_full[:, iS + receiver_lst - sta[iiS]] += 1
             
         t_compute += time.time() - t1
-    corr_full /= stack_full
+    corr_full /= stack_full    
     print(f'corr_full max: {np.nanmax(corr_full)}; min: {np.nanmin(corr_full)}')
     print(f"{round(t_query, 2)} seconds in data query, {round(t_compute, 2)} seconds in xcorr computing")
+    
+    if corr_path:
+        saved_corr = np.loadtxt(corr_path, delimiter=',')
+        if saved_corr.shape == corr_full.shape:
+            corr_full += saved_corr
+        else: 
+            warn(f'Shape mismatch between current correlation matrix and saved correlation matrix: {corr_full.shape} (current) against {saved_corr.shape} (saved)')
+    
     return corr_full
 
 
@@ -197,7 +206,7 @@ def plot_correlation(corr, prepro_para, cmap_param='bwr', save_corr=False):
         np.savetxt(f'./results/saved_corrs/{out_name}.txt', corr[:, :(effective_cha2 - cha1)], delimiter=",")
 
 
-def plot_multiple_correlations(corrs, prepro_para, vars, experiment_var, cmap_param='bwr', save_corr=False):
+def plot_multiple_correlations(corrs:list, prepro_para:dict, vars, experiment_var:str, cmap_param:str='bwr', save_corr:bool=False):
     cha1, cha2, effective_cha2, spatial_ratio, cha_spacing, target_spatial_res, freqmin, freqmax, maxlag, n_minute, task_t0 = prepro_para.get('cha1'), prepro_para.get('cha2'), prepro_para.get('effective_cha2'), prepro_para.get('spatial_ratio'), prepro_para.get('cha_spacing'), prepro_para.get('target_spatial_res'), prepro_para.get('freqmin'), prepro_para.get('freqmax'), prepro_para.get('maxlag'), prepro_para.get('n_minute'), prepro_para.get('task_t0')
 
     nrows = len(vars) // 2 + (len(vars) % 2 > 0)
