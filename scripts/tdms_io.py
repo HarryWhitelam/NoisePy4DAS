@@ -18,7 +18,7 @@ from skimage.transform import resize
 
 
 def get_reader_array(dir_path:str):
-    dir_list = [filename for filename in os.listdir(dir_path) if filename.endswith(file_ext)]
+    dir_list = [filename for filename in os.listdir(dir_path) if filename.endswith(('.tdms', '.segy'))]
     file_ext = '.' + dir_list[0].rsplit('.', 1)[1]
     reader_array = [None] * int(len(dir_list))
     timestamps = np.empty(len(reader_array), dtype=datetime)
@@ -32,18 +32,6 @@ def get_reader_array(dir_path:str):
     timestamps.sort()
     print(f'{len(timestamps)} files available from {timestamps[0]} to {timestamps[-1]}')
     return reader_array, timestamps
-
-
-# def get_segy_array(dir_path):
-#     segy_array = [None] * int(len([filename for filename in os.listdir(dir_path) if filename.endswith(('.segy', '.su'))]))
-#     timestamps = np.empty(len(segy_array), dtype=datetime)
-#     for count, file in enumerate([filename for filename in os.listdir(dir_path) if filename.endswith(('.segy', '.su'))]):
-#         segy_array[count] = file
-#         timestamps[count] = datetime.strptime(file.split('UTC')[-1].split('.')[0].replace('_', ''), '%Y%m%d%H%M%S')     # FIXME: this is v hard coded (will only work with our naming structure)
-#     segy_array = [x for y, x in sorted(zip(timestamps, segy_array))]
-#     timestamps.sort()
-#     print(f'{len(timestamps)} files available from {timestamps[0]} to {timestamps[-1]}')
-#     return segy_array, timestamps
 
 
 def get_closest_index(timestamps:np.ndarray, time:datetime):
@@ -66,13 +54,14 @@ def get_closest_index(timestamps:np.ndarray, time:datetime):
 def get_dir_properties(dir_path:str):
     with os.scandir(dir_path) as files:
         for file in files:
-            if file.is_file():
+            if file.is_file() and file.path.endswith(('.tdms', '.segy')):
                 file_path = file.path
                 file_ext = '.' + file_path.rsplit('.', 1)[1]
                 break
     match file_ext:
         case '.tdms': file_reader = TdmsReader(file_path)
         case '.segy': file_reader = SegyReader(file_path)
+        case _: print("BAD FILE EXTENSION!!!!!!")
     file_reader._read_properties()
     return file_reader.get_properties()
 
@@ -249,6 +238,25 @@ def max_min_strain_rate(data:np.ndarray, channel_bounds:list=None):
     return max_val, max_idx, min_val, min_idx
 
 
+def nparray_to_obspy(data:np.ndarray, props:dict):
+    stats = Stats({
+        'network': 'DS',
+        'sampling_rate': props.get('SamplingFrequency[Hz]'),
+        'npts': data.shape[0],
+        'starttime': UTCDateTime(props.get('GPSTimeStamp')),
+    })
+    stats.update(props)
+    
+    stream = Stream()
+    for count, channel in enumerate(data.T):
+        stats.station = str(count)
+        trace = Trace(channel, stats)
+        trace.data = np.ascontiguousarray(trace.data)
+        stream += trace
+    
+    return stream
+
+
 if __name__ == '__main__':
     ### downsample test for HPC data: 
     dir_path = "../../../../gpfs/data/DAS_data/30mins/"
@@ -271,7 +279,7 @@ if __name__ == '__main__':
             with open(os.path.join(out_dir, 'properties.p'), 'wb') as prop_path:
                 pickle.dump(properties, prop_path)
     
-            with open(os.path.join(out_dir, 'file_info.p'), 'wb') as file_info_path:
+            with open(os.path.join(out_dir, 'fileinfo.p'), 'wb') as file_info_path:
                 pickle.dump(file_info, file_info_path)
             props_bool = True
     
