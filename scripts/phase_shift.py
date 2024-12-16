@@ -13,26 +13,6 @@ from obspy.core.trace import Stats
 # import dascore
 
 
-# def load_data(file_paths:list):
-#     stream = Stream()
-#     for file_path in file_paths:
-#         spool = dascore.spool(file_path)
-#         for patch in spool:
-#             stream += patch.io.to_obspy()
-#     return stream
-
-
-# def load_data(dir_path:str):
-#     stream = Stream()    
-#     for file in os.listdir(dir_path):
-#         if file.endswith(".tdms"):
-#             file_path = os.path.join(dir_path, file)
-#             spool = dascore.spool(file_path)
-#             for patch in spool:
-#                 stream += patch.io.to_obspy()
-#     return stream
-
-
 def load_xcorr(file_path):
     stream = Stream()
     xdata = np.loadtxt(file_path, delimiter=',')
@@ -119,8 +99,8 @@ def print_freq_c_summaries(img, c, fs=None):
         fs = [1, 5, 10, 15, 20, 30, 40, 50]
     for f in fs:
         max_c = c[np.argmax(img[:,f])]
-        min_c = c[np.argmin(img[:,f])]
-        print(f'c responses at {f} Hz: max {max_c} m/s; min {min_c} m/s')
+        # min_c = c[np.argmin(img[:,f])]
+        print(f'c responses at {f} Hz: max {max_c} m/s')
 
 
 def get_max_cs(img, c, fmax_idx):
@@ -152,7 +132,7 @@ out_name = corr_name + '_dispersion'
 
 dx = float(corr_name.split('_')[-1].strip('m'))      # 06/12 made modular on corr_path
 cmin = 50.0
-cmax = 5000.0   # 27/11 dropped from 4000.0 to 1500.0
+cmax = 1000.0   # 27/11 dropped from 4000.0 to 1500.0
 dc = 5.0       # 27/11 changed from 10.0 to 5.0
 fmax = 20.0     # down from 100 for fmax testing
 
@@ -160,19 +140,28 @@ f, c, img, fmax_idx, U, t = get_dispersion(stream, dx, cmin, cmax, dc, fmax)
 
 fig, ax = plt.subplots(figsize=(7.0,5.0))
 im = ax.imshow(img[:,:],aspect='auto', origin='lower', extent=(f[0], f[fmax_idx-1], c[0], c[-1]), interpolation='bilinear')
-fig.savefig(f'./results/figures/{out_name}.png')
-
 ax.set_xlabel("Frequency (Hz)")
 ax.set_ylabel("Phase velocity (m/s)")
 bar = fig.colorbar(im, ax=ax, pad = 0.1) # if bad add in "format = format = lambda x, pos: '{:.1f}'.format(x*100)"
+fig.savefig(f'./results/figures/{out_name}.png')
+
 
 ### max amplitude plot + line of best fit
-max_cs = get_max_cs(img, c, fmax_idx)
+# max_cs = get_max_cs(img, c, fmax_idx)
 # ax.plot(f, max_cs, color='black')     # removed max amps for just a line of best fit
-coefs = poly.polyfit(f, max_cs, 5)      # changed to 5th degree polynomial
-ffit = poly.polyval(f, coefs)
-plt.plot(f, ffit, color='red')
+# print(f'max_cs: {len(max_cs)}; f: {f.shape}')
+# coefs = poly.polyfit(f, max_cs, 4)
+# ffit = poly.polyval(f, coefs)
+# plt.plot(f, ffit, color='red')
+# fig.savefig(f'./results/figures/{out_name}_annotated.png')
 
-fig.savefig(f'./results/figures/{out_name}_annotated.png')
+
+### frequency normalisation
+img[:, fi] /= np.max(img[:, fi])
+fig, ax = plt.subplots(figsize=(7.0,5.0))
+im = ax.imshow(img[:,:],aspect='auto', origin='lower', extent=(f[0], f[fmax_idx-1], c[0], c[-1]), interpolation='bilinear')
+out_name += '_f_norm'
+fig.savefig(f'./results/figures/{out_name}.png')
+
 
 print_freq_c_summaries(img, c)

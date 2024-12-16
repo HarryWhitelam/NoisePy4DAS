@@ -82,11 +82,7 @@ def correlation(dir_path, prepro_para):
     n_lag, n_pair, cha1, cha2, effective_cha2, cha_list, n_minute, task_t0 = prepro_para.get('n_lag'), prepro_para.get('n_pair'), prepro_para.get('cha1'), prepro_para.get('cha2'), prepro_para.get('effective_cha2'), prepro_para.get('cha_list'), prepro_para.get('n_minute'), prepro_para.get('task_t0')
     
     ### FIXME: these funcs require a LOT of listdir calls, could be made more efficient in the future
-    first_file = os.listdir(dir_path)[0]
-    if first_file.endswith('.tdms'):
-        file_array, timestamps = get_reader_array(dir_path)
-    elif first_file.endswith(('.segy', '.su')):
-        file_array, timestamps = get_segy_array(dir_path)
+    file_array, timestamps = get_reader_array(dir_path)
     
     corr_full = np.zeros([n_lag, n_pair], dtype = np.float32)
     stack_full = np.zeros([1, n_pair], dtype = np.int32)

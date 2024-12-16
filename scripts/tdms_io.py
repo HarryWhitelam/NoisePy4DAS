@@ -18,7 +18,7 @@ from skimage.transform import resize
 
 
 def get_reader_array(dir_path:str):
-    dir_list = [filename for filename in os.listdir(dir_path) if filename.endswith(file_ext)]
+    dir_list = [filename for filename in os.listdir(dir_path) if filename.endswith(('.tdms', '.segy'))]
     file_ext = '.' + dir_list[0].rsplit('.', 1)[1]
     reader_array = [None] * int(len(dir_list))
     timestamps = np.empty(len(reader_array), dtype=datetime)
@@ -75,6 +75,7 @@ def get_dir_properties(dir_path:str):
     match file_ext:
         case '.tdms': file_reader = TdmsReader(file_path)
         case '.segy': file_reader = SegyReader(file_path)
+        case _: print("BAD FILE EXTENSION!!!!!!")
     file_reader._read_properties()
     return file_reader.get_properties()
 
