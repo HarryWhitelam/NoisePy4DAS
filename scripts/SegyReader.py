@@ -16,7 +16,7 @@ class SegyReader:
         self.fileinfo = self.get_dir_fileinfo()
     
     def get_data(self, cha1, cha2):
-        return self.data[:, cha1:cha2]
+        return self.data[:, cha1:cha2+1]
     
     def get_properties(self):
         return self.properties
@@ -53,7 +53,7 @@ class SegyReader:
         npts = stats.npts           # temporal axis
         ncha = len(stream)          # spatial axis
         data = np.empty(shape=(npts, ncha))
-        
+                
         for count, trace in enumerate(stream):
             data[:, count] = trace.data
         

@@ -62,16 +62,27 @@ def spatial_res_experiment():
 
     plot_multiple_correlations(corrs, prepro_para, spatial_res_range, 'spatial_res', save_corr=False)
 
-dir_path = "../../../../gpfs/data/DAS_data/Data/"
 # dir_path = "../../temp_data_store/FirstData/"
-task_t0 = datetime(year = 2024, month = 1, day = 19,
-                   hour = 15, minute = 19, second = 7, microsecond = 0)
+
+# dir_path = "../../../../gpfs/data/DAS_data/Data/"
+# task_t0 = datetime(year = 2024, month = 1, day = 19,
+#                    hour = 15, minute = 19, second = 7, microsecond = 0)
+
+# dir_path = "../../../../gpfs/data/DAS_data/30mins/segys/"               # RUNNING WITH SEGYS
+# task_t0 = datetime(year = 2023, month = 11, day = 9, 
+#                    hour = 13, minute = 39, second = 47, microsecond = 0)
+
+dir_path = "../../../../gpfs/scratch/gfs19eku/20240205/"
+task_t0 = datetime(year = 2024, month = 2, day = 5, 
+                   hour = 12, minute = 1, second = 0, microsecond = 0)
+
 
 # frequency_experiment()
 
 
 ## SINGLE RUN: 
-prepro_para = set_prepro_parameters(dir_path, task_t0, target_spatial_res=0.25, cha1=3850, cha2=5750, n_minute=360)
+prepro_para = set_prepro_parameters(dir_path, task_t0, target_spatial_res=0.25, cha1=3850, cha2=5750, n_minute=1440)
+# prepro_para = set_prepro_parameters(dir_path, task_t0, target_spatial_res=0.25, cha1=962, cha2=1437, n_minute=30)      # adapted for segy files at 1 m spacings therefore cha_num / 4
 
 corr_full = correlation(dir_path, prepro_para)
 plot_correlation(corr_full, prepro_para, save_corr=True)

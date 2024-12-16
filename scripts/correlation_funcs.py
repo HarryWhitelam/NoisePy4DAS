@@ -21,7 +21,7 @@ from TDMS_Read import TdmsReader
 from tdms_io import get_reader_array, get_data_from_array, get_dir_properties
 
 
-def set_prepro_parameters(dir_path, task_t0, freqmin=1, freqmax=49.9, target_spatial_res=5, cha1=4000, cha2=7999, n_minute=60):
+def set_prepro_parameters(dir_path, task_t0, freqmin=1, freqmax=49.9, target_spatial_res=5, cha1=4000, cha2=7999, n_minute=360):
     properties = get_dir_properties(dir_path)
     
     cha_spacing = properties.get('SpatialResolution[m]') * properties.get('Fibre Length Multiplier')
@@ -82,6 +82,7 @@ def set_prepro_parameters(dir_path, task_t0, freqmin=1, freqmax=49.9, target_spa
 def correlation(dir_path, prepro_para, corr_path=None):
     n_lag, n_pair, cha1, cha2, effective_cha2, cha_list, n_minute, task_t0 = prepro_para.get('n_lag'), prepro_para.get('n_pair'), prepro_para.get('cha1'), prepro_para.get('cha2'), prepro_para.get('effective_cha2'), prepro_para.get('cha_list'), prepro_para.get('n_minute'), prepro_para.get('task_t0')
     
+    ### FIXME: these funcs require a LOT of listdir calls, could be made more efficient in the future
     file_array, timestamps = get_reader_array(dir_path)
     
     corr_full = np.zeros([n_lag, n_pair], dtype = np.float32)
