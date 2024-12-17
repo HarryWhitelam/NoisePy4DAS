@@ -9,6 +9,7 @@ from obspy.signal.filter import bandpass
 from datetime import datetime, timedelta
 import matplotlib.pyplot as plt
 from matplotlib.animation import FuncAnimation
+from matplotlib.colors import LogNorm
 from skimage.util import compare_images
 import contextily as cx
 from math import ceil
@@ -184,13 +185,12 @@ def ts_spectrogram(dir_path:str, prepro_para:dict, start_time:datetime):
                             corners=4,
                             zerophase=True))
     
-    print(data.shape)
     N = data.shape[0]
     g_std = 12
     gaussian_win = gaussian(100, g_std, sym=True)
     stft = ShortTimeFFT(gaussian_win, hop=2, fs=prepro_para.get('sps'), scale_to='psd')
     spec = stft.spectrogram(data)
-    
+
     fig1, ax1 = plt.subplots(figsize=(6., 4.))
     t_lo, t_hi = stft.extent(N)[:2]
     ax1.set_title(rf"Spectrogram ({stft.m_num*stft.T:g}$\,s$ Gaussian " +
@@ -200,9 +200,10 @@ def ts_spectrogram(dir_path:str, prepro_para:dict, start_time:datetime):
             ylabel=f"Freq. $f$ in Hz ({stft.f_pts} bins, " +
                 rf"$\Delta f = {stft.delta_f:g}\,$Hz)",
             xlim=(t_lo, t_hi))
-    spec = 10 * np.log10(np.fmax(spec, 1e-4))
-    im1 = ax1.imshow(spec, origin='lower', aspect='auto',
-                     extent=stft.extent(N), cmap='magma')     # stft.extent(N)
+    print(f'spec max: {spec.max()}; spec min: {spec.min()}')
+    # spec = 10 * np.log10(np.fmax(spec, 1e-4))     # disabled for now, norm below is doing the same essentially
+    im1 = ax1.imshow(spec, origin='lower', aspect='auto', norm=LogNorm(vmin=1e-4), 
+                     extent=stft.extent(N), cmap='magma')
     plt.ylim(prepro_para.get('freqmin'), prepro_para.get('freqmax'))
     fig1.colorbar(im1, label='Power Spectral Density ' + r"$20\,\log_{10}|S_x(t, f)|$ in dB")
     plt.savefig('./results/figures/spectrograms/psd.png')
@@ -228,7 +229,6 @@ if __name__ == '__main__':
     task_t0 = datetime(year = 2023, month = 11, day = 9, 
                        hour = 13, minute = 41, second = 17)
     ts_spectrogram(dir_path, prepro_para, task_t0)
-
 
     # reader_array, timestamps = get_reader_array(dir_path)
 
