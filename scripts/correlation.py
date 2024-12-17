@@ -8,6 +8,7 @@ sys.path.append("./DASstore")
 
 from datetime import datetime
 from correlation_funcs import *
+from visualisation import ts_spectrogram
 
 
 def channels_experiment():
@@ -84,5 +85,6 @@ task_t0 = datetime(year = 2024, month = 2, day = 5,
 prepro_para = set_prepro_parameters(dir_path, task_t0, target_spatial_res=1, cha1=3850, cha2=5750, n_minute=4320)
 # prepro_para = set_prepro_parameters(dir_path, task_t0, target_spatial_res=0.25, cha1=962, cha2=1437, n_minute=30)      # adapted for segy files at 1 m spacings therefore cha_num / 4
 
+ts_spectrogram(dir_path, prepro_para, task_t0)
 corr_full = correlation(dir_path, prepro_para)
 plot_correlation(corr_full, prepro_para, save_corr=True)

@@ -71,7 +71,7 @@ def get_dir_properties(dir_path:str):
 # returns a delta-long array of reader files starting at the timestamp given
 def get_time_subset(reader_array:np.ndarray, start_time:datetime, timestamps:np.ndarray, tpf:int, delta:timedelta=timedelta(seconds=60), tolerance:int=300):
     # tolerence is the time in s that the closest timestamp can be away from the desired start_time
-    # timestamps MUST be orted, and align with reader array (i.e. timestamps[n] represents reader_array[n]
+    # timestamps MUST be orted, and align with reader array (i.e. timestamps[n] represents reader_array[n])
     start_idx = get_closest_index(timestamps, start_time)
     if abs((start_time - timestamps[start_idx]).total_seconds()) > tolerance:
         warnings.warn(f"Error: first file is over {tolerance} seconds away from the given start time.")

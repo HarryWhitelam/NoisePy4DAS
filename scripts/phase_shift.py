@@ -35,7 +35,7 @@ def get_fft(traces, dt, nt):
         return U[0:nt//2], f[0:nt//2]
 
 
-def get_dispersion(traces,dx,cmin,cmax,dc,fmax):
+def get_dispersion(traces, dx, cmin, cmax, dc, fmax, f_norm=False):
     """ calculate dispersion curves after Park et al. 1998
     INPUTS
     traces: SU traces
@@ -87,7 +87,10 @@ def get_dispersion(traces,dx,cmin,cmax,dc,fmax):
             if np.any(np.abs(U[:, fi]) < epsilon):
                 print(f"Warning: Small or zero values in U[:, {fi}]")
             img[ci,fi] = np.abs(np.dot(dx * np.exp(1.0j*k*x), U[:,fi]/np.abs(U[:,fi])))
-        
+
+        if f_norm:
+            img[:, fi] /= np.max(img[:, fi])
+    
     return f,c,img,fmax_idx,U,t
 
 
