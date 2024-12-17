@@ -225,15 +225,14 @@ if __name__ == '__main__':
         'duration': timedelta(hours=1),
         'freqmax': 49.9,
         'freqmin': 1,
-    }
-    task_t0 = datetime(year = 2023, month = 11, day = 9, 
-                       hour = 13, minute = 41, second = 17)
+    }    
+
     ts_spectrogram(dir_path, prepro_para, task_t0)
 
     # reader_array, timestamps = get_reader_array(dir_path)
 
     # channel_slices = [[1500, 1500], [3000, 3000], [5000, 5000], [7000, 7000]]
-    # # psd_with_channel_slicing(reader_array, prepro_para, task_t0, timestamps, channel_slices)
+    # psd_with_channel_slicing(reader_array, prepro_para, task_t0, timestamps, channel_slices)
 
     # animated_spectrogram(reader_array, prepro_para, task_t0, timestamps)
 
