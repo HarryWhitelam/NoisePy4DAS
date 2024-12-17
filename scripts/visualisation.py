@@ -172,11 +172,10 @@ def numerical_comparison(data_dict):
         print(f'Closest {col}: {closest}')
 
 
-def ts_spectrogram(dir_path:str, prepro_para:dict, start_time:datetime, end_time:datetime):
+def ts_spectrogram(dir_path:str, prepro_para:dict, start_time:datetime):
     reader_array, timestamps = get_reader_array(dir_path)
     
-    delta = end_time - start_time
-    data = get_data_from_array(reader_array, prepro_para, start_time, timestamps, duration=delta)[:, 0]
+    data = get_data_from_array(reader_array, prepro_para, start_time, timestamps, duration=prepro_para.get('duration'))[:, 0]
     
     data = np.float32(bandpass(data,
                             0.9 * prepro_para.get('freqmin'),
@@ -192,8 +191,6 @@ def ts_spectrogram(dir_path:str, prepro_para:dict, start_time:datetime, end_time
     stft = ShortTimeFFT(gaussian_win, hop=2, fs=prepro_para.get('sps'), scale_to='psd')
     spec = stft.spectrogram(data)
     
-    print(spec.shape)
-    
     fig1, ax1 = plt.subplots(figsize=(6., 4.))
     t_lo, t_hi = stft.extent(N)[:2]
     ax1.set_title(rf"Spectrogram ({stft.m_num*stft.T:g}$\,s$ Gaussian " +
@@ -208,31 +205,36 @@ def ts_spectrogram(dir_path:str, prepro_para:dict, start_time:datetime, end_time
                      extent=stft.extent(N), cmap='magma')     # stft.extent(N)
     plt.ylim(prepro_para.get('freqmin'), prepro_para.get('freqmax'))
     fig1.colorbar(im1, label='Power Spectral Density ' + r"$20\,\log_{10}|S_x(t, f)|$ in dB")
-    plt.show()
+    plt.savefig('./results/figures/spectrograms/psd.png')
+
+
+if __name__ == '__main__':
+    # dir_path = "../../temp_data_store/FirstData/"
+    # dir_path = "../../../../gpfs/data/DAS_data/Data/"
+    dir_path = "../../../../gpfs/scratch/gfs19eku/20240205/"
+    task_t0 = datetime(year = 2024, month = 2, day = 5, 
+                       hour = 12, minute = 1, second = 0, microsecond = 0)
     
-
-dir_path = "../../temp_data_store/FirstData/"
-# dir_path = "../../../../gpfs/data/DAS_data/Data/"
-properties = tdms_io.get_dir_properties(dir_path)
-prepro_para = {
-    'cha1': 4000,
-    'cha2': 4001,
-    'sps': properties.get('SamplingFrequency[Hz]'),
-    'spatial_ratio': int(1 / properties.get('SpatialResolution[m]')),          # int(target_spatial_res/spatial_res)
-    'duration': timedelta(seconds=60).total_seconds(),
-    'freqmax': 49.9,
-    'freqmin': 1,
-}
-task_t0 = datetime(year = 2023, month = 11, day = 9, 
-                   hour = 13, minute = 41, second = 17)
-ts_spectrogram(dir_path, prepro_para, task_t0, task_t0+timedelta(minutes=1))
+    properties = tdms_io.get_dir_properties(dir_path)
+    prepro_para = {
+        'cha1': 4000,
+        'cha2': 4001,
+        'sps': properties.get('SamplingFrequency[Hz]'),
+        'spatial_ratio': int(1 / properties.get('SpatialResolution[m]')),          # int(target_spatial_res/spatial_res)
+        'duration': timedelta(hours=1),
+        'freqmax': 49.9,
+        'freqmin': 1,
+    }
+    task_t0 = datetime(year = 2023, month = 11, day = 9, 
+                       hour = 13, minute = 41, second = 17)
+    ts_spectrogram(dir_path, prepro_para, task_t0)
 
 
-# reader_array, timestamps = get_reader_array(dir_path)
+    # reader_array, timestamps = get_reader_array(dir_path)
 
-# channel_slices = [[1500, 1500], [3000, 3000], [5000, 5000], [7000, 7000]]
-# # psd_with_channel_slicing(reader_array, prepro_para, task_t0, timestamps, channel_slices)
+    # channel_slices = [[1500, 1500], [3000, 3000], [5000, 5000], [7000, 7000]]
+    # # psd_with_channel_slicing(reader_array, prepro_para, task_t0, timestamps, channel_slices)
 
-# animated_spectrogram(reader_array, prepro_para, task_t0, timestamps)
+    # animated_spectrogram(reader_array, prepro_para, task_t0, timestamps)
 
-# plot_gps_coords('results/linewalk_gps.csv')
+    # plot_gps_coords('results/linewalk_gps.csv')
