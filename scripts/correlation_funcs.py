@@ -200,8 +200,12 @@ def plot_correlation(corr, prepro_para, cmap_param='bwr', save_corr=False):
     # follow convention of: {timestamp}_{t length}_{channels}.png
     t_start = task_t0 - timedelta(minutes=n_minute)
     plt.tight_layout()
+    
+    out_dir = f'{t_start}_{n_minute}mins_{cha1}:{cha2}/'
+    if not os.path.exists(out_dir):
+        os.makedirs(out_dir)
     out_name = f'{t_start}_{n_minute}mins_f{freqmin}:{freqmax}__{cha1}:{cha2}_{target_spatial_res}m'
-    plt.savefig(f'./results/figures/{out_name}.png')
+    plt.savefig(f'./results/figures/{out_dir}{out_name}.png')
     if save_corr:
         np.savetxt(f'./results/saved_corrs/{out_name}.txt', corr[:, :(effective_cha2 - cha1)], delimiter=",")
 
