@@ -173,10 +173,11 @@ def numerical_comparison(data_dict):
         print(f'Closest {col}: {closest}')
 
 
-def ts_spectrogram(dir_path:str, prepro_para:dict, start_time:datetime):
+def ts_spectrogram(dir_path:str, prepro_para:dict, t_start:datetime):
+    out_dir = f'{t_start}_{prepro_para.get('duration')}mins_{prepro_para.get('cha1')}:{prepro_para.get('cha2')}/'
     reader_array, timestamps = get_reader_array(dir_path)
     
-    data = get_data_from_array(reader_array, prepro_para, start_time, timestamps, duration=prepro_para.get('duration'))[:, 0]
+    data = get_data_from_array(reader_array, prepro_para, t_start, timestamps, duration=prepro_para.get('duration'))[:, 0]
     
     data = np.float32(bandpass(data,
                             0.9 * prepro_para.get('freqmin'),
@@ -188,13 +189,12 @@ def ts_spectrogram(dir_path:str, prepro_para:dict, start_time:datetime):
     N = data.shape[0]
     g_std = 12
     gaussian_win = gaussian(100, g_std, sym=True)
-    stft = ShortTimeFFT(gaussian_win, hop=2, fs=prepro_para.get('sps'), scale_to='psd')
+    stft = ShortTimeFFT(gaussian_win, hop=50, fs=prepro_para.get('sps'), scale_to='psd')
     spec = stft.spectrogram(data)
 
     fig1, ax1 = plt.subplots(figsize=(6., 4.))
     t_lo, t_hi = stft.extent(N)[:2]
-    ax1.set_title(rf"Spectrogram ({stft.m_num*stft.T:g}$\,s$ Gaussian " +
-                rf"window, $\sigma_t={g_std*stft.T:g}\,$s)")
+    ax1.set_title(rf"{t_start} at channel {prepro_para.get('cha1')}")
     ax1.set(xlabel=f"Time $t$ in seconds ({stft.p_num(N)} slices, " +
                 rf"$\Delta t = {stft.delta_t:g}\,$s)",
             ylabel=f"Freq. $f$ in Hz ({stft.f_pts} bins, " +
@@ -206,7 +206,7 @@ def ts_spectrogram(dir_path:str, prepro_para:dict, start_time:datetime):
                      extent=stft.extent(N), cmap='magma')
     plt.ylim(prepro_para.get('freqmin'), prepro_para.get('freqmax'))
     fig1.colorbar(im1, label='Power Spectral Density ' + r"$20\,\log_{10}|S_x(t, f)|$ in dB")
-    plt.savefig('./results/figures/spectrograms/psd.png')
+    plt.savefig(f'./results/figures/{out_dir}/psd.png')
 
 
 if __name__ == '__main__':
