@@ -71,7 +71,7 @@ last_channel = n_channels
 
 start_time = datetime(year=2024, month=1, day=10, hour=12, minute=3, second=40)
 target_time = datetime(year=2024, month=1, day=10, hour=12, minute=35, second=50)
-ms_diff = (target_time - start_time).seconds * 1000
+ms_diff = (target_time - start_time).total_seconds() * 1000
 
 first_time_sample = ms_diff - 10000
 second_time_sample = ms_diff + 10000

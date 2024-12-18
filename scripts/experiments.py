@@ -37,7 +37,7 @@ def initial_downsample_comparison():
 
     start_time = datetime(year=2023, month=11, day=9, hour=13, minute=49, second=37)
     target_time = datetime(year=2023, month=11, day=9, hour=13, minute=54, second=37)
-    ms_diff = (target_time - start_time).seconds * 1000
+    ms_diff = (target_time - start_time).total_seconds() * 1000
 
     first_time_sample = ms_diff - 5000
     second_time_sample = ms_diff + 5000

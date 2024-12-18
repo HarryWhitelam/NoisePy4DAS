@@ -83,7 +83,7 @@ def get_time_subset(reader_array:np.ndarray, start_time:datetime, timestamps:np.
         warnings.warn(f"WARNING: end file is over {tolerance} seconds away from the calculated end time.")
     # print(f"Given t={start_time}, snippet selected from {timestamps[start_idx]} to {timestamps[end_idx]}!")
     
-    if (end_idx - start_idx + 1) != (delta.seconds/tpf):
+    if (end_idx - start_idx + 1) != (delta.total_seconds()/tpf):
         warnings.warn(f"WARNING: time subset not continuous; only {(end_idx - start_idx + 1)*tpf} seconds represented.")
     # for i in range(start_idx, end_idx+1):
     #     print(timestamps[i])
@@ -98,10 +98,10 @@ def get_data_from_array(data_array:list, prepro_para:dict, start_time:datetime, 
     # make it so that if start_time is not a timestamp, the first minute in the array is returned
     current_time = 0
     t_size = data_array[0].get_data(cha1, cha2).shape[0]
-    tdata = np.empty((int(duration.seconds * sps), ceil((cha2-cha1+1)/spatial_ratio)))
+    tdata = np.empty((int(duration.total_seconds() * sps), ceil((cha2-cha1+1)/spatial_ratio)))
     data_array = get_time_subset(data_array, start_time, timestamps, tpf=t_size/sps, delta=duration, tolerance=30)   # tpf = time per file
     
-    while current_time != duration.seconds and len(data_array) != 0:
+    while current_time != duration.total_seconds() and len(data_array) != 0:
         data_file = data_array.pop(0)
         props = data_file.get_properties()
         data = data_file.get_data(cha1, cha2)

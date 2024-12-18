@@ -174,10 +174,10 @@ def numerical_comparison(data_dict):
 
 
 def ts_spectrogram(dir_path:str, prepro_para:dict, t_start:datetime):
-    out_dir = f'{t_start}_{prepro_para.get('duration')}mins_{prepro_para.get('cha1')}:{prepro_para.get('cha2')}/'
+    out_dir = f"./results/figures/{t_start}_{prepro_para.get('n_minute')}mins_{prepro_para.get('cha1')}:{prepro_para.get('cha2')}/"
     reader_array, timestamps = get_reader_array(dir_path)
     
-    data = get_data_from_array(reader_array, prepro_para, t_start, timestamps, duration=prepro_para.get('duration'))[:, 0]
+    data = get_data_from_array(reader_array, prepro_para, t_start, timestamps, duration=prepro_para.get('n_minute'))[:, 0]
     
     data = np.float32(bandpass(data,
                             0.9 * prepro_para.get('freqmin'),
@@ -206,7 +206,9 @@ def ts_spectrogram(dir_path:str, prepro_para:dict, t_start:datetime):
                      extent=stft.extent(N), cmap='magma')
     plt.ylim(prepro_para.get('freqmin'), prepro_para.get('freqmax'))
     fig1.colorbar(im1, label='Power Spectral Density ' + r"$20\,\log_{10}|S_x(t, f)|$ in dB")
-    plt.savefig(f'./results/figures/{out_dir}/psd.png')
+    if not os.path.exists(out_dir):
+        os.makedirs(out_dir)
+    plt.savefig(f'{out_dir}/psd.png')
 
 
 if __name__ == '__main__':
@@ -222,18 +224,17 @@ if __name__ == '__main__':
         'cha2': 4001,
         'sps': properties.get('SamplingFrequency[Hz]'),
         'spatial_ratio': int(1 / properties.get('SpatialResolution[m]')),          # int(target_spatial_res/spatial_res)
-        'duration': timedelta(hours=1),
+        'n_minute': timedelta(days=1),
         'freqmax': 49.9,
         'freqmin': 1,
-    }
-    task_t0 = datetime(year = 2023, month = 11, day = 9, 
-                       hour = 13, minute = 41, second = 17)
+    }    
+
     ts_spectrogram(dir_path, prepro_para, task_t0)
 
     # reader_array, timestamps = get_reader_array(dir_path)
 
     # channel_slices = [[1500, 1500], [3000, 3000], [5000, 5000], [7000, 7000]]
-    # # psd_with_channel_slicing(reader_array, prepro_para, task_t0, timestamps, channel_slices)
+    # psd_with_channel_slicing(reader_array, prepro_para, task_t0, timestamps, channel_slices)
 
     # animated_spectrogram(reader_array, prepro_para, task_t0, timestamps)
 
