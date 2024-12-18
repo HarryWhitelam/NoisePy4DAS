@@ -130,7 +130,9 @@ if __name__ == '__main__':
     name_splits = corr_name.rsplit('_', 4)
     out_dir = f'./results/figures/{name_splits[0]}_{name_splits[3]}/'
     out_name = corr_name + '_dispersion'
-    
+    if not os.path.exists(out_dir):
+        os.makedirs(out_dir)
+
     dx = float(corr_name.split('_')[-1].strip('m'))      # 06/12 made modular on corr_path
     cmin = 50.0
     cmax = 1500.0   # 27/11 dropped from 4000.0 to 1500.0
@@ -144,8 +146,7 @@ if __name__ == '__main__':
     ax.set_xlabel("Frequency (Hz)")
     ax.set_ylabel("Phase velocity (m/s)")
     bar = fig.colorbar(im, ax=ax, pad = 0.1) # if bad add in "format = format = lambda x, pos: '{:.1f}'.format(x*100)"
-    if not os.path.exists(out_dir):
-        os.makedirs(out_dir)
+    plt.tight_layout()
     fig.savefig(f'{out_dir}{out_name}.png')
     
     
@@ -156,6 +157,7 @@ if __name__ == '__main__':
     # coefs = poly.polyfit(f, max_cs, 4)
     # ffit = poly.polyval(f, coefs)
     # plt.plot(f, ffit, color='red')
+    # plt.tight_layout()
     # fig.savefig(f'{out_dir}{out_name}_annotated.png')
     
     
@@ -164,6 +166,7 @@ if __name__ == '__main__':
         img[:, fi] /= np.max(img[:, fi])
     fig, ax = plt.subplots(figsize=(7.0,5.0))
     im = ax.imshow(img[:,:],aspect='auto', origin='lower', extent=(f[0], f[fmax_idx-1], c[0], c[-1]), interpolation='bilinear')
+    plt.tight_layout()
     fig.savefig(f'{out_dir}{out_name}_f_norm.png')
     
     print_freq_c_summaries(img, c)
