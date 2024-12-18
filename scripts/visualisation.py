@@ -1,4 +1,4 @@
-import tdms_io
+import os
 import numpy as np
 import pandas as pd
 import geopandas as gpd
@@ -14,7 +14,7 @@ from skimage.util import compare_images
 import contextily as cx
 from math import ceil
 
-from tdms_io import get_reader_array, get_data_from_array
+from tdms_io import get_reader_array, get_data_from_array, get_dir_properties
 
 
 def dms_to_dd(degrees, minutes=0, seconds=0):
@@ -47,7 +47,7 @@ def psd_with_channel_slicing(reader_array, prepro_para, task_t0, timestamps, cha
         plt.sca(ax)
         prepro_para['cha1'], prepro_para['cha2'] = channels[0], channels[1]
         
-        tdata = tdms_io.get_data_from_array(reader_array, prepro_para, task_t0, timestamps)
+        tdata = get_data_from_array(reader_array, prepro_para, task_t0, timestamps)
         print(tdata.shape)
         # f, t, Sxx = spectrogram(tdata, prepro_para.get('sps'), mode="psd")
         
@@ -86,7 +86,7 @@ def animated_spectrogram(reader_array, prepro_para, task_t0, timestamps):
         return line, title
     
     n_channels = ceil((prepro_para.get('cha2') - prepro_para.get('cha1') + 1) / prepro_para.get('spatial_ratio'))
-    tdata = tdms_io.get_data_from_array(reader_array, prepro_para, task_t0, timestamps)
+    tdata = get_data_from_array(reader_array, prepro_para, task_t0, timestamps)
     freqs, psd = welch(tdata[:, 0].T, fs=prepro_para.get('sps'))
     
     fig, ax = plt.subplots(figsize=(12, 6))
@@ -218,7 +218,7 @@ if __name__ == '__main__':
     task_t0 = datetime(year = 2024, month = 2, day = 5, 
                        hour = 12, minute = 1, second = 0, microsecond = 0)
     
-    properties = tdms_io.get_dir_properties(dir_path)
+    properties = get_dir_properties(dir_path)
     prepro_para = {
         'cha1': 4000,
         'cha2': 4001,

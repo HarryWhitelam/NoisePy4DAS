@@ -162,11 +162,19 @@ if __name__ == '__main__':
     
     
     ### frequency normalisation
-    for fi in range(fmax_idx):
-        img[:, fi] /= np.max(img[:, fi])
-    fig, ax = plt.subplots(figsize=(7.0,5.0))
-    im = ax.imshow(img[:,:],aspect='auto', origin='lower', extent=(f[0], f[fmax_idx-1], c[0], c[-1]), interpolation='bilinear')
+    # for fi in range(fmax_idx):
+    #     img[:, fi] /= np.max(img[:, fi])
+    # fig, ax = plt.subplots(figsize=(7.0,5.0))
+    # im = ax.imshow(img[:,:],aspect='auto', origin='lower', extent=(f[0], f[fmax_idx-1], c[0], c[-1]), interpolation='bilinear')
+    # plt.tight_layout()
+    # fig.savefig(f'{out_dir}{out_name}_f_norm.png')
+
+    fig, ax = plt.subplots(figsize=(7.0, 5.0))
+    im = ax.pcolormesh(img**2, cmap='jet')
+    fig.colorbar(im, ax=ax)
+    ax.set_xlabel('Frequency (Hz)')
+    ax.set_ylabel('Phase velocity (m/s)')
     plt.tight_layout()
-    fig.savefig(f'{out_dir}{out_name}_f_norm.png')
-    
+    fig.savefig(f'{out_dir}pcolormesh_attempt.png')
+
     print_freq_c_summaries(img, c)
