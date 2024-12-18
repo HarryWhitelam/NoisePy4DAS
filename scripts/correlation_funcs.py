@@ -198,14 +198,14 @@ def plot_correlation(corr, prepro_para, cmap_param='bwr', save_corr=False):
     twiny.set_ylabel("Distance along cable (m)", fontsize = 12)
     
     # follow convention of: {timestamp}_{t length}_{channels}.png
-    t_start = task_t0 - timedelta(minutes=n_minute)
+    # t_start = task_t0 - timedelta(minutes=n_minute)
     plt.tight_layout()
     
-    out_dir = f'{t_start}_{n_minute}mins_{cha1}:{cha2}/'
+    out_dir = f'./results/figures/{task_t0}_{n_minute}mins_{cha1}:{cha2}/'
     if not os.path.exists(out_dir):
         os.makedirs(out_dir)
-    out_name = f'{t_start}_{n_minute}mins_f{freqmin}:{freqmax}__{cha1}:{cha2}_{target_spatial_res}m'
-    plt.savefig(f'./results/figures/{out_dir}{out_name}.png')
+    out_name = f'{task_t0}_{n_minute}mins_f{freqmin}:{freqmax}__{cha1}:{cha2}_{target_spatial_res}m'
+    plt.savefig(f'{out_dir}{out_name}.png')
     if save_corr:
         np.savetxt(f'./results/saved_corrs/{out_name}.txt', corr[:, :(effective_cha2 - cha1)], delimiter=",")
 
@@ -243,22 +243,22 @@ def plot_multiple_correlations(corrs:list, prepro_para:dict, vars, experiment_va
         plt.title(f"{experiment_var}: {var}")
     
     # follow convention of: {t_start}_{n_minute}mins_f{freqmin}:{freqmax}__{cha1}:{cha2}_{target_spatial_res}m
-    t_start = task_t0 - timedelta(minutes=n_minute)
+    # t_start = task_t0 - timedelta(minutes=n_minute)
     match experiment_var:
         case 'channels':
-            plt.savefig(f'./results/figures/{t_start}_{n_minute}mins_f{freqmin}:{freqmax}__{target_spatial_res}m__{experiment_var}_experiment.png')
-            out_name = f'{t_start}_{n_minute}mins_f{freqmin}:{freqmax}__{vars[0][0]}:{vars[0][1]}_{target_spatial_res}m'
+            plt.savefig(f'./results/figures/{task_t0}_{n_minute}mins_f{freqmin}:{freqmax}__{target_spatial_res}m__{experiment_var}_experiment.png')
+            out_name = f'{task_t0}_{n_minute}mins_f{freqmin}:{freqmax}__{vars[0][0]}:{vars[0][1]}_{target_spatial_res}m'
         case 'frequencies':
-            plt.savefig(f'./results/figures/{t_start}_{n_minute}mins__{cha1}:{cha2}_{target_spatial_res}m__{experiment_var}_experiment.png')
-            out_name = f'{t_start}_{n_minute}mins_f{vars[0][0]}:{vars[0][1]}__{cha1}:{cha2}_{target_spatial_res}m'
+            plt.savefig(f'./results/figures/{task_t0}_{n_minute}mins__{cha1}:{cha2}_{target_spatial_res}m__{experiment_var}_experiment.png')
+            out_name = f'{task_t0}_{n_minute}mins_f{vars[0][0]}:{vars[0][1]}__{cha1}:{cha2}_{target_spatial_res}m'
         case 'stack_length':
-            plt.savefig(f'./results/figures/{t_start}_f{freqmin}:{freqmax}__{cha1}:{cha2}_{target_spatial_res}m__{experiment_var}_experiment.png')
-            out_name = f'{t_start}_{vars[0]}mins_f{freqmin}:{freqmax}__{cha1}:{cha2}_{target_spatial_res}m'
+            plt.savefig(f'./results/figures/{task_t0}_f{freqmin}:{freqmax}__{cha1}:{cha2}_{target_spatial_res}m__{experiment_var}_experiment.png')
+            out_name = f'{task_t0}_{vars[0]}mins_f{freqmin}:{freqmax}__{cha1}:{cha2}_{target_spatial_res}m'
         case 'spatial_res':
-            plt.savefig(f'./results/figures/{t_start}_{n_minute}mins_f{freqmin}:{freqmax}__{cha1}:{cha2}__{experiment_var}_experiment.png')
-            out_name = f'{t_start}_{n_minute}mins_f{freqmin}:{freqmax}__{cha1}:{cha2}_{vars[0]}m'
+            plt.savefig(f'./results/figures/{task_t0}_{n_minute}mins_f{freqmin}:{freqmax}__{cha1}:{cha2}__{experiment_var}_experiment.png')
+            out_name = f'{task_t0}_{n_minute}mins_f{freqmin}:{freqmax}__{cha1}:{cha2}_{vars[0]}m'
         case _:
-            plt.savefig(f'./results/figures/{t_start}_{n_minute}mins_f{freqmin}:{freqmax}__{cha1}:{cha2}_{target_spatial_res}m.png')
-            out_name = f'{t_start}_{n_minute}mins_f{freqmin}:{freqmax}__{cha1}:{cha2}_{target_spatial_res}m'
+            plt.savefig(f'./results/figures/{task_t0}_{n_minute}mins_f{freqmin}:{freqmax}__{cha1}:{cha2}_{target_spatial_res}m.png')
+            out_name = f'{task_t0}_{n_minute}mins_f{freqmin}:{freqmax}__{cha1}:{cha2}_{target_spatial_res}m'
     if save_corr:
         np.savetxt(f'./results/saved_corrs/{out_name}.txt', corrs[0][:, :(effective_cha2 - cha1)], delimiter=",")

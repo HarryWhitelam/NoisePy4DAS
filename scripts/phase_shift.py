@@ -122,17 +122,18 @@ if __name__ == '__main__':
     # corr_path = './results/saved_corrs/2024-01-19 09:19:07_360mins_f1:49.9__3850:7999_1m.txt'
     # corr_path = './results/saved_corrs/2024-01-19 09:19:07_360mins_f1:49.9__3850:5750_1m.txt'
     # corr_path = './results/saved_corrs/2024-01-19 09:19:07_360mins_f1:49.9__3850:7999_0.25m.txt'
-    corr_path = './results/saved_corrs/2024-01-19 09:19:07_360mins_f1:49.9__3850:5750_0.25m.txt'
+    # corr_path = './results/saved_corrs/2024-01-19 09:19:07_360mins_f1:49.9__3850:5750_0.25m.txt'
+    corr_path = './results/saved_corrs/2024-02-02 12:01:00_4320mins_f1:49.9__3850:5750_1m.txt'
     stream = load_xcorr(corr_path)
     
     corr_name = corr_path.split('/')[3][:-4]
     name_splits = corr_name.rsplit('_', 4)
-    out_dir = f'{name_splits[0]}_{name_splits[3]}/'
+    out_dir = f'./results/figures/{name_splits[0]}_{name_splits[3]}/'
     out_name = corr_name + '_dispersion'
     
     dx = float(corr_name.split('_')[-1].strip('m'))      # 06/12 made modular on corr_path
     cmin = 50.0
-    cmax = 1000.0   # 27/11 dropped from 4000.0 to 1500.0
+    cmax = 1500.0   # 27/11 dropped from 4000.0 to 1500.0
     dc = 5.0       # 27/11 changed from 10.0 to 5.0
     fmax = 20.0     # down from 100 for fmax testing
     
@@ -145,7 +146,7 @@ if __name__ == '__main__':
     bar = fig.colorbar(im, ax=ax, pad = 0.1) # if bad add in "format = format = lambda x, pos: '{:.1f}'.format(x*100)"
     if not os.path.exists(out_dir):
         os.makedirs(out_dir)
-    fig.savefig(f'./results/figures/{out_dir}{out_name}.png')
+    fig.savefig(f'{out_dir}{out_name}.png')
     
     
     ### max amplitude plot + line of best fit
@@ -155,7 +156,7 @@ if __name__ == '__main__':
     # coefs = poly.polyfit(f, max_cs, 4)
     # ffit = poly.polyval(f, coefs)
     # plt.plot(f, ffit, color='red')
-    # fig.savefig(f'./results/figures/{out_dir}{out_name}_annotated.png')
+    # fig.savefig(f'{out_dir}{out_name}_annotated.png')
     
     
     ### frequency normalisation
@@ -163,6 +164,6 @@ if __name__ == '__main__':
         img[:, fi] /= np.max(img[:, fi])
     fig, ax = plt.subplots(figsize=(7.0,5.0))
     im = ax.imshow(img[:,:],aspect='auto', origin='lower', extent=(f[0], f[fmax_idx-1], c[0], c[-1]), interpolation='bilinear')
-    fig.savefig(f'./results/figures/{out_dir}{out_name}_f_norm.png')
+    fig.savefig(f'{out_dir}{out_name}_f_norm.png')
     
     print_freq_c_summaries(img, c)
