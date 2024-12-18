@@ -176,6 +176,9 @@ def numerical_comparison(data_dict):
 def ts_spectrogram(dir_path:str, prepro_para:dict, t_start:datetime):
     out_dir = f"./results/figures/{t_start}_{prepro_para.get('n_minute')}mins_{prepro_para.get('cha1')}:{prepro_para.get('cha2')}/"
     reader_array, timestamps = get_reader_array(dir_path)
+
+    mid_cha = 0.5 * (prepro_para.get('cha1') + prepro_para.get('cha2'))
+    prepro_para.update({'cha1':mid_cha, 'cha2':mid_cha+1})
     
     data = get_data_from_array(reader_array, prepro_para, t_start, timestamps, duration=prepro_para.get('n_minute'))[:, 0]
     
@@ -203,7 +206,7 @@ def ts_spectrogram(dir_path:str, prepro_para:dict, t_start:datetime):
     print(f'spec max: {spec.max()}; spec min: {spec.min()}')
     # spec = 10 * np.log10(np.fmax(spec, 1e-4))     # disabled for now, norm below is doing the same essentially
     im1 = ax1.imshow(spec, origin='lower', aspect='auto', norm=LogNorm(vmin=1e-4), 
-                     extent=stft.extent(N), cmap='magma')
+                     extent=stft.extent(N), cmap='jet')
     plt.ylim(prepro_para.get('freqmin'), prepro_para.get('freqmax'))
     fig1.colorbar(im1, label='Power Spectral Density ' + r"$20\,\log_{10}|S_x(t, f)|$ in dB")
     if not os.path.exists(out_dir):
@@ -224,7 +227,7 @@ if __name__ == '__main__':
         'cha2': 4001,
         'sps': properties.get('SamplingFrequency[Hz]'),
         'spatial_ratio': int(1 / properties.get('SpatialResolution[m]')),          # int(target_spatial_res/spatial_res)
-        'n_minute': timedelta(days=1),
+        'n_minute': timedelta(minutes=4320),
         'freqmax': 49.9,
         'freqmin': 1,
     }    

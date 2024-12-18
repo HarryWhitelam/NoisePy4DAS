@@ -169,12 +169,13 @@ if __name__ == '__main__':
     # plt.tight_layout()
     # fig.savefig(f'{out_dir}{out_name}_f_norm.png')
 
-    fig, ax = plt.subplots(figsize=(7.0, 5.0))
-    im = ax.pcolormesh(img**2, cmap='jet')
-    fig.colorbar(im, ax=ax)
-    ax.set_xlabel('Frequency (Hz)')
-    ax.set_ylabel('Phase velocity (m/s)')
-    plt.tight_layout()
-    fig.savefig(f'{out_dir}pcolormesh_attempt.png')
+    # pcolormesh attempt
+    # fig, ax = plt.subplots(figsize=(7.0, 5.0))
+    # im = ax.pcolormesh(img**2, cmap='jet')
+    # fig.colorbar(im, ax=ax)
+    # ax.set_xlabel('Frequency (Hz)')
+    # ax.set_ylabel('Phase velocity (m/s)')
+    # plt.tight_layout()
+    # fig.savefig(f'{out_dir}pcolormesh_attempt.png')
 
     print_freq_c_summaries(img, c)
