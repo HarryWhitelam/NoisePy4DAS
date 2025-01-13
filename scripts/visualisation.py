@@ -230,7 +230,7 @@ if __name__ == '__main__':
         'n_minute': 4320,
         'freqmax': 49.9,
         'freqmin': 1,
-    }    
+    }
 
     ts_spectrogram(dir_path, prepro_para, task_t0)
 
