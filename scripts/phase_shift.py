@@ -35,7 +35,7 @@ def get_fft(traces, dt, nt):
         return U[0:nt//2], f[0:nt//2]
 
 
-def get_dispersion(traces, dx, cmin, cmax, dc, fmax, f_norm=False):
+def get_dispersion(traces, dx, cmin, cmax, dc, fmin, fmax, f_norm=False):
     """ calculate dispersion curves after Park et al. 1998
     INPUTS
     traces: SU traces
@@ -59,6 +59,7 @@ def get_dispersion(traces, dx, cmin, cmax, dc, fmax, f_norm=False):
     traces.detrend()
     traces.taper(0.05,type='hann')
     U, f = get_fft(traces, dt, nt)
+    f = f[f >= fmin]
     #dc = 10.0 # phase velocity increment
     c = np.arange(cmin,cmax,dc) # set phase velocity range
     df = f[1] - f[0]
@@ -137,9 +138,10 @@ if __name__ == '__main__':
     cmin = 50.0
     cmax = 1500.0   # 27/11 dropped from 4000.0 to 1500.0
     dc = 5.0       # 27/11 changed from 10.0 to 5.0
+    fmin = 2.0
     fmax = 20.0     # down from 100 for fmax testing
     
-    f, c, img, fmax_idx, U, t = get_dispersion(stream, dx, cmin, cmax, dc, fmax)
+    f, c, img, fmax_idx, U, t = get_dispersion(stream, dx, cmin, cmax, dc, fmin, fmax)
     
     fig, ax = plt.subplots(figsize=(7.0,5.0))
     im = ax.imshow(img[:,:],aspect='auto', origin='lower', extent=(f[0], f[fmax_idx-1], c[0], c[-1]), interpolation='bilinear')
