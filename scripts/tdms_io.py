@@ -31,8 +31,6 @@ def get_reader_array(dir_path:str):
     reader_array = [x for y, x in sorted(zip(timestamps, reader_array))]
     timestamps.sort()
     print(f'{len(timestamps)} files available from {timestamps[0]} to {timestamps[-1]}')
-    ### TIMESTAMP MATCH CHECK: 
-    print(f"{len(reader_array)} files from {reader_array[0].get_properties().get('GPSTimeStamp')} to {reader_array[-1].get_properties().get('GPSTimeStamp')}")
     return reader_array, timestamps
 
 

@@ -28,13 +28,13 @@ def set_prepro_parameters(dir_path, task_t0, freqmin=1, freqmax=49.9, target_spa
     # start_dist, stop_dist = properties.get('Start Distance (m)'), properties.get('Stop Distance (m)')
 
     sps                = properties.get('SamplingFrequency[Hz]')        # current sampling rate (Hz)
-    samp_freq          = 100                                            # target sampling rate (Hz)
+    samp_freq          = 50                                            # target sampling rate (Hz)         # CHANGED FROM 100 TO 50 06/01/2025
     
     spatial_res = properties.get('SpatialResolution[m]')
     spatial_ratio      = int(target_spatial_res/spatial_res)		# both values in m
 
     freq_norm          = 'rma'             # 'no' for no whitening, or 'rma' for running-mean average, 'phase_only' for sign-bit normalization in freq domain.
-    time_norm          = 'rma'             # 'no' for no normalization, or 'rma', 'one_bit' for normalization in time domain
+    time_norm          = 'one_bit'             # 'no' for no normalization, or 'rma', 'one_bit' for normalization in time domain
     cc_method          = 'xcorr'           # 'xcorr' for pure cross correlation, 'deconv' for deconvolution; FOR "COHERENCY" PLEASE set freq_norm to "rma", time_norm to "no" and cc_method to "xcorr"
     smooth_N           = 100               # moving window length for time domain normalization if selected (points)
     smoothspect_N      = 100               # moving window length to smooth spectrum amplitude (points)

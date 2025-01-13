@@ -1,4 +1,4 @@
-import tdms_io
+import os
 import numpy as np
 import pandas as pd
 import geopandas as gpd
@@ -14,7 +14,7 @@ from skimage.util import compare_images
 import contextily as cx
 from math import ceil
 
-from tdms_io import get_reader_array, get_data_from_array
+from tdms_io import get_reader_array, get_data_from_array, get_dir_properties
 
 
 def dms_to_dd(degrees, minutes=0, seconds=0):
@@ -47,7 +47,7 @@ def psd_with_channel_slicing(reader_array, prepro_para, task_t0, timestamps, cha
         plt.sca(ax)
         prepro_para['cha1'], prepro_para['cha2'] = channels[0], channels[1]
         
-        tdata = tdms_io.get_data_from_array(reader_array, prepro_para, task_t0, timestamps)
+        tdata = get_data_from_array(reader_array, prepro_para, task_t0, timestamps)
         print(tdata.shape)
         # f, t, Sxx = spectrogram(tdata, prepro_para.get('sps'), mode="psd")
         
@@ -86,7 +86,7 @@ def animated_spectrogram(reader_array, prepro_para, task_t0, timestamps):
         return line, title
     
     n_channels = ceil((prepro_para.get('cha2') - prepro_para.get('cha1') + 1) / prepro_para.get('spatial_ratio'))
-    tdata = tdms_io.get_data_from_array(reader_array, prepro_para, task_t0, timestamps)
+    tdata = get_data_from_array(reader_array, prepro_para, task_t0, timestamps)
     freqs, psd = welch(tdata[:, 0].T, fs=prepro_para.get('sps'))
     
     fig, ax = plt.subplots(figsize=(12, 6))
@@ -176,6 +176,9 @@ def numerical_comparison(data_dict):
 def ts_spectrogram(dir_path:str, prepro_para:dict, t_start:datetime):
     out_dir = f"./results/figures/{t_start}_{prepro_para.get('n_minute')}mins_{prepro_para.get('cha1')}:{prepro_para.get('cha2')}/"
     reader_array, timestamps = get_reader_array(dir_path)
+
+    mid_cha = int(0.5 * (prepro_para.get('cha1') + prepro_para.get('cha2')))
+    prepro_para.update({'cha1':mid_cha, 'cha2':mid_cha+1})
     
     data = get_data_from_array(reader_array, prepro_para, t_start, timestamps, duration=timedelta(minutes=prepro_para.get('n_minute')))[:, 0]
     
@@ -203,7 +206,7 @@ def ts_spectrogram(dir_path:str, prepro_para:dict, t_start:datetime):
     print(f'spec max: {spec.max()}; spec min: {spec.min()}')
     # spec = 10 * np.log10(np.fmax(spec, 1e-4))     # disabled for now, norm below is doing the same essentially
     im1 = ax1.imshow(spec, origin='lower', aspect='auto', norm=LogNorm(vmin=1e-4), 
-                     extent=stft.extent(N), cmap='magma')
+                     extent=stft.extent(N), cmap='jet')
     plt.ylim(prepro_para.get('freqmin'), prepro_para.get('freqmax'))
     fig1.colorbar(im1, label='Power Spectral Density ' + r"$20\,\log_{10}|S_x(t, f)|$ in dB")
     if not os.path.exists(out_dir):
@@ -218,13 +221,13 @@ if __name__ == '__main__':
     task_t0 = datetime(year = 2024, month = 2, day = 5, 
                        hour = 12, minute = 1, second = 0, microsecond = 0)
     
-    properties = tdms_io.get_dir_properties(dir_path)
+    properties = get_dir_properties(dir_path)
     prepro_para = {
         'cha1': 4000,
         'cha2': 4001,
         'sps': properties.get('SamplingFrequency[Hz]'),
         'spatial_ratio': int(1 / properties.get('SpatialResolution[m]')),          # int(target_spatial_res/spatial_res)
-        'n_minute': 1440,
+        'n_minute': 4320,
         'freqmax': 49.9,
         'freqmin': 1,
     }
