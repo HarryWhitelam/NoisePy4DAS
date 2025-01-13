@@ -177,7 +177,7 @@ def ts_spectrogram(dir_path:str, prepro_para:dict, t_start:datetime):
     out_dir = f"./results/figures/{t_start}_{prepro_para.get('n_minute')}mins_{prepro_para.get('cha1')}:{prepro_para.get('cha2')}/"
     reader_array, timestamps = get_reader_array(dir_path)
     
-    data = get_data_from_array(reader_array, prepro_para, t_start, timestamps, duration=prepro_para.get('n_minute'))[:, 0]
+    data = get_data_from_array(reader_array, prepro_para, t_start, timestamps, duration=timedelta(minutes=prepro_para.get('n_minute')))[:, 0]
     
     data = np.float32(bandpass(data,
                             0.9 * prepro_para.get('freqmin'),
@@ -224,10 +224,10 @@ if __name__ == '__main__':
         'cha2': 4001,
         'sps': properties.get('SamplingFrequency[Hz]'),
         'spatial_ratio': int(1 / properties.get('SpatialResolution[m]')),          # int(target_spatial_res/spatial_res)
-        'n_minute': timedelta(days=1),
+        'n_minute': 1440,
         'freqmax': 49.9,
         'freqmin': 1,
-    }    
+    }
 
     ts_spectrogram(dir_path, prepro_para, task_t0)
 

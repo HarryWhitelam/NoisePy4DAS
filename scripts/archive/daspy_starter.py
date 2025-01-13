@@ -42,8 +42,8 @@ gps_path = '../../Deployment/gps_coords.csv'
 # print(track_pt)
 # print(known_pt)
 
-track_pt = np.loadtxt('results/track_pts.csv', delimiter=',', skiprows=1, usecols=(2,1), comments='#') # read in the track points and swap the two columns (let longitude precede latitude)
-known_pt = np.loadtxt('results/known_pts.csv', delimiter=',', skiprows=1, usecols=(1,0,2), comments='#')
+track_pt = np.loadtxt('results/checkpoints/track_pts.csv', delimiter=',', skiprows=1, usecols=(2,1), comments='#') # read in the track points and swap the two columns (let longitude precede latitude)
+known_pt = np.loadtxt('results/checkpoints/known_pts.csv', delimiter=',', skiprows=1, usecols=(1,0,2), comments='#')
 # print(track_pt)
 # print(known_pt)
 
@@ -60,7 +60,7 @@ plt.scatter(interp_ch[:,0], interp_ch[:,1], c=interp_ch[:,2], cmap='jet')
 plt.scatter(track_pt[:,0], track_pt[:,1], c='k', s=1)
 
 ### HIGHLIGHTS
-highlight_mask = np.isin(interp_ch[:, 2], [3850, 5250])
+highlight_mask = np.isin(interp_ch[:, 2], [3850, 8050])
 highlight_ch = interp_ch[highlight_mask, :]
 plt.scatter(highlight_ch[:,0], highlight_ch[:,1], c='red', s=10)
 print(highlight_ch)
