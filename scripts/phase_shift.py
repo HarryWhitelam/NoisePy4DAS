@@ -14,13 +14,15 @@ from obspy.core.trace import Stats
 # import dascore
 
 
-def load_xcorr(file_path):
+def load_xcorr(file_path, normalise=False):
     stream = Stream()
     xdata = np.loadtxt(file_path, delimiter=',')
     xdata = xdata[:, ~np.all(np.isnan(xdata), axis=0)]      # 06/01/25 added for Ni's data
+    if normalise:
+        xdata = xdata/np.sqrt(np.sum(xdata**2))
     stats = Stats()
-    stats.delta = 1/50
-    stats.npts = 801
+    stats.npts = xdata.shape[0]
+    stats.delta = 1/50 if stats.npts == 801 else 1/100
     for i in range(0, xdata.shape[1]):
         stream.append(Trace(xdata[:, i], stats))
     return stream
@@ -37,7 +39,7 @@ def get_fft(traces, dt, nt):
         return U[0:nt//2], f[0:nt//2]
 
 
-def get_dispersion(traces, dx, cmin, cmax, dc, fmin, fmax, f_norm=False):
+def get_dispersion(traces, dx, cmin, cmax, dc, fmin, fmax, f_norm=False, normalise=False):
     """ calculate dispersion curves after Park et al. 1998
     INPUTS
     traces: SU traces
@@ -94,6 +96,9 @@ def get_dispersion(traces, dx, cmin, cmax, dc, fmin, fmax, f_norm=False):
 
         if f_norm:
             img[:, fi] /= np.max(img[:, fi])
+        if normalise:
+            img = img/np.sqrt(np.sum(img**2))
+   
     
     return f,c,img,U,t
 
@@ -127,8 +132,10 @@ if __name__ == '__main__':
     # corr_path = './results/saved_corrs/2024-01-19 09:19:07_360mins_f1:49.9__3850:5750_1m.txt'
     # corr_path = './results/saved_corrs/2024-01-19 09:19:07_360mins_f1:49.9__3850:7999_0.25m.txt'
     # corr_path = './results/saved_corrs/2024-01-19 09:19:07_360mins_f1:49.9__3850:5750_0.25m.txt'
-    corr_path = './results/saved_corrs/2024-02-05 12:01:00_4320mins_f0.01:49.9__3850:5750_1m.txt'
+    # corr_path = './results/saved_corrs/2024-02-05 12:01:00_4320mins_f0.01:49.9__3850:5750_1m.txt'
     # corr_path = './results/saved_corrs/2024-02-05 12:01:00_4320mins_f0.01:49.9__3300:3750_1m.txt'
+    corr_path = './results/saved_corrs/2024-02-05 12:01:00_4320mins_f0.01:49.9__3850:8050_1m.txt'
+    # corr_path = './results/saved_corrs/2024-02-05 12:01:00_4320mins_f0.01:49.9__2000:3999_1m.txt'
     # corr_path = './results/saved_corrs/SeaDAS_CCF.txt'
     stream = load_xcorr(corr_path)
     
@@ -147,12 +154,12 @@ if __name__ == '__main__':
         os.makedirs(out_dir)
 
     cmin = 50.0
-    cmax = 4000.0   # 27/11 dropped from 4000.0 to 1500.0
+    cmax = 1500.0   # 27/11 dropped from 4000.0 to 1500.0
     dc = 5.0       # 27/11 changed from 10.0 to 5.0
     fmin = 10.0
     fmax = 25.0     # down from 100 for fmax testing
     
-    f, c, img, U, t = get_dispersion(stream, dx, cmin, cmax, dc, fmin, fmax)
+    f, c, img, U, t = get_dispersion(stream, dx, cmin, cmax, dc, fmin, fmax, normalise=False)
     
     fig, ax = plt.subplots(figsize=(7.0,5.0))
     im = ax.imshow(img[:,:],aspect='auto', origin='lower', extent=(f[0], f[-1], c[0], c[-1]), interpolation='bilinear')
@@ -164,14 +171,14 @@ if __name__ == '__main__':
     
     
     ### max amplitude plot + line of best fit
-    max_cs = get_max_cs(img, c, len(f))
-    ax.plot(f, max_cs, color='black')
+    # max_cs = get_max_cs(img, c, len(f))
+    # ax.plot(f, max_cs, color='black')
     # print(f'max_cs: {len(max_cs)}; f: {f.shape}')
     # coefs = poly.polyfit(f, max_cs, 4)
     # ffit = poly.polyval(f, coefs)
     # plt.plot(f, ffit, color='red')
-    plt.tight_layout()
-    fig.savefig(f'{out_dir}{out_name}_annotated.png')
+    # plt.tight_layout()
+    # fig.savefig(f'{out_dir}{out_name}_annotated.png')
     
     
     ### frequency normalisation

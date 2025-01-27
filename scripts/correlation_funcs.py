@@ -28,7 +28,7 @@ def set_prepro_parameters(dir_path, task_t0, freqmin=1, freqmax=49.9, target_spa
     # start_dist, stop_dist = properties.get('Start Distance (m)'), properties.get('Stop Distance (m)')
 
     sps                = properties.get('SamplingFrequency[Hz]')        # current sampling rate (Hz)
-    samp_freq          = 50                                            # target sampling rate (Hz)         # CHANGED FROM 100 TO 50 06/01/2025
+    samp_freq          = 100                                            # target sampling rate (Hz)
     
     spatial_res = properties.get('SpatialResolution[m]')
     spatial_ratio      = int(target_spatial_res/spatial_res)		# both values in m
@@ -177,7 +177,7 @@ def plot_das_data(data, prepro_para):
 
 
 def plot_correlation(corr, prepro_para, cmap_param='bwr', save_corr=False):
-    cha1, cha2, effective_cha2, spatial_ratio, cha_spacing, target_spatial_res, freqmin, freqmax, maxlag, n_minute, task_t0 = prepro_para.get('cha1'), prepro_para.get('cha2'), prepro_para.get('effective_cha2'), prepro_para.get('spatial_ratio'), prepro_para.get('cha_spacing'), prepro_para.get('target_spatial_res'), prepro_para.get('freqmin'), prepro_para.get('freqmax'), prepro_para.get('maxlag'), prepro_para.get('n_minute'), prepro_para.get('task_t0')
+    cha1, cha2, effective_cha2, spatial_ratio, cha_spacing, target_spatial_res, samp_freq, freqmin, freqmax, maxlag, n_minute, task_t0 = prepro_para.get('cha1'), prepro_para.get('cha2'), prepro_para.get('effective_cha2'), prepro_para.get('spatial_ratio'), prepro_para.get('cha_spacing'), prepro_para.get('target_spatial_res'), prepro_para.get('samp_freq'), prepro_para.get('freqmin'), prepro_para.get('freqmax'), prepro_para.get('maxlag'), prepro_para.get('n_minute'), prepro_para.get('task_t0')
 
     plt.figure(figsize = (12, 5), dpi = 150)
     plt.imshow(corr[:, :(effective_cha2 - cha1)].T, aspect = 'auto', cmap = cmap_param, 
@@ -187,7 +187,7 @@ def plot_correlation(corr, prepro_para, cmap_param='bwr', save_corr=False):
                 [int(i) for i in np.linspace(cha1, cha2, 4)], fontsize = 12)
     plt.ylabel("Channel number", fontsize = 12)
     # _ = plt.xticks(np.arange(0, 1601, 200), (np.arange(0, 801, 100) - 400)/50, fontsize = 12)
-    _ = plt.xticks(np.arange(0, maxlag*200+1, 200), np.arange(-maxlag, maxlag+1, 2), fontsize=12)
+    _ = plt.xticks(np.arange(0, maxlag*samp_freq*2+1, 200), np.arange(-maxlag, maxlag+1, 2), fontsize=12)
     plt.xlabel("Time lag (sec)", fontsize = 12)
     # bar = plt.colorbar(pad = 0.1, format = lambda x, pos: '{:.1f}'.format(x*100))
     # bar.set_label('Cross-correlation Coefficient', fontsize = 15)
@@ -211,7 +211,7 @@ def plot_correlation(corr, prepro_para, cmap_param='bwr', save_corr=False):
 
 
 def plot_multiple_correlations(corrs:list, prepro_para:dict, vars, experiment_var:str, cmap_param:str='bwr', save_corr:bool=False):
-    cha1, cha2, effective_cha2, spatial_ratio, cha_spacing, target_spatial_res, freqmin, freqmax, maxlag, n_minute, task_t0 = prepro_para.get('cha1'), prepro_para.get('cha2'), prepro_para.get('effective_cha2'), prepro_para.get('spatial_ratio'), prepro_para.get('cha_spacing'), prepro_para.get('target_spatial_res'), prepro_para.get('freqmin'), prepro_para.get('freqmax'), prepro_para.get('maxlag'), prepro_para.get('n_minute'), prepro_para.get('task_t0')
+    cha1, cha2, effective_cha2, spatial_ratio, cha_spacing, target_spatial_res, samp_freq, freqmin, freqmax, maxlag, n_minute, task_t0 = prepro_para.get('cha1'), prepro_para.get('cha2'), prepro_para.get('effective_cha2'), prepro_para.get('spatial_ratio'), prepro_para.get('cha_spacing'), prepro_para.get('target_spatial_res'), prepro_para.get('samp_freq'), prepro_para.get('freqmin'), prepro_para.get('freqmax'), prepro_para.get('maxlag'), prepro_para.get('n_minute'), prepro_para.get('task_t0')
 
     nrows = len(vars) // 2 + (len(vars) % 2 > 0)
     fig, axs = plt.subplots(2, nrows, figsize=(15, 10))
@@ -227,7 +227,7 @@ def plot_multiple_correlations(corrs:list, prepro_para:dict, vars, experiment_va
         _ =plt.yticks((np.linspace(cha1, cha2, 4) - cha1)/spatial_ratio, 
                     [int(i) for i in np.linspace(cha1, cha2, 4)], fontsize = 12)
         plt.ylabel("Channel number", fontsize = 12)
-        _ = plt.xticks(np.arange(0, maxlag*200+1, 200), np.arange(-maxlag, maxlag+1, 2), fontsize=12)
+        _ = plt.xticks(np.arange(0, maxlag*samp_freq*2+1, 200), np.arange(-maxlag, maxlag+1, 2), fontsize=12)
         plt.xlabel("Time lag (sec)", fontsize = 12)
         # bar = plt.colorbar(pad = 0.1, format = lambda x, pos: '{:.1f}'.format(x*100))
         # bar.set_label('Cross-correlation Coefficient ($\\times10^{-2}$)', fontsize = 8)
