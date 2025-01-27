@@ -284,3 +284,19 @@ if __name__ == '__main__':
             props_bool = True
     
         downsample_tdms(file_path, save_as='SEGY', out_dir=out_dir, target_sps=None, target_spatial_res=1)
+
+
+def load_xcorr(file_path, normalise=False, as_stream=False):
+    xdata = np.loadtxt(file_path, delimiter=',')
+    xdata = xdata[:, ~np.all(np.isnan(xdata), axis=0)]      # 06/01/25 added for Ni's data
+    if normalise:
+        xdata = xdata/np.sqrt(np.sum(xdata**2))
+    if as_stream:
+        stream = Stream()
+        stats = Stats()
+        stats.delta = 1/100
+        stats.npts = 801
+        for i in range(0, xdata.shape[1]):
+            stream.append(Trace(xdata[:, i], stats))
+        return stream
+    return xdata

@@ -9,20 +9,26 @@ import numpy as np
 import numpy.polynomial.polynomial as poly
 from math import floor
 import scipy
-from obspy import Stream, Trace
+from obspy import Stream, Trace, UTCDateTime
 from obspy.core.trace import Stats
 # import dascore
 
 
-def load_xcorr(file_path):
+def load_xcorr(file_path, normalise=False, chas=None):
     stream = Stream()
     xdata = np.loadtxt(file_path, delimiter=',')
     xdata = xdata[:, ~np.all(np.isnan(xdata), axis=0)]      # 06/01/25 added for Ni's data
+    if normalise:
+        xdata = xdata/np.sqrt(np.sum(xdata**2))
     stats = Stats()
     stats.delta = 1/50
     stats.npts = 801
-    for i in range(0, xdata.shape[1]):
-        stream.append(Trace(xdata[:, i], stats))
+    if chas: 
+        for cha in chas:
+            stream.append(Trace(xdata[:, cha], stats))
+    else:
+        for i in range(0, xdata.shape[1]):
+            stream.append(Trace(xdata[:, i], stats))
     return stream
 
 
@@ -61,7 +67,7 @@ def get_dispersion(traces, dx, cmin, cmax, dc, fmin, fmax, f_norm=False):
     traces.detrend()
     traces.taper(0.05,type='hann')
     U, f = get_fft(traces, dt, nt)
-    f = f[f >= (0 or fmin)]
+    f = f[f >= (0 or fmin)]; f = f[f <= fmax]
     #dc = 10.0      # phase velocity increment
     c = np.arange(cmin,cmax,dc) # set phase velocity range
     df = f[1] - f[0]
@@ -80,17 +86,15 @@ def get_dispersion(traces, dx, cmin, cmax, dc, fmin, fmax, f_norm=False):
     for fi in range(len(f)): # loop over frequency range
         for ci in range(len(c)): # loop over phase velocity range
             k = 2.0*np.pi*f[fi]/(c[ci])
-            if np.count_nonzero(U[:,fi]==0):
-                print(f'num zeroes: {num_zeroes}')
             if np.any(np.isnan(U[:, fi])) or np.any(np.isinf(U[:, fi])):
                 print(f"Warning: NaN or inf in U[:, {fi}]")
             if np.any(np.isnan(x)) or np.any(np.isinf(x)) or np.any(dx == 0):
                 print("Warning: Invalid values in x or dx")
             if np.any(np.isnan(k * x)) or np.any(np.isinf(k * x)):
                 print(f"Warning: Invalid values in k*x at frequency index {fi}")
-            if np.any(np.abs(U[:, fi]) < epsilon):
-                print(f"Warning: Small or zero values in U[:, {fi}]")
-            img[ci,fi] = np.abs(np.dot(dx * np.exp(1.0j*k*x), U[:,fi]/np.abs(U[:,fi])))
+            # if np.any(np.abs(U[:, fi]) < epsilon):
+            #     print(f"Warning: Small or zero values in U[:, {fi}]")
+            img[ci,fi] = 1/nr * np.abs(np.dot(np.exp(1.0j*k*x), U[:,fi]/np.abs(U[:,fi])))
 
         if f_norm:
             img[:, fi] /= np.max(img[:, fi])
@@ -127,10 +131,12 @@ if __name__ == '__main__':
     # corr_path = './results/saved_corrs/2024-01-19 09:19:07_360mins_f1:49.9__3850:5750_1m.txt'
     # corr_path = './results/saved_corrs/2024-01-19 09:19:07_360mins_f1:49.9__3850:7999_0.25m.txt'
     # corr_path = './results/saved_corrs/2024-01-19 09:19:07_360mins_f1:49.9__3850:5750_0.25m.txt'
-    corr_path = './results/saved_corrs/2024-02-05 12:01:00_4320mins_f0.01:49.9__3850:5750_1m.txt'
-    # corr_path = './results/saved_corrs/2024-02-05 12:01:00_4320mins_f0.01:49.9__3300:3750_1m.txt'
+    # corr_path = './results/saved_corrs/2024-02-05 12:01:00_4320mins_f0.01:49.9__3850:5750_1m.txt'
+    corr_path = './results/saved_corrs/2024-02-05 12:01:00_4320mins_f0.01:49.9__3300:3750_1m.txt'
     # corr_path = './results/saved_corrs/SeaDAS_CCF.txt'
     stream = load_xcorr(corr_path)
+    stream.trim(UTCDateTime("19700101T00:00:08"))
+    # for tr in stream: tr.data = np.flip(tr.data)
     
     if "SeaDAS_CCF" in corr_path:
         corr_name = 'SeaDAS_CCF'
@@ -147,10 +153,10 @@ if __name__ == '__main__':
         os.makedirs(out_dir)
 
     cmin = 50.0
-    cmax = 4000.0   # 27/11 dropped from 4000.0 to 1500.0
+    cmax = 1500.0   # 27/11 dropped from 4000.0 to 1500.0
     dc = 5.0       # 27/11 changed from 10.0 to 5.0
-    fmin = 10.0
-    fmax = 25.0     # down from 100 for fmax testing
+    fmin = 0.1
+    fmax = 50.0     # down from 100 for fmax testing
     
     f, c, img, U, t = get_dispersion(stream, dx, cmin, cmax, dc, fmin, fmax)
     
@@ -160,18 +166,19 @@ if __name__ == '__main__':
     ax.set_ylabel("Phase velocity (m/s)")
     bar = fig.colorbar(im, ax=ax, pad = 0.1) # if bad add in "format = format = lambda x, pos: '{:.1f}'.format(x*100)"
     plt.tight_layout()
-    fig.savefig(f'{out_dir}{out_name}.png')
+    # fig.savefig(f'{out_dir}{out_name}.png')
+    plt.show()
     
     
     ### max amplitude plot + line of best fit
-    max_cs = get_max_cs(img, c, len(f))
-    ax.plot(f, max_cs, color='black')
+    # max_cs = get_max_cs(img, c, len(f))
+    # ax.plot(f, max_cs, color='black')
     # print(f'max_cs: {len(max_cs)}; f: {f.shape}')
     # coefs = poly.polyfit(f, max_cs, 4)
     # ffit = poly.polyval(f, coefs)
     # plt.plot(f, ffit, color='red')
-    plt.tight_layout()
-    fig.savefig(f'{out_dir}{out_name}_annotated.png')
+    # plt.tight_layout()
+    # fig.savefig(f'{out_dir}{out_name}_annotated.png')
     
     
     ### frequency normalisation
