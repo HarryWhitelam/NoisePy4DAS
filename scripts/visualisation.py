@@ -14,7 +14,7 @@ from skimage.util import compare_images
 import contextily as cx
 from math import ceil
 
-from tdms_io import get_reader_array, get_data_from_array, get_dir_properties
+from tdms_io import get_reader_array, get_data_from_array, get_dir_properties, load_xcorr
 
 
 def dms_to_dd(degrees, minutes=0, seconds=0):
@@ -217,22 +217,22 @@ def ts_spectrogram(dir_path:str, prepro_para:dict, t_start:datetime):
 if __name__ == '__main__':
     # dir_path = "../../temp_data_store/FirstData/"
     # dir_path = "../../../../gpfs/data/DAS_data/Data/"
-    dir_path = "../../../../gpfs/scratch/gfs19eku/20240205/"
-    task_t0 = datetime(year = 2024, month = 2, day = 5, 
-                       hour = 12, minute = 1, second = 0, microsecond = 0)
+    # dir_path = "../../../../gpfs/scratch/gfs19eku/20240205/"
+    # task_t0 = datetime(year = 2024, month = 2, day = 5, 
+    #                    hour = 12, minute = 1, second = 0, microsecond = 0)
     
-    properties = get_dir_properties(dir_path)
-    prepro_para = {
-        'cha1': 4000,
-        'cha2': 4001,
-        'sps': properties.get('SamplingFrequency[Hz]'),
-        'spatial_ratio': int(1 / properties.get('SpatialResolution[m]')),          # int(target_spatial_res/spatial_res)
-        'n_minute': 4320,
-        'freqmax': 49.9,
-        'freqmin': 1,
-    }
+    # properties = get_dir_properties(dir_path)
+    # prepro_para = {
+    #     'cha1': 4000,
+    #     'cha2': 4001,
+    #     'sps': properties.get('SamplingFrequency[Hz]'),
+    #     'spatial_ratio': int(1 / properties.get('SpatialResolution[m]')),          # int(target_spatial_res/spatial_res)
+    #     'n_minute': 4320,
+    #     'freqmax': 49.9,
+    #     'freqmin': 1,
+    # }
 
-    ts_spectrogram(dir_path, prepro_para, task_t0)
+    # ts_spectrogram(dir_path, prepro_para, task_t0)
 
     # reader_array, timestamps = get_reader_array(dir_path)
 
@@ -242,3 +242,26 @@ if __name__ == '__main__':
     # animated_spectrogram(reader_array, prepro_para, task_t0, timestamps)
 
     # plot_gps_coords('results/linewalk_gps.csv')
+    
+    
+    
+    corr_path = './results/saved_corrs/2024-02-05 12:01:00_4320mins_f0.01:49.9__3850:5750_1m.txt'
+    stream = load_xcorr(corr_path, as_stream=True)
+    from obspy import read, UTCDateTime, Stream
+    
+    dx = 1.0
+    for i in range(0, len(stream)):
+        stream[i].stats.distance = i*dx
+    stream.filter("bandpass", freqmin=5, freqmax=50)
+    stream.plot(type='section', recordstart=6, recordlength=4, fillcolors=('k', None))
+    
+    
+    ### CAUSAL | ACAUSAL SPLIT
+    # causal = stream.copy()
+    # causal.trim(starttime=UTCDateTime("19700101T00:00:08"))
+    # causal.plot(type='section', recordlength=2, fillcolors=('k', None))
+
+    # acausal = stream.copy()
+    # acausal.trim(endtime=UTCDateTime("19700101T00:00:08"))
+    # for tr in acausal: tr.data = np.flip(tr.data)
+    # acausal.plot(type='section', recordlength=2, fillcolors=('k', None))
