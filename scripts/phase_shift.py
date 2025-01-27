@@ -43,7 +43,7 @@ def get_fft(traces, dt, nt):
         return U[0:nt//2], f[0:nt//2]
 
 
-def get_dispersion(traces, dx, cmin, cmax, dc, fmin, fmax, f_norm=False):
+def get_dispersion(traces, dx, cmin, cmax, dc, fmin, fmax, f_norm=False, normalise=False):
     """ calculate dispersion curves after Park et al. 1998
     INPUTS
     traces: SU traces
@@ -98,6 +98,9 @@ def get_dispersion(traces, dx, cmin, cmax, dc, fmin, fmax, f_norm=False):
 
         if f_norm:
             img[:, fi] /= np.max(img[:, fi])
+        if normalise:
+            img = img/np.sqrt(np.sum(img**2))
+   
     
     return f,c,img,U,t
 
@@ -132,8 +135,11 @@ if __name__ == '__main__':
     # corr_path = './results/saved_corrs/2024-01-19 09:19:07_360mins_f1:49.9__3850:7999_0.25m.txt'
     # corr_path = './results/saved_corrs/2024-01-19 09:19:07_360mins_f1:49.9__3850:5750_0.25m.txt'
     # corr_path = './results/saved_corrs/2024-02-05 12:01:00_4320mins_f0.01:49.9__3850:5750_1m.txt'
-    corr_path = './results/saved_corrs/2024-02-05 12:01:00_4320mins_f0.01:49.9__3300:3750_1m.txt'
+    # corr_path = './results/saved_corrs/2024-02-05 12:01:00_4320mins_f0.01:49.9__3300:3750_1m.txt'
+    corr_path = './results/saved_corrs/2024-02-05 12:01:00_4320mins_f0.01:49.9__3850:8050_1m.txt'
+    # corr_path = './results/saved_corrs/2024-02-05 12:01:00_4320mins_f0.01:49.9__2000:3999_1m.txt'
     # corr_path = './results/saved_corrs/SeaDAS_CCF.txt'
+    
     stream = load_xcorr(corr_path)
     stream.trim(UTCDateTime("19700101T00:00:08"))
     # for tr in stream: tr.data = np.flip(tr.data)
@@ -158,7 +164,7 @@ if __name__ == '__main__':
     fmin = 0.1
     fmax = 50.0     # down from 100 for fmax testing
     
-    f, c, img, U, t = get_dispersion(stream, dx, cmin, cmax, dc, fmin, fmax)
+    f, c, img, U, t = get_dispersion(stream, dx, cmin, cmax, dc, fmin, fmax, normalise=False)
     
     fig, ax = plt.subplots(figsize=(7.0,5.0))
     im = ax.imshow(img[:,:],aspect='auto', origin='lower', extent=(f[0], f[-1], c[0], c[-1]), interpolation='bilinear')

@@ -86,7 +86,7 @@ task_t0 = datetime(year = 2024, month = 2, day = 5,
 #               3850, 8050 [cable from out of forest] 
 #               3300, 3750 [forest]
 
-prepro_para = set_prepro_parameters(dir_path, task_t0, target_spatial_res=5, cha1=3850, cha2=8050, n_minute=4320, freqmin=0.01, freqmax=49.9)
+prepro_para = set_prepro_parameters(dir_path, task_t0, target_spatial_res=1, cha1=3850, cha2=5750, n_minute=4320, freqmin=5.0, freqmax=50.0)
 # prepro_para = set_prepro_parameters(dir_path, task_t0, target_spatial_res=0.25, cha1=962, cha2=1437, n_minute=30)      # adapted for segy files at 1 m spacings therefore cha_num / 4
 
 spec_prepro_para = prepro_para.copy()           # copy bc python dicts are mutable so (effectively) passed by ref

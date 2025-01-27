@@ -28,7 +28,7 @@ def set_prepro_parameters(dir_path, task_t0, freqmin=1, freqmax=49.9, target_spa
     # start_dist, stop_dist = properties.get('Start Distance (m)'), properties.get('Stop Distance (m)')
 
     sps                = properties.get('SamplingFrequency[Hz]')        # current sampling rate (Hz)
-    samp_freq          = 50                                            # target sampling rate (Hz)         # CHANGED FROM 100 TO 50 06/01/2025
+    samp_freq          = 100                                            # target sampling rate (Hz)
     
     spatial_res = properties.get('SpatialResolution[m]')
     spatial_ratio      = int(target_spatial_res/spatial_res)		# both values in m
