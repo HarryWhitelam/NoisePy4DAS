@@ -174,30 +174,31 @@ def numerical_comparison(data_dict):
 
 
 def ts_spectrogram(dir_path:str, prepro_para:dict, t_start:datetime):
-    out_dir = f"./results/figures/{t_start}_{prepro_para.get('n_minute')}mins_{prepro_para.get('cha1')}:{prepro_para.get('cha2')}/"
+    cha1, cha2, sps, freqmin, freqmax, n_minute = prepro_para.get('cha1'), prepro_para.get('cha2'), prepro_para.get('sps'), prepro_para.get('freqmin'), prepro_para.get('freqmax'), prepro_para.get('n_minute')
+    out_dir = f"./results/figures/{t_start}_{n_minute}mins_{cha1}:{cha2}/"
     reader_array, timestamps = get_reader_array(dir_path)
 
-    mid_cha = int(0.5 * (prepro_para.get('cha1') + prepro_para.get('cha2')))
+    mid_cha = int(0.5 * (cha1 + cha2))
     prepro_para.update({'cha1':mid_cha, 'cha2':mid_cha+1})
     
-    data = get_data_from_array(reader_array, prepro_para, t_start, timestamps, duration=timedelta(minutes=prepro_para.get('n_minute')))[:, 0]
+    data = get_data_from_array(reader_array, prepro_para, t_start, timestamps, duration=timedelta(minutes=n_minute))[:, 0]
     
     data = np.float32(bandpass(data,
-                            0.9 * prepro_para.get('freqmin'),
-                            1.1 * prepro_para.get('freqmax'),
-                            df=prepro_para.get('sps'),
+                            0.9 * freqmin,
+                            1.1 * freqmax,
+                            df=sps,
                             corners=4,
                             zerophase=True))
     
     N = data.shape[0]
     g_std = 12
     gaussian_win = gaussian(100, g_std, sym=True)
-    stft = ShortTimeFFT(gaussian_win, hop=50, fs=prepro_para.get('sps'), scale_to='psd')
+    stft = ShortTimeFFT(gaussian_win, hop=50, fs=sps, scale_to='psd')
     spec = stft.spectrogram(data)
 
     fig1, ax1 = plt.subplots(figsize=(6., 4.))
     t_lo, t_hi = stft.extent(N)[:2]
-    ax1.set_title(rf"{t_start} at channel {prepro_para.get('cha1')}")
+    ax1.set_title(rf"{t_start} at channel {cha1}")
     ax1.set(xlabel=f"Time $t$ in seconds ({stft.p_num(N)} slices, " +
                 rf"$\Delta t = {stft.delta_t:g}\,$s)",
             ylabel=f"Freq. $f$ in Hz ({stft.f_pts} bins, " +
@@ -207,11 +208,15 @@ def ts_spectrogram(dir_path:str, prepro_para:dict, t_start:datetime):
     # spec = 10 * np.log10(np.fmax(spec, 1e-4))     # disabled for now, norm below is doing the same essentially
     im1 = ax1.imshow(spec, origin='lower', aspect='auto', norm=LogNorm(vmin=1e-4), 
                      extent=stft.extent(N), cmap='jet')
-    plt.ylim(prepro_para.get('freqmin'), prepro_para.get('freqmax'))
+    if n_minute > 1440:
+        _ = plt.xticks(np.linspace(0, 518401, (n_minute/1440)+1), pd.date_range(t_start, t_start+timedelta(minutes=n_minute), freq='D'), rotation=90)
+    else: 
+        _ = plt.xticks(np.linspace(0, 518401, (n_minute/240)+1), pd.date_range(t_start, t_start+timedelta(minutes=n_minute), freq='4h'), rotation=90)
+    plt.ylim(freqmin, freqmax)
     fig1.colorbar(im1, label='Power Spectral Density ' + r"$20\,\log_{10}|S_x(t, f)|$ in dB")
     if not os.path.exists(out_dir):
         os.makedirs(out_dir)
-    plt.savefig(f'{out_dir}/psd.png')
+    plt.savefig(f'{out_dir}/{t_start}__{t_start+timedelta(minutes=n_minute)}_psd.png')
 
 
 if __name__ == '__main__':

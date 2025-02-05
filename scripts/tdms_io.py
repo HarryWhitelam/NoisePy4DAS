@@ -12,12 +12,12 @@ from tqdm import tqdm
 from obspy import Stream, Trace
 from obspy.core.trace import Stats
 from obspy.core.utcdatetime import UTCDateTime
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, time
 from math import floor, ceil
 from skimage.transform import resize
 
 
-def get_reader_array(dir_path:str):
+def get_reader_array(dir_path:str, allowed_times:dict=None):
     dir_list = [filename for filename in os.listdir(dir_path) if filename.endswith(('.tdms', '.segy'))]
     file_ext = '.' + dir_list[0].rsplit('.', 1)[1]
     reader_array = [None] * int(len(dir_list))
@@ -26,12 +26,26 @@ def get_reader_array(dir_path:str):
         match file_ext:
             case '.tdms': reader = TdmsReader(dir_path + file)
             case '.segy': reader = SegyReader(dir_path + file)
+        timestamp = reader.get_properties().get('GPSTimeStamp')
+        if allowed_times:
+            if not is_valid_time(timestamp, allowed_times):
+                continue
         reader_array[count] = reader
-        timestamps[count] = reader.get_properties().get('GPSTimeStamp')
+        timestamps[count] = timestamp
+    timestamps = np.delete(timestamps, np.where(timestamps == None))
+    reader_array = [reader for reader in reader_array if reader is not None]
     reader_array = [x for y, x in sorted(zip(timestamps, reader_array))]
     timestamps.sort()
     print(f'{len(timestamps)} files available from {timestamps[0]} to {timestamps[-1]}')
     return reader_array, timestamps
+
+
+def is_valid_time(timestamp, allowed_times):
+    '''checks if timestamp is within allowed times'''
+    for t1, t2 in allowed_times.items():
+        if t1 <= timestamp.time() <= t2:
+            return True
+    return False
 
 
 def get_closest_index(timestamps:np.ndarray, time:datetime):
@@ -83,8 +97,6 @@ def get_time_subset(reader_array:np.ndarray, start_time:datetime, timestamps:np.
     
     if (end_idx - start_idx + 1) != (delta.total_seconds()/tpf):
         warnings.warn(f"WARNING: time subset not continuous; only {(end_idx - start_idx + 1)*tpf} seconds represented.")
-    # for i in range(start_idx, end_idx+1):
-    #     print(timestamps[i])
     
     return reader_array[start_idx:end_idx+1]
 
@@ -257,35 +269,6 @@ def nparray_to_obspy(data:np.ndarray, props:dict):
     return stream
 
 
-if __name__ == '__main__':
-    ### downsample test for HPC data: 
-    dir_path = "../../../../gpfs/data/DAS_data/30mins/"
-    out_dir = os.path.join(dir_path, 'segys/')
-    dir_list = os.listdir(os.fsencode(dir_path))
-    
-    pbar = tqdm(range(len(dir_list)))
-
-    props_bool = False      # boolean to only export properties once
-    for file_idx in pbar:
-        file_path = os.path.join(dir_path, os.fsdecode(dir_list[file_idx]))
-        if not os.path.isfile(file_path): continue
-        
-        if not props_bool:
-            tdms = TdmsReader(file_path)
-            file_info = tdms.fileinfo
-            tdms._read_properties()
-            properties = tdms.get_properties()
-
-            with open(os.path.join(out_dir, 'properties.p'), 'wb') as prop_path:
-                pickle.dump(properties, prop_path)
-    
-            with open(os.path.join(out_dir, 'fileinfo.p'), 'wb') as file_info_path:
-                pickle.dump(file_info, file_info_path)
-            props_bool = True
-    
-        downsample_tdms(file_path, save_as='SEGY', out_dir=out_dir, target_sps=None, target_spatial_res=1)
-
-
 def load_xcorr(file_path, normalise=False, as_stream=False):
     xdata = np.loadtxt(file_path, delimiter=',')
     xdata = xdata[:, ~np.all(np.isnan(xdata), axis=0)]      # 06/01/25 added for Ni's data
@@ -300,3 +283,38 @@ def load_xcorr(file_path, normalise=False, as_stream=False):
             stream.append(Trace(xdata[:, i], stats))
         return stream
     return xdata
+
+
+if __name__ == '__main__':
+    ### downsample test for HPC data: 
+    # dir_path = "../../../../gpfs/data/DAS_data/30mins/"
+    # out_dir = os.path.join(dir_path, 'segys/')
+    # dir_list = os.listdir(os.fsencode(dir_path))
+    
+    # pbar = tqdm(range(len(dir_list)))
+
+    # props_bool = False      # boolean to only export properties once
+    # for file_idx in pbar:
+    #     file_path = os.path.join(dir_path, os.fsdecode(dir_list[file_idx]))
+    #     if not os.path.isfile(file_path): continue
+        
+    #     if not props_bool:
+    #         tdms = TdmsReader(file_path)
+    #         file_info = tdms.fileinfo
+    #         tdms._read_properties()
+    #         properties = tdms.get_properties()
+
+    #         with open(os.path.join(out_dir, 'properties.p'), 'wb') as prop_path:
+    #             pickle.dump(properties, prop_path)
+    
+    #         with open(os.path.join(out_dir, 'fileinfo.p'), 'wb') as file_info_path:
+    #             pickle.dump(file_info, file_info_path)
+    #         props_bool = True
+    
+    #     downsample_tdms(file_path, save_as='SEGY', out_dir=out_dir, target_sps=None, target_spatial_res=1)
+
+    dir_path = '../../temp_data_store/FirstData/'
+    
+    times = {time(13, 41, 10):time(13, 41, 59)}
+    readers, timestamps = get_reader_array(dir_path, times)
+    print(timestamps)
