@@ -209,9 +209,9 @@ def ts_spectrogram(dir_path:str, prepro_para:dict, t_start:datetime):
     im1 = ax1.imshow(spec, origin='lower', aspect='auto', norm=LogNorm(vmin=1e-4), 
                      extent=stft.extent(N), cmap='jet')
     if n_minute > 1440:
-        _ = plt.xticks(np.linspace(0, 518401, (n_minute/1440)+1), pd.date_range(t_start, t_start+timedelta(minutes=n_minute), freq='D'), rotation=90)
+        _ = plt.xticks(np.linspace(0, 518401, int(n_minute/1440)+1), pd.date_range(t_start, t_start+timedelta(minutes=n_minute), freq='D'), rotation=90)
     else: 
-        _ = plt.xticks(np.linspace(0, 518401, (n_minute/240)+1), pd.date_range(t_start, t_start+timedelta(minutes=n_minute), freq='4h'), rotation=90)
+        _ = plt.xticks(np.linspace(0, 518401, int(n_minute/240)+1), pd.date_range(t_start, t_start+timedelta(minutes=n_minute), freq='4h'), rotation=90)
     plt.ylim(freqmin, freqmax)
     fig1.colorbar(im1, label='Power Spectral Density ' + r"$20\,\log_{10}|S_x(t, f)|$ in dB")
     if not os.path.exists(out_dir):
