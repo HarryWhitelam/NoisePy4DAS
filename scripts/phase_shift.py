@@ -134,14 +134,14 @@ if __name__ == '__main__':
     # corr_path = './results/saved_corrs/2024-01-19 09:19:07_360mins_f1:49.9__3850:5750_1m.txt'
     # corr_path = './results/saved_corrs/2024-01-19 09:19:07_360mins_f1:49.9__3850:7999_0.25m.txt'
     # corr_path = './results/saved_corrs/2024-01-19 09:19:07_360mins_f1:49.9__3850:5750_0.25m.txt'
-    # corr_path = './results/saved_corrs/2024-02-05 12:01:00_4320mins_f0.01:49.9__3850:5750_1m.txt'
+    corr_path = './results/saved_corrs/2024-02-05 12:01:00_4320mins_f0.01:49.9__3850:5750_1m.txt'
     # corr_path = './results/saved_corrs/2024-02-05 12:01:00_4320mins_f0.01:49.9__3300:3750_1m.txt'
-    corr_path = './results/saved_corrs/2024-02-05 12:01:00_4320mins_f0.01:49.9__3850:8050_1m.txt'
+    # corr_path = './results/saved_corrs/2024-02-05 12:01:00_4320mins_f0.01:49.9__3850:8050_1m.txt'
     # corr_path = './results/saved_corrs/2024-02-05 12:01:00_4320mins_f0.01:49.9__2000:3999_1m.txt'
     # corr_path = './results/saved_corrs/SeaDAS_CCF.txt'
     
     stream = load_xcorr(corr_path)
-    stream.trim(UTCDateTime("19700101T00:00:08"))
+    # stream.trim(UTCDateTime("19700101T00:00:08"))
     # for tr in stream: tr.data = np.flip(tr.data)
     
     if "SeaDAS_CCF" in corr_path:
@@ -161,7 +161,7 @@ if __name__ == '__main__':
     cmin = 50.0
     cmax = 1500.0   # 27/11 dropped from 4000.0 to 1500.0
     dc = 5.0       # 27/11 changed from 10.0 to 5.0
-    fmin = 0.1
+    fmin = 5.0
     fmax = 50.0     # down from 100 for fmax testing
     
     f, c, img, U, t = get_dispersion(stream, dx, cmin, cmax, dc, fmin, fmax, normalise=False)
