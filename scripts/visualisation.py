@@ -206,38 +206,43 @@ def ts_spectrogram(dir_path:str, prepro_para:dict, t_start:datetime):
             xlim=(t_lo, t_hi))
     print(f'spec max: {spec.max()}; spec min: {spec.min()}')
     # spec = 10 * np.log10(np.fmax(spec, 1e-4))     # disabled for now, norm below is doing the same essentially
+    ext = stft.extent(N)
     im1 = ax1.imshow(spec, origin='lower', aspect='auto', norm=LogNorm(vmin=1e-4), 
-                     extent=stft.extent(N), cmap='jet')
+                     extent=ext, cmap='jet')
     if n_minute > 1440:
-        _ = plt.xticks(np.linspace(0, 518401, int(n_minute/1440)+1), pd.date_range(t_start, t_start+timedelta(minutes=n_minute), freq='D'), rotation=90)
+        _ = plt.xticks(np.linspace(0, ext[1], int(n_minute/1440)+1), pd.date_range(t_start, t_start+timedelta(minutes=n_minute), freq='D'), rotation=30)
+        _ = plt.xticks(np.linspace(0, ext[1], int(n_minute/360)+1), minor=True)
     else: 
-        _ = plt.xticks(np.linspace(0, 518401, int(n_minute/240)+1), pd.date_range(t_start, t_start+timedelta(minutes=n_minute), freq='4h'), rotation=90)
+        _ = plt.xticks(np.linspace(0, ext[1], 4), pd.date_range(t_start, t_start+timedelta(minutes=n_minute), periods=4), rotation=30)
+        _ = plt.xticks(np.linspace(0, ext[1], 16), minor=True)
     plt.ylim(freqmin, freqmax)
     fig1.colorbar(im1, label='Power Spectral Density ' + r"$20\,\log_{10}|S_x(t, f)|$ in dB")
+    plt.tight_layout()
+    # plt.show()
     if not os.path.exists(out_dir):
         os.makedirs(out_dir)
-    plt.savefig(f'{out_dir}/{t_start}__{t_start+timedelta(minutes=n_minute)}_psd.png')
+    plt.savefig(f'{out_dir}/{t_start}__{t_start+timedelta(minutes=n_minute)}_f{freqmin}:{freqmax}_psd.png')
 
 
 if __name__ == '__main__':
-    # dir_path = "../../temp_data_store/FirstData/"
+    dir_path = "../../temp_data_store/FirstData/"
     # dir_path = "../../../../gpfs/data/DAS_data/Data/"
     # dir_path = "../../../../gpfs/scratch/gfs19eku/20240205/"
-    # task_t0 = datetime(year = 2024, month = 2, day = 5, 
-    #                    hour = 12, minute = 1, second = 0, microsecond = 0)
+    task_t0 = datetime(year = 2023, month = 11, day = 9, 
+                       hour = 13, minute = 41, second = 17)
     
-    # properties = get_dir_properties(dir_path)
-    # prepro_para = {
-    #     'cha1': 4000,
-    #     'cha2': 4001,
-    #     'sps': properties.get('SamplingFrequency[Hz]'),
-    #     'spatial_ratio': int(1 / properties.get('SpatialResolution[m]')),          # int(target_spatial_res/spatial_res)
-    #     'n_minute': 4320,
-    #     'freqmax': 49.9,
-    #     'freqmin': 1,
-    # }
+    properties = get_dir_properties(dir_path)
+    prepro_para = {
+        'cha1': 4000,
+        'cha2': 4001,
+        'sps': properties.get('SamplingFrequency[Hz]'),
+        'spatial_ratio': int(1 / properties.get('SpatialResolution[m]')),          # int(target_spatial_res/spatial_res)
+        'n_minute': 1,
+        'freqmax': 49.9,
+        'freqmin': 1,
+    }
 
-    # ts_spectrogram(dir_path, prepro_para, task_t0)
+    ts_spectrogram(dir_path, prepro_para, task_t0)
 
     # reader_array, timestamps = get_reader_array(dir_path)
 
@@ -250,15 +255,15 @@ if __name__ == '__main__':
     
     
     
-    corr_path = './results/saved_corrs/2024-02-05 12:01:00_4320mins_f0.01:49.9__3850:5750_1m.txt'
-    stream = load_xcorr(corr_path, as_stream=True)
-    from obspy import read, UTCDateTime, Stream
+    # corr_path = './results/saved_corrs/2024-02-05 12:01:00_4320mins_f0.01:49.9__3850:5750_1m.txt'
+    # stream = load_xcorr(corr_path, as_stream=True)
+    # from obspy import read, UTCDateTime, Stream
     
-    dx = 1.0
-    for i in range(0, len(stream)):
-        stream[i].stats.distance = i*dx
-    stream.filter("bandpass", freqmin=5, freqmax=50)
-    stream.plot(type='section', recordstart=6, recordlength=4, fillcolors=('k', None))
+    # dx = 1.0
+    # for i in range(0, len(stream)):
+    #     stream[i].stats.distance = i*dx
+    # stream.filter("bandpass", freqmin=5, freqmax=50)
+    # stream.plot(type='section', recordstart=6, recordlength=4, fillcolors=('k', None))
     
     
     ### CAUSAL | ACAUSAL SPLIT

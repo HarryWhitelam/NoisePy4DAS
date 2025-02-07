@@ -12,7 +12,7 @@ from tqdm import tqdm
 from obspy import Stream, Trace
 from obspy.core.trace import Stats
 from obspy.core.utcdatetime import UTCDateTime
-from datetime import datetime, timedelta, time
+from datetime import datetime, timedelta, time as dt_time
 from math import floor, ceil
 from skimage.transform import resize
 
@@ -27,9 +27,8 @@ def get_reader_array(dir_path:str, allowed_times:dict=None):
             case '.tdms': reader = TdmsReader(dir_path + file)
             case '.segy': reader = SegyReader(dir_path + file)
         timestamp = reader.get_properties().get('GPSTimeStamp')
-        if allowed_times:
-            if not is_valid_time(timestamp, allowed_times):
-                continue
+        if allowed_times and not is_valid_time(timestamp, allowed_times):
+            continue
         reader_array[count] = reader
         timestamps[count] = timestamp
     timestamps = np.delete(timestamps, np.where(timestamps == None))
@@ -315,6 +314,7 @@ if __name__ == '__main__':
 
     dir_path = '../../temp_data_store/FirstData/'
     
-    times = {time(13, 41, 10):time(13, 41, 59)}
+    times = {dt_time(13, 41, 10):dt_time(13, 41, 39), 
+             dt_time(13, 42, 20):dt_time(13, 42, 39), }
     readers, timestamps = get_reader_array(dir_path, times)
     print(timestamps)
