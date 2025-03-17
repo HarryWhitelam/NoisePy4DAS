@@ -1,6 +1,6 @@
 import daspy
 from daspy.basic_tools.visualization import plot
-from daspy.advanced_tools.channel import location_interpolation
+from daspy.advanced_tools.channel import location_interpolation, turning_points
 import matplotlib.pyplot as plt
 import numpy as np
 import pandas as pd
@@ -56,15 +56,34 @@ interp_ch = location_interpolation(known_pt, track_pt=track_pt, dx=0.25)
 interp_ch_df = pd.DataFrame(interp_ch, columns=['lon', 'lat', 'channel_no'])[['lat', 'lon', 'channel_no']]      # rearranged for lat, lon, ch_no
 # interp_ch_df.to_csv('results/interp_ch_pts.csv', index=False)
 
-plt.scatter(interp_ch[:,0], interp_ch[:,1], c=interp_ch[:,2], cmap='jet')
-plt.scatter(track_pt[:,0], track_pt[:,1], c='k', s=1)
+plt.scatter(interp_ch[:, 0], interp_ch[:, 1], c=interp_ch[:, 2], cmap='bone')
+plt.scatter(track_pt[:, 0], track_pt[:, 1], c='k', s=1)
 
 ### HIGHLIGHTS
-highlight_mask = np.isin(interp_ch[:, 2], [3850, 8050])
+highlight_mask = np.isin(interp_ch[:, 2], [4300, 4000, 5000, 6000, 7000, 8000])
 highlight_ch = interp_ch[highlight_mask, :]
-plt.scatter(highlight_ch[:,0], highlight_ch[:,1], c='red', s=10)
+plt.scatter(highlight_ch[:, 0], highlight_ch[:, 1], c='b', s=30)
 print(highlight_ch)
+
+### distance highlight attempt - see above for less messy layout
+# cha_spacing = 0.25
+# distances = [1042, 1142, 1172, 1272, 1312, 1412, 1820, 1920]        # after forest section start at 962 ish
+# d_as_ch = interp_ch[np.isin(interp_ch[:, 2], [d/cha_spacing for d in distances]), :]
+# plt.scatter(d_as_ch[:, 0], d_as_ch[:, 1], c='r', s=10)
 
 plt.gca().set_aspect('equal')
 plt.title('Interpolated channel location')
+plt.tight_layout()
 plt.show()
+
+
+
+# turning_h, turning_v = turning_points(interp_ch, depth_info=True) # the data contains depth information, detect turning points both horizontally and vertically
+
+# plt.scatter(interp_ch[:, 0], interp_ch[:, 1], c='y', s=5)
+# plt.scatter(interp_ch[turning_v, 0], interp_ch[turning_v, 1], c='g', s=5, label='vertical')
+# plt.scatter(interp_ch[turning_h, 0], interp_ch[turning_h, 1], c='r', s=5, label='horizontal')
+# plt.gca().set_aspect('equal')
+# plt.title('Turning points')
+# plt.legend()
+# plt.show()

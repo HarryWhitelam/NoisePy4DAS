@@ -6,13 +6,15 @@ from scipy.signal import welch, ShortTimeFFT
 from scipy.signal.windows import gaussian
 from scipy.fft import rfft, rfftfreq
 from obspy.signal.filter import bandpass
+from obspy.signal.spectral_estimation import get_nlnm, get_nhnm
 from datetime import datetime, timedelta
 import matplotlib.pyplot as plt
 from matplotlib.animation import FuncAnimation
 from matplotlib.colors import LogNorm
 from skimage.util import compare_images
 import contextily as cx
-from math import ceil
+from math import ceil, sin, cos, atan2, degrees, radians, log
+import xdas as xd
 
 from tdms_io import get_reader_array, get_data_from_array, get_dir_properties, load_xcorr
 
@@ -22,7 +24,6 @@ def dms_to_dd(degrees, minutes=0, seconds=0):
 
 
 def plot_gps_coords(file_path):
-    # csv_data = np.genfromtxt(file_path, delimiter=',')
     gps_df = pd.read_csv(file_path, sep=',', index_col=0)
     
     gps_df[['lat_degs', 'lat_mins']] = gps_df['lat'].str.split(' ', expand=True).astype(float)
@@ -40,38 +41,45 @@ def plot_gps_coords(file_path):
     plt.show()
 
 
-def psd_with_channel_slicing(reader_array, prepro_para, task_t0, timestamps, channel_slices):
-    fig, axs = plt.subplots(2, ceil(len(channel_slices)/2), figsize=(15, 10))
+def psd_with_channel_slicing(reader_array, prepro_para, task_t0, timestamps, channels):
+    fig = plt.figure(figsize=(15, 10))
     
-    for ax, channels in zip(axs.ravel(), channel_slices):
-        plt.sca(ax)
-        prepro_para['cha1'], prepro_para['cha2'] = channels[0], channels[1]
-        
-        tdata = get_data_from_array(reader_array, prepro_para, task_t0, timestamps)
-        print(tdata.shape)
-        # f, t, Sxx = spectrogram(tdata, prepro_para.get('sps'), mode="psd")
-        
-        # cmap = plt.colormaps['Spectral']
-        # img1 = plt.pcolormesh(t, f, Sxx, cmap=cmap.reversed(), shading='gouraud')
+    prepro_para['cha1'], prepro_para['cha2'] = channels[0], channels[1]
+    tdata = get_data_from_array(reader_array, prepro_para, task_t0, timestamps, timedelta(minutes=1))
+    
+    N = 60000
+    yf = rfft(tdata.T)
+    yf /= 1/prepro_para.get('sps')
+    yf = (2*prepro_para.get('sps')/N) * abs(yf**2)
+    yf = 10 * np.log10(yf)
+    xf = rfftfreq(N, 1/prepro_para.get('sps'))
 
-        # plt.title(f'{channels}')
-        # plt.ylabel('Amplitude [m^2/s^4/Hz]')
-        # plt.xlabel('Frequency [Hz]')
-        # fig.colorbar(img1, label= "Nano Strain per Second [nm/m/s]")
-        
-        N = 60000
-        yf = rfft(tdata.T)
-        xf = rfftfreq(N, 1/prepro_para.get('sps'))
+    #make figure logarithmic
+    ax = fig.add_subplot()
+    ax.set_xscale('log')
+    # ax.set_ylim(None, 100)
 
-        #make figure logarithmic
-        ax = fig.add_subplot()
-        ax.set_xscale('log')
-        ax.set_ylim(None, 10000000000)
+    plt.ylabel('Amplitude (db)')
+    plt.xlabel('Frequency [Hz]')
 
-        plt.ylabel('Nano Strain per Second [nm/m/s]')
-        plt.xlabel('Frequency [Hz]')
-
-        plt.plot(xf, np.abs(yf).T)
+    plt.plot(xf, yf.T)
+    
+    nlnm_freq, nlnm_psd = get_nlnm()
+    nhnm_freq, nhnm_psd = get_nhnm()
+    plt.plot(nlnm_freq, nlnm_psd, label="NLNM", linestyle="dashed")
+    plt.plot(nhnm_freq, nhnm_psd, label="NHNM", linestyle="dashed")
+    plt.show()
+    
+    
+    freqs, psd = welch(tdata.T, fs=prepro_para.get('sps'))
+    plt.semilogy(freqs, psd.T, color='b')
+    
+    plt.xlabel('Frequency [Hz]')
+    plt.ylabel('Power Spectral Density [V**2/Hz]')
+    
+    # ax.set_xlim(freqs[0], freqs[-1])
+    plt.xlim(freqs[0], 50)
+    # ax.set_ylim(1e8, max(psd)*2)
     plt.show()
 
 
@@ -176,7 +184,14 @@ def numerical_comparison(data_dict):
 def ts_spectrogram(dir_path:str, prepro_para:dict, t_start:datetime):
     cha1, cha2, sps, freqmin, freqmax, n_minute = prepro_para.get('cha1'), prepro_para.get('cha2'), prepro_para.get('sps'), prepro_para.get('freqmin'), prepro_para.get('freqmax'), prepro_para.get('n_minute')
     out_dir = f"./results/figures/{t_start}_{n_minute}mins_{cha1}:{cha2}/"
-    reader_array, timestamps = get_reader_array(dir_path)
+    
+    if type(dir_path == list):
+        reader_array, timestamps = get_reader_array(dir_path[0])
+        for path in dir_path[1:]:
+            arr, stamps = get_reader_array(path)
+            reader_array += arr; timestamps = np.concatenate((timestamps, stamps))
+    else: 
+        reader_array, timestamps = get_reader_array(dir_path)
 
     mid_cha = int(0.5 * (cha1 + cha2))
     prepro_para.update({'cha1':mid_cha, 'cha2':mid_cha+1})
@@ -224,6 +239,50 @@ def ts_spectrogram(dir_path:str, prepro_para:dict, t_start:datetime):
     plt.savefig(f'{out_dir}/{t_start}__{t_start+timedelta(minutes=n_minute)}_f{freqmin}:{freqmax}_psd.png')
 
 
+def calc_angle_between_points(lat1, lon1, lat2, lon2):
+    '''Input lat-lons as degrees!!!'''
+    lat1, lon1, lat2, lon2 = radians(lat1), radians(lon1), radians(lat2), radians(lon2)
+    
+    dlon = lon2 - lon1
+    y = sin(dlon) * cos(lat2)
+    x = cos(lat1) * sin(lat2) - sin(lat1) * cos(lat2) * cos(dlon)
+    
+    angle = degrees(atan2(y, x))
+    angle = (angle + 360) % 360
+    return angle
+
+
+def sensitivity_analysis(gps_track:pd.DataFrame, target_ch):
+    angles = []
+    for current_ch in gps_track.index:
+        if current_ch == gps_track.index[0]:
+            current_ch += 1
+        elif current_ch == gps_track.index[-1]:
+            current_ch -= 1
+        lat1, lon1 = gps_track.loc[current_ch - 1, ['lat', 'lon']]
+        lat2, lon2 = gps_track.loc[current_ch + 1, ['lat', 'lon']]
+        angles.append(calc_angle_between_points(lat1, lon1, lat2, lon2))
+    
+    gps_track['relative_angle'] = angles
+    target_angle = gps_track.loc[current_ch, 'relative_angle']
+    relative_angles = []
+    long_sens = []
+    trans_sens = []
+    for current_ch in gps_track.index:
+        angle = gps_track.loc[current_ch, 'relative_angle'] - target_angle
+        relative_angles.append(abs(angle))
+        long_sens.append(abs(cos(radians(angle))))
+        trans_sens.append(sin(2*radians(angle)) ** 2)
+    
+    fig, axs = plt.subplots(3, 1, figsize=(15, 10))
+    for i, arr in enumerate([relative_angles, long_sens, trans_sens]):
+        im = axs[i].scatter(gps_track['lon'], gps_track['lat'], c=arr, cmap='seismic')
+        fig.colorbar(im, ax=axs[i])
+        axs[i].scatter(gps_track.loc[target_ch, 'lon'], gps_track.loc[target_ch, 'lat'], s=100, c='k')
+    plt.tight_layout()
+    plt.show()
+
+
 if __name__ == '__main__':
     dir_path = "../../temp_data_store/FirstData/"
     # dir_path = "../../../../gpfs/data/DAS_data/Data/"
@@ -242,12 +301,14 @@ if __name__ == '__main__':
         'freqmin': 1,
     }
 
-    ts_spectrogram(dir_path, prepro_para, task_t0)
+    # ts_spectrogram(dir_path, prepro_para, task_t0)
 
-    # reader_array, timestamps = get_reader_array(dir_path)
+    reader_array, timestamps = get_reader_array(dir_path)
 
-    # channel_slices = [[1500, 1500], [3000, 3000], [5000, 5000], [7000, 7000]]
-    # psd_with_channel_slicing(reader_array, prepro_para, task_t0, timestamps, channel_slices)
+    channel_slices = [[1500, 1500], [3000, 3000], [5000, 5000], [7000, 7000]]
+    channel_slices = [5000, 5000]
+    psd_with_channel_slicing(reader_array, prepro_para, task_t0, timestamps, channel_slices)
+    # ppsd_attempt(dir_path)
 
     # animated_spectrogram(reader_array, prepro_para, task_t0, timestamps)
 
@@ -275,3 +336,6 @@ if __name__ == '__main__':
     # acausal.trim(endtime=UTCDateTime("19700101T00:00:08"))
     # for tr in acausal: tr.data = np.flip(tr.data)
     # acausal.plot(type='section', recordlength=2, fillcolors=('k', None))
+
+    # gps_coords = pd.read_csv('results/checkpoints/interp_ch_pts.csv', sep=',', index_col=2)
+    # sensitivity_analysis(gps_coords, 4000)
