@@ -42,9 +42,14 @@ def get_reader_array(dir_path:str, allowed_times:dict=None):
 
 def is_valid_time(timestamp, allowed_times):
     '''checks if timestamp is within allowed times'''
+    t = timestamp.time()
     for t1, t2 in allowed_times.items():
-        if t1 <= timestamp.time() <= t2:
-            return True
+        if t1 < t2:
+            if t1 <= t <= t2:
+                return True
+        else:
+            if t1 <= t or t <= t2:
+                return True
     return False
 
 
@@ -86,13 +91,12 @@ def get_time_subset(reader_array:np.ndarray, start_time:datetime, timestamps:np.
     # timestamps MUST be orted, and align with reader array (i.e. timestamps[n] represents reader_array[n])
     start_idx = get_closest_index(timestamps, start_time)
     if abs((start_time - timestamps[start_idx]).total_seconds()) > tolerance:
-        warnings.warn(f"Error: first file is over {tolerance} seconds away from the given start time.")
-        return
+        warnings.warn(f"Error: first file ({timestamps[start_idx]}) is over {tolerance} seconds away from the given start time ({start_time}).")
     
     end_time = timestamps[start_idx] + delta - timedelta(seconds=tpf)
     end_idx = get_closest_index(timestamps, end_time)
     if (end_time - timestamps[end_idx]).total_seconds() > tolerance:
-        warnings.warn(f"WARNING: end file is over {tolerance} seconds away from the calculated end time.")
+        warnings.warn(f"WARNING: end file ({timestamps[end_idx]}) is over {tolerance} seconds away from the calculated end time.")
     # print(f"Given t={start_time}, snippet selected from {timestamps[start_idx]} to {timestamps[end_idx]}!")
     
     if (end_idx - start_idx + 1) != (delta.total_seconds()/tpf):
