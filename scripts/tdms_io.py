@@ -85,13 +85,12 @@ def get_time_subset(reader_array:np.ndarray, start_time:datetime, timestamps:np.
     # timestamps MUST be orted, and align with reader array (i.e. timestamps[n] represents reader_array[n])
     start_idx = get_closest_index(timestamps, start_time)
     if abs((start_time - timestamps[start_idx]).total_seconds()) > tolerance:
-        warnings.warn(f"Error: first file is over {tolerance} seconds away from the given start time.")
-        return
+        warnings.warn(f"Error: first file ({timestamps[start_idx]}) is over {tolerance} seconds away from the given start time ({start_time}).")
     
     end_time = timestamps[start_idx] + delta - timedelta(seconds=tpf)
     end_idx = get_closest_index(timestamps, end_time)
     if (end_time - timestamps[end_idx]).total_seconds() > tolerance:
-        warnings.warn(f"WARNING: end file is over {tolerance} seconds away from the calculated end time.")
+        warnings.warn(f"WARNING: end file ({timestamps[end_idx]}) is over {tolerance} seconds away from the calculated end time.")
     # print(f"Given t={start_time}, snippet selected from {timestamps[start_idx]} to {timestamps[end_idx]}!")
     
     if (end_idx - start_idx + 1) != (delta.total_seconds()/tpf):
@@ -266,6 +265,26 @@ def nparray_to_obspy(data:np.ndarray, props:dict):
         stream += trace
     
     return stream
+
+
+def load_tdms(dir_path, n_minute):
+    task_t0 = datetime(year = 2023, month = 11, day = 9, 
+                       hour = 13, minute = 41, second = 17)
+    
+    properties = get_dir_properties(dir_path)
+    prepro_para = {
+        'cha1': 3850,
+        'cha2': 5750,
+        'sps': properties.get('SamplingFrequency[Hz]'),
+        'spatial_res': properties.get('SpatialResolution[m]'),
+        'spatial_ratio': 1,          # int(target_spatial_res/spatial_res), set not to downsample rn
+        'n_minute': 1,
+        'freqmax': 49.9,
+        'freqmin': 1,
+    }
+    
+    reader_array, timestamps = get_reader_array(dir_path)
+    return get_data_from_array(reader_array, prepro_para, task_t0, timestamps, n_minute), prepro_para
 
 
 def load_xcorr(file_path, normalise=False, as_stream=False):

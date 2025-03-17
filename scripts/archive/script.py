@@ -66,38 +66,20 @@ def tdms_folder_converter(dir_path, out_dir_path):
 # read_das_file("/home/harry/Documents/0. PhD/DiSTANS/temp_data_store/FirstData_UTC_20231109_134257.573.tdms")
 
 
+from obspy.clients.fdsn import Client
+from obspy import UTCDateTime
 
-fig, axs = plt.subplots(2, 4, figsize=(15, 10))
-cha1 = 2000
-cha2 = 7999
-spatial_ratio = 4
-cha_spacing = 0.25
-maxlag = 4
-data = [np.random.rand(1000, 800)] * 8
-vars = ['1', '2', '3', '4', '5', '6', '7', '8']
+client = Client('http://eida.bgs.ac.uk')
 
-for ax, corr, var in zip(axs.ravel(), data, vars):
-    plt.sca(ax)
-    plt.imshow(corr, aspect = 'auto',
-            vmax = 2e-2, vmin = -2e-2, origin = 'lower', interpolation=None)      # vmax, vmin original values of 2e-2, -2e-2 respectively
+# Download station list
+inventory = client.get_stations(network="GB")
+print(inventory)
 
-    _ =plt.yticks((np.linspace(cha1, cha2, 4) - cha1)/spatial_ratio,
-                [int(i) for i in np.linspace(cha1, cha2, 4)], fontsize = 12)
-    plt.ylabel("Channel number", fontsize = 12)
-    _ = plt.xticks(np.arange(0, maxlag*200+1, 200), np.arange(-maxlag, maxlag+1, 2), fontsize=12)
-    plt.xlabel("Time lag (sec)", fontsize = 12)
-    # bar = plt.colorbar(pad = 0.1, format = lambda x, pos: '{:.1f}'.format(x*100))
-    # bar.set_label('Cross-correlation Coefficient ($\\times10^{-2}$)', fontsize = 8)
-    ax.label_outer()
-
-    twiny = plt.gca().twinx()
-    twiny.set_yticks(np.linspace(0, cha2 - cha1, 4),
-                                [int(i* cha_spacing) for i in np.linspace(cha1, cha2, 4)])
-    twiny.set_ylabel("Distance along cable (m)", fontsize = 12)
-    twiny.label_outer()
-
-    plt.tight_layout()
-    plt.title(f"test {var}")
-
-plt.tight_layout()
-plt.savefig('quick_test.png')
+# Save and plot data
+# t = UTCDateTime("2025-01-26T04:00:00.0")        # UK
+t = UTCDateTime("2025-02-08T23:30:00.0")      # Cayman
+# t = UTCDateTime("2025-01-12T19:45:00.0")      # Norway
+st = client.get_waveforms("GB", "WACR", "00", "HH?", t - 2, t + 3600,
+                          attach_response=True)
+# st.write("Helston-Cornwall.mseed")
+st.plot()

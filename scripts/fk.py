@@ -1,14 +1,17 @@
+### Source: https://github.com/afichtner/DAS_Tools/blob/master/fk.py
+
 import numpy as np
 from scipy import interpolate
 import matplotlib.pyplot as plt
-from tdms_io import load_xcorr
+from datetime import timedelta
+from tdms_io import load_xcorr, load_tdms
 
 
 #==================================================================================================
 #= f-k transform ==================================================================================
 #==================================================================================================
 
-def fk(d, dt, dx, distance_scaling=0.0, fmin_plot=0.0, fmax_plot=100.0, kmin_plot=0.0, kmax_plot=0.4, taper=0.05, plot=True, flip_axes=False, f_pick=[], k_pick=[], saturation=0.1, filename=None):
+def fk(d, dt, dx, distance_scaling=0.0, fmin_plot=0.0, fmax_plot=50.0, kmin_plot=0.0, kmax_plot=0.4, taper=0.05, plot=True, flip_axes=False, f_pick=[], k_pick=[], saturation=0.1, filename=None):
 	"""
 	Compute and plot the f-k transform of a 2D space-time data array.
 
@@ -43,7 +46,6 @@ def fk(d, dt, dx, distance_scaling=0.0, fmin_plot=0.0, fmax_plot=100.0, kmin_plo
 	#- Apply distance scaling if wanted. ==========================================================
 
 	if distance_scaling>0.0:
-
 		for i in range(nx): d[i,:]=(dx*float(i))**0.5 * d[i,:]
 
 
@@ -256,7 +258,7 @@ def fk_filter_dispersion(d_fk_r, f, k, dt, dx, f_pick, k_pick, n_smooth=10, fmin
 #= f-k filtering along dispersion curve ===========================================================
 #==================================================================================================
 
-def fk_filter_velocity(d_fk_r, f, k, dt, dx, c_min=300.0, c_max=4000.0, freqmin=5.0, freqmax=80.0, n_smooth=10, fmin_plot=0.0, fmax_plot=100.0, kmin_plot=0.0, kmax_plot=0.4, plot=True):
+def fk_filter_velocity(d_fk_r, f, k, dt, dx, c_min=300.0, c_max=1500.0, freqmin=0.0, freqmax=50.0, n_smooth=10, fmin_plot=0.0, fmax_plot=100.0, kmin_plot=0.0, kmax_plot=0.4, plot=True):
 	"""
 	f-k filtering according to velocity and frequency boundaries.
 
@@ -567,9 +569,18 @@ def fc(d_fk_r, f, k, f_pick, k_pick, fmin_plot=0.0, fmax_plot=100.0, cmin_plot=2
 
 
 if __name__ == '__main__':
-    corr_path = './results/checkpoints/2024-02-05 12:01:00_4320mins_f0.01:49.9__3300:3750_1m.txt'
-    xcorr = load_xcorr(corr_path)
-    dt = 1/100
-    dx = float(corr_path.split('/')[3][:-4].split('_')[-1].strip('m'))
-    
-    fk(xcorr, dt, dx)
+	corr_path = './results/saved_corrs/2024-02-05 12:01:00_4320mins_f0.01:49.9__3850:8050_1m.txt'
+	# corr_path = './results/saved_corrs/2024-02-05 12:01:00_1440mins_100f0.01:50.0__3850:5750_1m.txt'
+	# corr_path = './results/saved_corrs/2024-02-05 12:01:00_4320mins_20:00:00:02:00:00_12:00:00:18:00:00_100f0.01:50.0__3850:5750_1m.txt'
+	data = load_xcorr(corr_path)
+	dt = 1/100
+	dx = float(corr_path.split('/')[3][:-4].split('_')[-1].strip('m'))
+
+	# dir_path = "../../temp_data_store/FirstData/"
+	# data, prepro_para = load_tdms(dir_path, timedelta(minutes=1))
+	# dt = 1/prepro_para.get('sps')
+	# dx = prepro_para.get('spatial_res')
+ 
+	f, k, d_fk_r = fk(data, dt, dx, fmin_plot=5.0, fmax_plot=50.0)
+	d_filtered = fk_filter_velocity(d_fk_r, f, k, dt, dx)
+ 
