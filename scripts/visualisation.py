@@ -9,6 +9,7 @@ from obspy.signal.filter import bandpass
 from obspy.signal.spectral_estimation import get_nlnm, get_nhnm
 from datetime import datetime, timedelta
 import matplotlib.pyplot as plt
+import matplotlib.dates as mdates
 from matplotlib.animation import FuncAnimation
 from matplotlib.colors import LogNorm
 from skimage.util import compare_images
@@ -281,6 +282,44 @@ def sensitivity_analysis(gps_track:pd.DataFrame, target_ch):
         axs[i].scatter(gps_track.loc[target_ch, 'lon'], gps_track.loc[target_ch, 'lat'], s=100, c='k')
     plt.tight_layout()
     plt.show()
+    
+
+def plot_weather():
+    weather_data = pd.read_csv('./results/checkpoints/weather.csv', sep=',', index_col=[0, 1], comment='#', na_values=['   --- ', '   ---'])
+    weather_data.index = [np.datetime64(f'{date[0]}-{date[1] if date[1] > 9 else f"0{date[1]}"}', 'D') for date in weather_data.index]
+    # print(weather_data)
+    deployment_data = weather_data.loc[np.datetime64('2023-09-01'):]
+    axs = deployment_data.plot.line(None, subplots=True, legend=False, grid=True)
+    for ax, label in zip(axs, ['Max temp (degC)', 'Min temp (degC)', 'AF (days)', 'Rainfall (mm)', 'Sun (hours)']):
+        ax.set_ylabel(label)
+    plt.show()
+
+
+def plot_rain_storms():
+    weather_data = pd.read_csv('./results/checkpoints/weather.csv', sep=',', index_col=[0, 1], comment='#', na_values=['   --- ', '   ---'], skipinitialspace=True)
+    weather_data.index = [np.datetime64(f'{date[0]}-{date[1] if date[1] > 9 else f"0{date[1]}"}', 'D') for date in weather_data.index]
+    rain_data = weather_data.loc[np.datetime64('2023-09-01'):, ['rain']]
+    rain_data['rain'] = rain_data['rain'].astype(float)
+    
+    fig, ax = plt.subplots()
+    ax.plot(rain_data.index, rain_data['rain'])
+    ax.set_ylabel('Rainfall (mm)')
+    ax.grid(which='both') 
+    ax.xaxis.set_major_locator(mdates.MonthLocator(bymonth=(1,4,7,10)))
+    ax.xaxis.set_minor_locator(mdates.MonthLocator(bymonth=()))
+    
+    storms_data = pd.read_csv('./results/checkpoints/storms.csv', sep=',', index_col=0, comment='#')
+    prev_storm_end = 0
+    for storm in storms_data.index:
+        dates = storms_data.loc[storm, ['start_date', 'end_date']]
+        ax.axvspan(np.datetime64(dates['start_date']), np.datetime64(dates['end_date'])+1, label=storm, facecolor='r', alpha=0.5)
+        if prev_storm_end and np.datetime64(dates['end_date']) - prev_storm_end < 10:
+            ax.text(np.datetime64(dates['start_date']), 30, storm, rotation=90)
+        else:
+            ax.text(np.datetime64(dates['start_date']), 20, storm, rotation=90)
+        prev_storm_end = np.datetime64(dates['end_date'])
+    plt.tight_layout()
+    plt.show()
 
 
 if __name__ == '__main__':
@@ -303,11 +342,11 @@ if __name__ == '__main__':
 
     # ts_spectrogram(dir_path, prepro_para, task_t0)
 
-    reader_array, timestamps = get_reader_array(dir_path)
+    # reader_array, timestamps = get_reader_array(dir_path)
 
-    channel_slices = [[1500, 1500], [3000, 3000], [5000, 5000], [7000, 7000]]
-    channel_slices = [5000, 5000]
-    psd_with_channel_slicing(reader_array, prepro_para, task_t0, timestamps, channel_slices)
+    # channel_slices = [[1500, 1500], [3000, 3000], [5000, 5000], [7000, 7000]]
+    # channel_slices = [5000, 5000]
+    # psd_with_channel_slicing(reader_array, prepro_para, task_t0, timestamps, channel_slices)
     # ppsd_attempt(dir_path)
 
     # animated_spectrogram(reader_array, prepro_para, task_t0, timestamps)
@@ -339,3 +378,5 @@ if __name__ == '__main__':
 
     # gps_coords = pd.read_csv('results/checkpoints/interp_ch_pts.csv', sep=',', index_col=2)
     # sensitivity_analysis(gps_coords, 4000)
+    # plot_weather()
+    plot_rain_storms()
