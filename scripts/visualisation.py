@@ -253,7 +253,7 @@ def calc_angle_between_points(lat1, lon1, lat2, lon2):
     return angle
 
 
-def sensitivity_analysis(gps_track:pd.DataFrame, target_ch):
+def sensitivity_analysis(gps_track:pd.DataFrame, target_ch, plot=True):
     angles = []
     for current_ch in gps_track.index:
         if current_ch == gps_track.index[0]:
@@ -275,13 +275,16 @@ def sensitivity_analysis(gps_track:pd.DataFrame, target_ch):
         long_sens.append(abs(cos(radians(angle))))
         trans_sens.append(sin(2*radians(angle)) ** 2)
     
-    fig, axs = plt.subplots(3, 1, figsize=(15, 10))
-    for i, arr in enumerate([relative_angles, long_sens, trans_sens]):
-        im = axs[i].scatter(gps_track['lon'], gps_track['lat'], c=arr, cmap='seismic')
-        fig.colorbar(im, ax=axs[i])
-        axs[i].scatter(gps_track.loc[target_ch, 'lon'], gps_track.loc[target_ch, 'lat'], s=100, c='k')
-    plt.tight_layout()
-    plt.show()
+    if plot:
+        fig, axs = plt.subplots(3, 1, figsize=(15, 10))
+        for i, arr in enumerate([relative_angles, long_sens, trans_sens]):
+            im = axs[i].scatter(gps_track['lon'], gps_track['lat'], c=arr, cmap='seismic')
+            fig.colorbar(im, ax=axs[i])
+            axs[i].scatter(gps_track.loc[target_ch, 'lon'], gps_track.loc[target_ch, 'lat'], s=100, c='k')
+        plt.tight_layout()
+        plt.show()
+    
+    return np.sum(long_sens), np.sum(trans_sens)
     
 
 def plot_weather():
@@ -289,9 +292,11 @@ def plot_weather():
     weather_data.index = [np.datetime64(f'{date[0]}-{date[1] if date[1] > 9 else f"0{date[1]}"}', 'D') for date in weather_data.index]
     # print(weather_data)
     deployment_data = weather_data.loc[np.datetime64('2023-09-01'):]
-    axs = deployment_data.plot.line(None, subplots=True, legend=False, grid=True)
+    axs = deployment_data.plot.line(None, subplots=True, legend=False, grid=True, figsize=(12, 12))
     for ax, label in zip(axs, ['Max temp (degC)', 'Min temp (degC)', 'AF (days)', 'Rainfall (mm)', 'Sun (hours)']):
         ax.set_ylabel(label)
+    plt.tight_layout()
+    plt.savefig('./results/figures/weather_data.png')
     plt.show()
 
 
@@ -301,7 +306,7 @@ def plot_rain_storms():
     rain_data = weather_data.loc[np.datetime64('2023-09-01'):, ['rain']]
     rain_data['rain'] = rain_data['rain'].astype(float)
     
-    fig, ax = plt.subplots()
+    fig, ax = plt.subplots(figsize=(12, 12))
     ax.plot(rain_data.index, rain_data['rain'])
     ax.set_ylabel('Rainfall (mm)')
     ax.grid(which='both') 
@@ -319,6 +324,7 @@ def plot_rain_storms():
             ax.text(np.datetime64(dates['start_date']), 20, storm, rotation=90)
         prev_storm_end = np.datetime64(dates['end_date'])
     plt.tight_layout()
+    # plt.savefig('./results/figures/rainfall_storms.png')
     plt.show()
 
 
@@ -375,8 +381,20 @@ if __name__ == '__main__':
     # acausal.trim(endtime=UTCDateTime("19700101T00:00:08"))
     # for tr in acausal: tr.data = np.flip(tr.data)
     # acausal.plot(type='section', recordlength=2, fillcolors=('k', None))
-
-    # gps_coords = pd.read_csv('results/checkpoints/interp_ch_pts.csv', sep=',', index_col=2)
-    # sensitivity_analysis(gps_coords, 4000)
+    
     # plot_weather()
     plot_rain_storms()
+    
+    # gps_coords = pd.read_csv('results/checkpoints/interp_ch_pts.csv', sep=',', index_col=2)
+    # long_max, trans_max = 0, 0
+    # long_max_ch, trans_max_ch = 0, 0
+    # for ch in gps_coords.index:
+    #     long_total, trans_total = sensitivity_analysis(gps_coords, ch, plot=False)
+    #     if long_total > long_max:
+    #         long_total = long_max
+    #         long_max_ch = ch
+    #     if trans_total > trans_max:
+    #         trans_total = trans_max
+    #         trans_max_ch = ch
+    # print(f'{long_max_ch}: {long_max}')
+    # print(f'{trans_max_ch}: {trans_max}')
