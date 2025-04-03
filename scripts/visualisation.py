@@ -9,6 +9,7 @@ from obspy.signal.filter import bandpass
 from obspy.signal.spectral_estimation import get_nlnm, get_nhnm
 from datetime import datetime, timedelta
 import matplotlib.pyplot as plt
+import matplotlib.dates as mdates
 from matplotlib.animation import FuncAnimation
 from matplotlib.colors import LogNorm
 from skimage.util import compare_images
@@ -252,7 +253,7 @@ def calc_angle_between_points(lat1, lon1, lat2, lon2):
     return angle
 
 
-def sensitivity_analysis(gps_track:pd.DataFrame, target_ch):
+def sensitivity_analysis(gps_track:pd.DataFrame, target_ch, plot=True):
     angles = []
     for current_ch in gps_track.index:
         if current_ch == gps_track.index[0]:
@@ -274,13 +275,91 @@ def sensitivity_analysis(gps_track:pd.DataFrame, target_ch):
         long_sens.append(abs(cos(radians(angle))))
         trans_sens.append(sin(2*radians(angle)) ** 2)
     
-    fig, axs = plt.subplots(3, 1, figsize=(15, 10))
-    for i, arr in enumerate([relative_angles, long_sens, trans_sens]):
-        im = axs[i].scatter(gps_track['lon'], gps_track['lat'], c=arr, cmap='seismic')
-        fig.colorbar(im, ax=axs[i])
-        axs[i].scatter(gps_track.loc[target_ch, 'lon'], gps_track.loc[target_ch, 'lat'], s=100, c='k')
+    if plot:
+        fig, axs = plt.subplots(3, 1, figsize=(15, 10))
+        for i, arr in enumerate([relative_angles, long_sens, trans_sens]):
+            im = axs[i].scatter(gps_track['lon'], gps_track['lat'], c=arr, cmap='seismic')
+            fig.colorbar(im, ax=axs[i])
+            axs[i].scatter(gps_track.loc[target_ch, 'lon'], gps_track.loc[target_ch, 'lat'], s=100, c='k')
+        plt.tight_layout()
+        plt.show()
+    
+    return np.sum(long_sens), np.sum(trans_sens)
+    
+
+def plot_weather():
+    weather_data = pd.read_csv('./results/checkpoints/weather.csv', sep=',', index_col=[0, 1], comment='#', na_values=['   --- ', '   ---'])
+    weather_data.index = [np.datetime64(f'{date[0]}-{date[1] if date[1] > 9 else f"0{date[1]}"}', 'D') for date in weather_data.index]
+    # print(weather_data)
+    deployment_data = weather_data.loc[np.datetime64('2023-09-01'):]
+    axs = deployment_data.plot.line(None, subplots=True, legend=False, grid=True, figsize=(12, 12))
+    for ax, label in zip(axs, ['Max temp (degC)', 'Min temp (degC)', 'AF (days)', 'Rainfall (mm)', 'Sun (hours)']):
+        ax.set_ylabel(label)
     plt.tight_layout()
+    plt.savefig('./results/figures/weather_data.png')
     plt.show()
+
+
+def plot_rain_storms():
+    weather_data = pd.read_csv('./results/checkpoints/weather.csv', sep=',', index_col=[0, 1], comment='#', na_values=['   --- ', '   ---'], skipinitialspace=True)
+    weather_data.index = [np.datetime64(f'{date[0]}-{date[1] if date[1] > 9 else f"0{date[1]}"}', 'D') for date in weather_data.index]
+    rain_data = weather_data.loc[np.datetime64('2023-09-01'):, ['rain']]
+    rain_data['rain'] = rain_data['rain'].astype(float)
+    
+    fig, ax = plt.subplots(figsize=(12, 12))
+    ax.plot(rain_data.index, rain_data['rain'])
+    ax.set_ylabel('Rainfall (mm)')
+    ax.grid(which='both') 
+    ax.xaxis.set_major_locator(mdates.MonthLocator(bymonth=(1,4,7,10)))
+    ax.xaxis.set_minor_locator(mdates.MonthLocator(bymonth=()))
+    
+    storms_data = pd.read_csv('./results/checkpoints/storms.csv', sep=',', index_col=0, comment='#')
+    prev_storm_end = 0
+    for storm in storms_data.index:
+        dates = storms_data.loc[storm, ['start_date', 'end_date']]
+        ax.axvspan(np.datetime64(dates['start_date']), np.datetime64(dates['end_date'])+1, label=storm, facecolor='r', alpha=0.5)
+        if prev_storm_end and np.datetime64(dates['end_date']) - prev_storm_end < 10:
+            ax.text(np.datetime64(dates['start_date']), 30, storm, rotation=90)
+        else:
+            ax.text(np.datetime64(dates['start_date']), 20, storm, rotation=90)
+        prev_storm_end = np.datetime64(dates['end_date'])
+    plt.tight_layout()
+    # plt.savefig('./results/figures/rainfall_storms.png')
+    plt.show()
+
+
+def plot_era5_data(grib_path):
+    from mpl_toolkits.basemap import Basemap, shiftgrid
+    import pygrib
+    plt.figure(figsize=(12,8))
+    
+    grbs = pygrib.open(grib_path)
+    
+    grb = grbs.select()[0]
+    data = grb.values
+    
+    # need to shift data grid longitudes from (0..360) to (-180..180)
+    lons = np.linspace(float(grb['longitudeOfFirstGridPointInDegrees']), float(grb['longitudeOfLastGridPointInDegrees']), int(grb['Ni'])+1)
+    lats = np.linspace(float(grb['latitudeOfFirstGridPointInDegrees']), float(grb['latitudeOfLastGridPointInDegrees']), int(grb['Nj'])+1)
+    data, lons = shiftgrid(0., data, lons, start=False)
+    grid_lon, grid_lat = np.meshgrid(lons, lats) #regularly spaced 2D grid
+    
+    m = Basemap(projection='cyl', llcrnrlon=lons.min(), \
+        urcrnrlon=lons.max(),llcrnrlat=lats.min(),urcrnrlat=lats.max(), \
+        resolution='c')
+    
+    x, y = m(grid_lon, grid_lat)
+    
+    cs = m.pcolormesh(x,y,data,shading='flat',cmap=plt.cm.gist_stern_r)
+    
+    m.drawcoastlines()
+    m.drawmapboundary()
+    m.drawparallels(np.arange(-90.,120.,30.),labels=[1,0,0,0])
+    m.drawmeridians(np.arange(-180.,180.,60.),labels=[0,0,0,1])
+    
+    plt.colorbar(cs,orientation='vertical', shrink=0.5)
+    plt.title('CAMS AOD forecast') # Set the name of the variable to plot
+    plt.savefig(grib_path+'.png') # Set the output file name
 
 
 if __name__ == '__main__':
@@ -303,17 +382,16 @@ if __name__ == '__main__':
 
     # ts_spectrogram(dir_path, prepro_para, task_t0)
 
-    reader_array, timestamps = get_reader_array(dir_path)
+    # reader_array, timestamps = get_reader_array(dir_path)
 
-    channel_slices = [[1500, 1500], [3000, 3000], [5000, 5000], [7000, 7000]]
-    channel_slices = [5000, 5000]
-    psd_with_channel_slicing(reader_array, prepro_para, task_t0, timestamps, channel_slices)
+    # channel_slices = [[1500, 1500], [3000, 3000], [5000, 5000], [7000, 7000]]
+    # channel_slices = [5000, 5000]
+    # psd_with_channel_slicing(reader_array, prepro_para, task_t0, timestamps, channel_slices)
     # ppsd_attempt(dir_path)
 
     # animated_spectrogram(reader_array, prepro_para, task_t0, timestamps)
 
     # plot_gps_coords('results/linewalk_gps.csv')
-    
     
     
     # corr_path = './results/saved_corrs/2024-02-05 12:01:00_4320mins_f0.01:49.9__3850:5750_1m.txt'
@@ -336,6 +414,21 @@ if __name__ == '__main__':
     # acausal.trim(endtime=UTCDateTime("19700101T00:00:08"))
     # for tr in acausal: tr.data = np.flip(tr.data)
     # acausal.plot(type='section', recordlength=2, fillcolors=('k', None))
-
+    
+    # plot_weather()
+    # plot_rain_storms()
+    plot_era5_data('era5_data.grib')
+    
     # gps_coords = pd.read_csv('results/checkpoints/interp_ch_pts.csv', sep=',', index_col=2)
-    # sensitivity_analysis(gps_coords, 4000)
+    # long_max, trans_max = 0, 0
+    # long_max_ch, trans_max_ch = 0, 0
+    # for ch in gps_coords.index:
+    #     long_total, trans_total = sensitivity_analysis(gps_coords, ch, plot=False)
+    #     if long_total > long_max:
+    #         long_total = long_max
+    #         long_max_ch = ch
+    #     if trans_total > trans_max:
+    #         trans_total = trans_max
+    #         trans_max_ch = ch
+    # print(f'{long_max_ch}: {long_max}')
+    # print(f'{trans_max_ch}: {trans_max}')
