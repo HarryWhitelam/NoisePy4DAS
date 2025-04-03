@@ -328,6 +328,40 @@ def plot_rain_storms():
     plt.show()
 
 
+def plot_era5_data(grib_path):
+    from mpl_toolkits.basemap import Basemap, shiftgrid
+    import pygrib
+    plt.figure(figsize=(12,8))
+    
+    grbs = pygrib.open(grib_path)
+    
+    grb = grbs.select()[0]
+    data = grb.values
+    
+    # need to shift data grid longitudes from (0..360) to (-180..180)
+    lons = np.linspace(float(grb['longitudeOfFirstGridPointInDegrees']), float(grb['longitudeOfLastGridPointInDegrees']), int(grb['Ni'])+1)
+    lats = np.linspace(float(grb['latitudeOfFirstGridPointInDegrees']), float(grb['latitudeOfLastGridPointInDegrees']), int(grb['Nj'])+1)
+    data, lons = shiftgrid(0., data, lons, start=False)
+    grid_lon, grid_lat = np.meshgrid(lons, lats) #regularly spaced 2D grid
+    
+    m = Basemap(projection='cyl', llcrnrlon=lons.min(), \
+        urcrnrlon=lons.max(),llcrnrlat=lats.min(),urcrnrlat=lats.max(), \
+        resolution='c')
+    
+    x, y = m(grid_lon, grid_lat)
+    
+    cs = m.pcolormesh(x,y,data,shading='flat',cmap=plt.cm.gist_stern_r)
+    
+    m.drawcoastlines()
+    m.drawmapboundary()
+    m.drawparallels(np.arange(-90.,120.,30.),labels=[1,0,0,0])
+    m.drawmeridians(np.arange(-180.,180.,60.),labels=[0,0,0,1])
+    
+    plt.colorbar(cs,orientation='vertical', shrink=0.5)
+    plt.title('CAMS AOD forecast') # Set the name of the variable to plot
+    plt.savefig(grib_path+'.png') # Set the output file name
+
+
 if __name__ == '__main__':
     dir_path = "../../temp_data_store/FirstData/"
     # dir_path = "../../../../gpfs/data/DAS_data/Data/"
@@ -360,7 +394,6 @@ if __name__ == '__main__':
     # plot_gps_coords('results/linewalk_gps.csv')
     
     
-    
     # corr_path = './results/saved_corrs/2024-02-05 12:01:00_4320mins_f0.01:49.9__3850:5750_1m.txt'
     # stream = load_xcorr(corr_path, as_stream=True)
     # from obspy import read, UTCDateTime, Stream
@@ -383,7 +416,8 @@ if __name__ == '__main__':
     # acausal.plot(type='section', recordlength=2, fillcolors=('k', None))
     
     # plot_weather()
-    plot_rain_storms()
+    # plot_rain_storms()
+    plot_era5_data('era5_data.grib')
     
     # gps_coords = pd.read_csv('results/checkpoints/interp_ch_pts.csv', sep=',', index_col=2)
     # long_max, trans_max = 0, 0
