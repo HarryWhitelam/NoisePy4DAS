@@ -12,7 +12,7 @@ from tqdm import tqdm
 from obspy import Stream, Trace
 from obspy.core.trace import Stats
 from obspy.core.utcdatetime import UTCDateTime
-from datetime import datetime, timedelta, time
+from datetime import datetime, timedelta, time as dt_time
 from math import floor, ceil
 from skimage.transform import resize
 
@@ -27,9 +27,8 @@ def get_reader_array(dir_path:str, allowed_times:dict=None):
             case '.tdms': reader = TdmsReader(dir_path + file)
             case '.segy': reader = SegyReader(dir_path + file)
         timestamp = reader.get_properties().get('GPSTimeStamp')
-        if allowed_times:
-            if not is_valid_time(timestamp, allowed_times):
-                continue
+        if allowed_times and not is_valid_time(timestamp, allowed_times):
+            continue
         reader_array[count] = reader
         timestamps[count] = timestamp
     timestamps = np.delete(timestamps, np.where(timestamps == None))
@@ -273,6 +272,26 @@ def nparray_to_obspy(data:np.ndarray, props:dict):
     return stream
 
 
+def load_tdms(dir_path, n_minute):
+    task_t0 = datetime(year = 2023, month = 11, day = 9, 
+                       hour = 13, minute = 41, second = 17)
+    
+    properties = get_dir_properties(dir_path)
+    prepro_para = {
+        'cha1': 3850,
+        'cha2': 5750,
+        'sps': properties.get('SamplingFrequency[Hz]'),
+        'spatial_res': properties.get('SpatialResolution[m]'),
+        'spatial_ratio': 1,          # int(target_spatial_res/spatial_res), set not to downsample rn
+        'n_minute': 1,
+        'freqmax': 49.9,
+        'freqmin': 1,
+    }
+    
+    reader_array, timestamps = get_reader_array(dir_path)
+    return get_data_from_array(reader_array, prepro_para, task_t0, timestamps, n_minute), prepro_para
+
+
 def load_xcorr(file_path, normalise=False, as_stream=False):
     xdata = np.loadtxt(file_path, delimiter=',')
     xdata = xdata[:, ~np.all(np.isnan(xdata), axis=0)]      # 06/01/25 added for Ni's data
@@ -319,6 +338,7 @@ if __name__ == '__main__':
 
     dir_path = '../../temp_data_store/FirstData/'
     
-    times = {time(13, 41, 10):time(13, 41, 59)}
+    times = {dt_time(13, 41, 10):dt_time(13, 41, 39), 
+             dt_time(13, 42, 20):dt_time(13, 42, 39), }
     readers, timestamps = get_reader_array(dir_path, times)
     print(timestamps)

@@ -85,6 +85,7 @@ task_t0 = datetime(year = 2024, month = 3, day = 8,
 #               3850, 8050 [cable from out of forest] 
 #               3300, 3750 [forest]
 
+# IF PASSING ALLOWED_TIMES, n_minute is the number of days you'd like to span, n_minute in terms fo the data will be calculated within correlation() 
 prepro_para = set_prepro_parameters(dir_path, task_t0, target_spatial_res=1, cha1=3850, cha2=5750, n_minute=4320, freqmin=0.01, freqmax=50.0)
 # prepro_para = set_prepro_parameters(dir_path, task_t0, target_spatial_res=1, cha1=7280, cha2=7680, n_minute=4320, freqmin=0.01, freqmax=50.0)
 # prepro_para = set_prepro_parameters(dir_path, task_t0, target_spatial_res=0.25, cha1=962, cha2=1437, n_minute=30)      # adapted for segy files at 1 m spacings therefore cha_num / 4
@@ -95,5 +96,6 @@ spec_prepro_para = prepro_para.copy()           # copy bc python dicts are mutab
 
 # times = {dt_time(20, 0, 0): dt_time(2, 0, 0), 
 #          dt_time(12, 0, 0): dt_time(18, 0, 0)}
+
 corr_full = correlation(dir_path, prepro_para)
 plot_correlation(corr_full, prepro_para, save_corr=True)
