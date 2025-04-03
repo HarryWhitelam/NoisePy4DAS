@@ -35,7 +35,7 @@ def set_prepro_parameters(dir_path, task_t0, freqmin=1, freqmax=49.9, target_spa
 
     freq_norm          = 'rma'             # 'no' for no whitening, or 'rma' for running-mean average, 'phase_only' for sign-bit normalization in freq domain.
     time_norm          = 'one_bit'             # 'no' for no normalization, or 'rma', 'one_bit' for normalization in time domain
-    cc_method          = 'deconv'           # 'xcorr' for pure cross correlation, 'deconv' for deconvolution; FOR "COHERENCY" PLEASE set freq_norm to "rma", time_norm to "no" and cc_method to "xcorr"
+    cc_method          = 'xcorr'           # 'xcorr' for pure cross correlation, 'deconv' for deconvolution; FOR "COHERENCY" PLEASE set freq_norm to "rma", time_norm to "no" and cc_method to "xcorr"
     smooth_N           = 100               # moving window length for time domain normalization if selected (points)
     smoothspect_N      = 100               # moving window length to smooth spectrum amplitude (points)
     maxlag             = 4                 # lags of cross-correlation to save (sec)

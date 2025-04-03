@@ -72,9 +72,9 @@ def spatial_res_experiment():
 # task_t0 = datetime(year = 2023, month = 11, day = 9, 
 #                    hour = 13, minute = 39, second = 47, microsecond = 0)
 
-dir_path = "../../../../gpfs/scratch/gfs19eku/20240205/"
-task_t0 = datetime(year = 2024, month = 2, day = 5, 
-                   hour = 12, minute = 1, second = 0, microsecond = 0)
+dir_path = "../../../../gpfs/scratch/gfs19eku/20240308/"
+task_t0 = datetime(year = 2024, month = 3, day = 8, 
+                   hour = 12, minute = 7, second = 49, microsecond = 0)
 
 
 # frequency_experiment()
@@ -93,7 +93,7 @@ spec_prepro_para = prepro_para.copy()           # copy bc python dicts are mutab
 # spec_prepro_para.update({'freqmax':5.0})
 # ts_spectrogram(dir_path, spec_prepro_para, task_t0)
 
-times = {dt_time(20, 0, 0): dt_time(2, 0, 0), 
-         dt_time(12, 0, 0): dt_time(18, 0, 0)}
+# times = {dt_time(20, 0, 0): dt_time(2, 0, 0), 
+#          dt_time(12, 0, 0): dt_time(18, 0, 0)}
 corr_full = correlation(dir_path, prepro_para)
 plot_correlation(corr_full, prepro_para, save_corr=True)
