@@ -83,7 +83,7 @@ def correlation(dir_path, prepro_para, corr_path=None, allowed_times=None):
     n_lag, n_pair, cha1, cha2, effective_cha2, cha_list, n_minute, task_t0 = prepro_para.get('n_lag'), prepro_para.get('n_pair'), prepro_para.get('cha1'), prepro_para.get('cha2'), prepro_para.get('effective_cha2'), prepro_para.get('cha_list'), prepro_para.get('n_minute'), prepro_para.get('task_t0')
     
     ### FIXME: these funcs require a LOT of listdir calls, could be made more efficient in the future
-    file_array, timestamps = get_reader_array(dir_path)
+    file_array, timestamps = get_reader_array(dir_path, allowed_times)
     if allowed_times: n_minute = floor((file_array[0].get_data(cha1, cha2).shape[0] / prepro_para.get('sps')) * len(file_array) / 60)
     
     corr_full = np.zeros([n_lag, n_pair], dtype = np.float32)
@@ -177,7 +177,7 @@ def plot_das_data(data, prepro_para):
     plt.colorbar(pad = 0.1)
 
 
-def plot_correlation(corr, prepro_para, cmap_param='bwr', save_corr=False):
+def plot_correlation(corr, prepro_para, cmap_param='bwr', save_corr=False, allowed_times=None):
     cha1, cha2, effective_cha2, spatial_ratio, cha_spacing, target_spatial_res, samp_freq, freqmin, freqmax, maxlag, n_minute, task_t0 = prepro_para.get('cha1'), prepro_para.get('cha2'), prepro_para.get('effective_cha2'), prepro_para.get('spatial_ratio'), prepro_para.get('cha_spacing'), prepro_para.get('target_spatial_res'), prepro_para.get('samp_freq'), prepro_para.get('freqmin'), prepro_para.get('freqmax'), prepro_para.get('maxlag'), prepro_para.get('n_minute'), prepro_para.get('task_t0')
 
     plt.figure(figsize = (12, 5), dpi = 150)
@@ -205,7 +205,10 @@ def plot_correlation(corr, prepro_para, cmap_param='bwr', save_corr=False):
     out_dir = f'./results/figures/{task_t0}_{n_minute}mins_{cha1}:{cha2}/'
     if not os.path.exists(out_dir):
         os.makedirs(out_dir)
-    out_name = f'{task_t0}_{n_minute}mins_{samp_freq}f{freqmin}:{freqmax}__{cha1}:{cha2}_{target_spatial_res}m'
+    out_name = f'{task_t0}_{n_minute}mins_{samp_freq}f{freqmin}:{freqmax}__{cha1}:{cha2}_{target_spatial_res}m_deconv'
+    if allowed_times:
+        for t1, t2 in allowed_times.items():
+            out_name += f'_{t1}:{t2}'
     plt.savefig(f'{out_dir}{out_name}.png')
     if save_corr:
         np.savetxt(f'./results/saved_corrs/{out_name}.txt', corr[:, :(effective_cha2 - cha1)], delimiter=",")

@@ -41,9 +41,14 @@ def get_reader_array(dir_path:str, allowed_times:dict=None):
 
 def is_valid_time(timestamp, allowed_times):
     '''checks if timestamp is within allowed times'''
+    t = timestamp.time()
     for t1, t2 in allowed_times.items():
-        if t1 <= timestamp.time() <= t2:
-            return True
+        if t1 < t2:
+            if t1 <= t <= t2:
+                return True
+        else:
+            if t1 <= t or t <= t2:
+                return True
     return False
 
 

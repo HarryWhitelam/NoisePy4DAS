@@ -4,9 +4,8 @@ suppress_figures = True
 import sys
 sys.path.append("./src")
 sys.path.append("./DASstore")
-# sys.path.append("./scripts")
 
-from datetime import datetime, time
+from datetime import datetime, time as dt_time
 from correlation_funcs import *
 from visualisation import ts_spectrogram
 
@@ -73,9 +72,9 @@ def spatial_res_experiment():
 # task_t0 = datetime(year = 2023, month = 11, day = 9, 
 #                    hour = 13, minute = 39, second = 47, microsecond = 0)
 
-dir_path = "../../../../gpfs/scratch/gfs19eku/20240205/"
-task_t0 = datetime(year = 2024, month = 2, day = 5, 
-                   hour = 12, minute = 1, second = 0, microsecond = 0)
+dir_path = "../../../../gpfs/scratch/gfs19eku/20240308/"
+task_t0 = datetime(year = 2024, month = 3, day = 8, 
+                   hour = 12, minute = 7, second = 49, microsecond = 0)
 
 
 # frequency_experiment()
@@ -86,14 +85,17 @@ task_t0 = datetime(year = 2024, month = 2, day = 5,
 #               3850, 8050 [cable from out of forest] 
 #               3300, 3750 [forest]
 
-
 # IF PASSING ALLOWED_TIMES, n_minute is the number of days you'd like to span, n_minute in terms fo the data will be calculated within correlation() 
-prepro_para = set_prepro_parameters(dir_path, task_t0, target_spatial_res=1, cha1=3850, cha2=5750, n_minute=4320, freqmin=5.0, freqmax=50.0)
+prepro_para = set_prepro_parameters(dir_path, task_t0, target_spatial_res=1, cha1=3850, cha2=5750, n_minute=4320, freqmin=0.01, freqmax=50.0)
+# prepro_para = set_prepro_parameters(dir_path, task_t0, target_spatial_res=1, cha1=7280, cha2=7680, n_minute=4320, freqmin=0.01, freqmax=50.0)
 # prepro_para = set_prepro_parameters(dir_path, task_t0, target_spatial_res=0.25, cha1=962, cha2=1437, n_minute=30)      # adapted for segy files at 1 m spacings therefore cha_num / 4
 
 spec_prepro_para = prepro_para.copy()           # copy bc python dicts are mutable so (effectively) passed by ref
-ts_spectrogram(dir_path, spec_prepro_para, task_t0)
+# spec_prepro_para.update({'freqmax':5.0})
+# ts_spectrogram(dir_path, spec_prepro_para, task_t0)
 
-times = {time(20, 0, 0):time(4, 0, 0)}
+# times = {dt_time(20, 0, 0): dt_time(2, 0, 0), 
+#          dt_time(12, 0, 0): dt_time(18, 0, 0)}
+
 corr_full = correlation(dir_path, prepro_para)
 plot_correlation(corr_full, prepro_para, save_corr=True)

@@ -184,15 +184,21 @@ def numerical_comparison(data_dict):
 
 def ts_spectrogram(dir_path:str, prepro_para:dict, t_start:datetime):
     cha1, cha2, sps, freqmin, freqmax, n_minute = prepro_para.get('cha1'), prepro_para.get('cha2'), prepro_para.get('sps'), prepro_para.get('freqmin'), prepro_para.get('freqmax'), prepro_para.get('n_minute')
-    out_dir = f"./results/figures/{t_start}_{n_minute}mins_{cha1}:{cha2}/"
     
-    if type(dir_path == list):
+    # out_dir = f"./results/figures/{t_start}_{n_minute}mins_{cha1}:{cha2}/"        # changed for PSD experiments 17/02
+    out_dir = f"./results/figures/PSD_Experiments/"
+    
+    # reader_array, timestamps = get_reader_array(dir_path)
+    if type(dir_path == str): 
+        reader_array, timestamps = get_reader_array(dir_path)
+
+    elif type(dir_path == list):
         reader_array, timestamps = get_reader_array(dir_path[0])
         for path in dir_path[1:]:
             arr, stamps = get_reader_array(path)
             reader_array += arr; timestamps = np.concatenate((timestamps, stamps))
     else: 
-        reader_array, timestamps = get_reader_array(dir_path)
+        print(f'dir_path bad format: expected list/str, got {type(dir_path)}')
 
     mid_cha = int(0.5 * (cha1 + cha2))
     prepro_para.update({'cha1':mid_cha, 'cha2':mid_cha+1})
@@ -232,12 +238,12 @@ def ts_spectrogram(dir_path:str, prepro_para:dict, t_start:datetime):
         _ = plt.xticks(np.linspace(0, ext[1], 4), pd.date_range(t_start, t_start+timedelta(minutes=n_minute), periods=4), rotation=30)
         _ = plt.xticks(np.linspace(0, ext[1], 16), minor=True)
     plt.ylim(freqmin, freqmax)
-    fig1.colorbar(im1, label='Power Spectral Density ' + r"$20\,\log_{10}|S_x(t, f)|$ in dB")
+    fig1.colorbar(im1, label='PSD ' + r"$20\,\log_{10}|S_x(t, f)|$ in dB")
     plt.tight_layout()
-    # plt.show()
     if not os.path.exists(out_dir):
         os.makedirs(out_dir)
-    plt.savefig(f'{out_dir}/{t_start}__{t_start+timedelta(minutes=n_minute)}_f{freqmin}:{freqmax}_psd.png')
+    # plt.savefig(f'{out_dir}/{t_start}__{t_start+timedelta(minutes=n_minute)}_f{freqmin}:{freqmax}_psd.png')     # also changed for experiments 17/02
+    plt.savefig(f'{out_dir}/{t_start}__{t_start+timedelta(minutes=n_minute)}_f{freqmin}:{freqmax}_{mid_cha}_psd.png')
 
 
 def calc_angle_between_points(lat1, lon1, lat2, lon2):
@@ -365,29 +371,47 @@ def plot_era5_data(grib_path):
 if __name__ == '__main__':
     dir_path = "../../temp_data_store/FirstData/"
     # dir_path = "../../../../gpfs/data/DAS_data/Data/"
-    # dir_path = "../../../../gpfs/scratch/gfs19eku/20240205/"
-    task_t0 = datetime(year = 2023, month = 11, day = 9, 
-                       hour = 13, minute = 41, second = 17)
+    dir_path = "../../../../gpfs/scratch/gfs19eku/20240308/"
+    # dir_path = [dir_path, "../../../../gpfs/scratch/gfs19eku/2024_01_19/"]
+    task_t0 = datetime(year = 2024, month = 3, day = 8, 
+                       hour = 12, minute = 7, second = 49, microsecond = 0)
     
     properties = get_dir_properties(dir_path)
     prepro_para = {
-        'cha1': 4000,
-        'cha2': 4001,
+        'cha1': 5900,
+        'cha2': 5901,
         'sps': properties.get('SamplingFrequency[Hz]'),
         'spatial_ratio': int(1 / properties.get('SpatialResolution[m]')),          # int(target_spatial_res/spatial_res)
-        'n_minute': 1,
+        'n_minute': 4320,
+        'freqmin': 0.01,
         'freqmax': 49.9,
-        'freqmin': 1,
     }
 
-    # ts_spectrogram(dir_path, prepro_para, task_t0)
+    # reader_array, timestamps = get_reader_array(dir_path)
+    # if type(dir_path) == list:
+    #     reader_array, timestamps = get_reader_array(dir_path[0])
+    #     for path in dir_path[1:]:
+    #         arr, stamps = get_reader_array(path)
+    #         reader_array += arr; timestamps = np.concatenate((timestamps, stamps))
+    # else: 
+    #     reader_array, timestamps = get_reader_array(dir_path)
 
     # reader_array, timestamps = get_reader_array(dir_path)
 
     # channel_slices = [[1500, 1500], [3000, 3000], [5000, 5000], [7000, 7000]]
-    # channel_slices = [5000, 5000]
+    channel_slices = [[3000, 3000], [3150, 3150], [3500, 3500], [5900, 5900], [6200, 6200]]
     # psd_with_channel_slicing(reader_array, prepro_para, task_t0, timestamps, channel_slices)
     # ppsd_attempt(dir_path)
+
+    for channels in channel_slices:
+        print(f'Beginning {channels} run...')
+        run_prepro_para = prepro_para.copy()
+        run_prepro_para.update({'cha1':channels[0],
+                                'cha2':channels[1]+1})
+        ts_spectrogram(dir_path, run_prepro_para, task_t0)
+        # Second run between 0.01-5 Hz
+        run_prepro_para.update({'freqmax':5.0})
+        ts_spectrogram(dir_path, run_prepro_para, task_t0)
 
     # animated_spectrogram(reader_array, prepro_para, task_t0, timestamps)
 
@@ -398,6 +422,10 @@ if __name__ == '__main__':
     # stream = load_xcorr(corr_path, as_stream=True)
     # from obspy import read, UTCDateTime, Stream
     
+    # corr_path = './results/saved_corrs/2024-02-05 12:01:00_4320mins_f0.01:49.9__3850:5750_1m.txt'
+    # stream = load_xcorr(corr_path, as_stream=True)
+    
+    # from obspy import read, UTCDateTime, Stream
     # dx = 1.0
     # for i in range(0, len(stream)):
     #     stream[i].stats.distance = i*dx
