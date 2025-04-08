@@ -369,11 +369,11 @@ def plot_era5_data(grib_path):
 
 
 if __name__ == '__main__':
-    dir_path = "../../temp_data_store/FirstData/"
+    # dir_path = "../../temp_data_store/FirstData/"
     # dir_path = "../../../../gpfs/data/DAS_data/Data/"
-    dir_path = "../../../../gpfs/scratch/gfs19eku/20240308/"
+    dir_path = "../../../../gpfs/scratch/gfs19eku/20240508/"
     # dir_path = [dir_path, "../../../../gpfs/scratch/gfs19eku/2024_01_19/"]
-    task_t0 = datetime(year = 2024, month = 3, day = 8, 
+    task_t0 = datetime(year = 2024, month = 5, day = 8, 
                        hour = 12, minute = 7, second = 49, microsecond = 0)
     
     properties = get_dir_properties(dir_path)
@@ -399,7 +399,8 @@ if __name__ == '__main__':
     # reader_array, timestamps = get_reader_array(dir_path)
 
     # channel_slices = [[1500, 1500], [3000, 3000], [5000, 5000], [7000, 7000]]
-    channel_slices = [[3000, 3000], [3150, 3150], [3500, 3500], [5900, 5900], [6200, 6200]]
+    # channel_slices = [[3000, 3000], [3150, 3150], [3500, 3500], [5900, 5900], [6200, 6200]]
+    channel_slices = [[6200, 6200]]
     # psd_with_channel_slicing(reader_array, prepro_para, task_t0, timestamps, channel_slices)
     # ppsd_attempt(dir_path)
 
@@ -445,7 +446,7 @@ if __name__ == '__main__':
     
     # plot_weather()
     # plot_rain_storms()
-    plot_era5_data('era5_data.grib')
+    # plot_era5_data('era5_data.grib')
     
     # gps_coords = pd.read_csv('results/checkpoints/interp_ch_pts.csv', sep=',', index_col=2)
     # long_max, trans_max = 0, 0
