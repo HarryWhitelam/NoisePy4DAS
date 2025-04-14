@@ -335,57 +335,52 @@ def plot_rain_storms():
 
 
 def plot_era5_data(grib_path):
-    from mpl_toolkits.basemap import Basemap, shiftgrid
-    import pygrib
-    plt.figure(figsize=(12,8))
+    import xarray as xr
+    import cartopy.crs as ccrs
     
-    grbs = pygrib.open(grib_path)
+    data = xr.open_dataset(grib_path, engine='cfgrib')
+    print(data)
     
-    grb = grbs.select()[0]
-    data = grb.values
+    stacked_data = data.stack(t_new=('time', 'step'))
+    stacked_data['timestamp'] = [ts + td for (ts, td) in stacked_data.t_new.values]
+    # print(stacked_data)
+    print(stacked_data.sel(timestamp=pd.to_datetime('2023-01-19T18:00:00')))
+    print(stacked_data.sel(timestamp=pd.to_datetime('2023-01-19T19:00:00')))
+    print(stacked_data.sel(timestamp=pd.to_datetime('2025-01-19T10:00:00')))
     
-    # need to shift data grid longitudes from (0..360) to (-180..180)
-    lons = np.linspace(float(grb['longitudeOfFirstGridPointInDegrees']), float(grb['longitudeOfLastGridPointInDegrees']), int(grb['Ni'])+1)
-    lats = np.linspace(float(grb['latitudeOfFirstGridPointInDegrees']), float(grb['latitudeOfLastGridPointInDegrees']), int(grb['Nj'])+1)
-    data, lons = shiftgrid(0., data, lons, start=False)
-    grid_lon, grid_lat = np.meshgrid(lons, lats) #regularly spaced 2D grid
+    # fig = plt.figure(figsize=(10,10))
+    # ax = plt.axes(projection = ccrs.Robinson())
+    # ax.coastlines(resolution='10m')
+    # plot = data.sel(time=pd.to_datetime('2023-01-19T18:00:00'), step=np.timedelta64(3600000000000)).tp.plot(
+    #     cmap=plt.cm.bwr, transform=ccrs.PlateCarree(), cbar_kwargs={'shrink':0.5}
+    # )
+    # plt.show()
     
-    m = Basemap(projection='cyl', llcrnrlon=lons.min(), \
-        urcrnrlon=lons.max(),llcrnrlat=lats.min(),urcrnrlat=lats.max(), \
-        resolution='c')
-    
-    x, y = m(grid_lon, grid_lat)
-    
-    cs = m.pcolormesh(x,y,data,shading='flat',cmap=plt.cm.gist_stern_r)
-    
-    m.drawcoastlines()
-    m.drawmapboundary()
-    m.drawparallels(np.arange(-90.,120.,30.),labels=[1,0,0,0])
-    m.drawmeridians(np.arange(-180.,180.,60.),labels=[0,0,0,1])
-    
-    plt.colorbar(cs,orientation='vertical', shrink=0.5)
-    plt.title('CAMS AOD forecast') # Set the name of the variable to plot
-    plt.savefig(grib_path+'.png') # Set the output file name
+    # for tdata in data.tp:
+    #     t0 = tdata.time
+    #     for t_step in tdata:
+    #         t1 = t0 + t_step.step.values
+    #         print(t1.values)
 
 
 if __name__ == '__main__':
-    dir_path = "../../temp_data_store/FirstData/"
-    # dir_path = "../../../../gpfs/data/DAS_data/Data/"
-    dir_path = "../../../../gpfs/scratch/gfs19eku/20240308/"
-    # dir_path = [dir_path, "../../../../gpfs/scratch/gfs19eku/2024_01_19/"]
-    task_t0 = datetime(year = 2024, month = 3, day = 8, 
-                       hour = 12, minute = 7, second = 49, microsecond = 0)
+    # dir_path = "../../temp_data_store/FirstData/"
+    # # dir_path = "../../../../gpfs/data/DAS_data/Data/"
+    # dir_path = "../../../../gpfs/scratch/gfs19eku/20240308/"
+    # # dir_path = [dir_path, "../../../../gpfs/scratch/gfs19eku/2024_01_19/"]
+    # task_t0 = datetime(year = 2024, month = 3, day = 8, 
+    #                    hour = 12, minute = 7, second = 49, microsecond = 0)
     
-    properties = get_dir_properties(dir_path)
-    prepro_para = {
-        'cha1': 5900,
-        'cha2': 5901,
-        'sps': properties.get('SamplingFrequency[Hz]'),
-        'spatial_ratio': int(1 / properties.get('SpatialResolution[m]')),          # int(target_spatial_res/spatial_res)
-        'n_minute': 4320,
-        'freqmin': 0.01,
-        'freqmax': 49.9,
-    }
+    # properties = get_dir_properties(dir_path)
+    # prepro_para = {
+    #     'cha1': 5900,
+    #     'cha2': 5901,
+    #     'sps': properties.get('SamplingFrequency[Hz]'),
+    #     'spatial_ratio': int(1 / properties.get('SpatialResolution[m]')),          # int(target_spatial_res/spatial_res)
+    #     'n_minute': 4320,
+    #     'freqmin': 0.01,
+    #     'freqmax': 49.9,
+    # }
 
     # reader_array, timestamps = get_reader_array(dir_path)
     # if type(dir_path) == list:
@@ -399,19 +394,19 @@ if __name__ == '__main__':
     # reader_array, timestamps = get_reader_array(dir_path)
 
     # channel_slices = [[1500, 1500], [3000, 3000], [5000, 5000], [7000, 7000]]
-    channel_slices = [[3000, 3000], [3150, 3150], [3500, 3500], [5900, 5900], [6200, 6200]]
+    # channel_slices = [[3000, 3000], [3150, 3150], [3500, 3500], [5900, 5900], [6200, 6200]]
     # psd_with_channel_slicing(reader_array, prepro_para, task_t0, timestamps, channel_slices)
     # ppsd_attempt(dir_path)
 
-    for channels in channel_slices:
-        print(f'Beginning {channels} run...')
-        run_prepro_para = prepro_para.copy()
-        run_prepro_para.update({'cha1':channels[0],
-                                'cha2':channels[1]+1})
-        ts_spectrogram(dir_path, run_prepro_para, task_t0)
-        # Second run between 0.01-5 Hz
-        run_prepro_para.update({'freqmax':5.0})
-        ts_spectrogram(dir_path, run_prepro_para, task_t0)
+    # for channels in channel_slices:
+    #     print(f'Beginning {channels} run...')
+    #     run_prepro_para = prepro_para.copy()
+    #     run_prepro_para.update({'cha1':channels[0],
+    #                             'cha2':channels[1]+1})
+    #     ts_spectrogram(dir_path, run_prepro_para, task_t0)
+    #     # Second run between 0.01-5 Hz
+    #     run_prepro_para.update({'freqmax':5.0})
+    #     ts_spectrogram(dir_path, run_prepro_para, task_t0)
 
     # animated_spectrogram(reader_array, prepro_para, task_t0, timestamps)
 
