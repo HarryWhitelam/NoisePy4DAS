@@ -243,7 +243,92 @@ def ts_spectrogram(dir_path:str, prepro_para:dict, t_start:datetime):
     if not os.path.exists(out_dir):
         os.makedirs(out_dir)
     # plt.savefig(f'{out_dir}/{t_start}__{t_start+timedelta(minutes=n_minute)}_f{freqmin}:{freqmax}_psd.png')     # also changed for experiments 17/02
-    plt.savefig(f'{out_dir}/{t_start}__{t_start+timedelta(minutes=n_minute)}_f{freqmin}:{freqmax}_{mid_cha}_psd.png')
+    plt.savefig(f'{out_dir}/{t_start}__{t_start+timedelta(minutes=n_minute)}_f{freqmin}:{freqmax}_{mid_cha}_spectrogram.png')
+
+
+def ppsd(dir_path:str, prepro_para:dict, t_start:datetime):
+    from scipy.signal import convolve2d, savgol_filter
+    
+    cha1, cha2, fs, freqmin, freqmax, n_minute = prepro_para.get('cha1'), prepro_para.get('cha2'), prepro_para.get('sps'), prepro_para.get('freqmin'), prepro_para.get('freqmax'), prepro_para.get('n_minute')
+    out_dir = f"./results/figures/PSD_Experiments/"
+    
+    if type(dir_path == str): 
+        reader_array, timestamps = get_reader_array(dir_path)
+
+    elif type(dir_path == list):
+        reader_array, timestamps = get_reader_array(dir_path[0])
+        for path in dir_path[1:]:
+            arr, stamps = get_reader_array(path)
+            reader_array += arr; timestamps = np.concatenate((timestamps, stamps))
+    else: 
+        print(f'dir_path bad format: expected list/str, got {type(dir_path)}')
+
+    mid_cha = int(0.5 * (cha1 + cha2))
+    prepro_para.update({'cha1':mid_cha, 'cha2':mid_cha+1})
+    
+    data = get_data_from_array(reader_array, prepro_para, t_start, timestamps, duration=timedelta(minutes=n_minute))[:, 0]
+
+    nfft = 2 ** 17
+    nr = 251
+    hn = nfft // 2
+    psd = np.zeros((nr, hn))
+    p = np.zeros(hn)
+    for d in data:
+        fd = 10 * np.log10(abs(np.fft.fft(d, nfft)) ** 2 / nfft)
+        p += fd[:hn]
+        for j in range(hn):
+            index = int(fd[j]+250)
+            if index < 0:
+                index = 0
+            if index > 250:
+                index = 250
+            psd[index, j] += 1
+            
+            
+    f1 = 5e-4; f2 = 0.45
+    f = np.arange(nfft) * fs / (nfft-1)
+    fn1 = int(f1*nfft/fs); fn2 = int(f2*nfft/fs)
+
+    nrf = 10
+    f = f[fn1: fn2+1]; f = f[::nrf]
+    P = psd[:, fn1: fn2]
+    pp = savgol_filter(p, 11, 2)
+    pp = pp[fn1: fn2+1] / data.shape[0]; pp = pp[::nrf]
+    P = P[::1, ::nrf]
+    sl = 2
+    P = convolve2d(P, np.ones((sl, sl))/sl**2, 'same')
+    db = np.arange(nr) - 250
+    P = P[50: 171]; db = db[50: 171]
+    for i in range(len(P[0])):
+        P[:, i] /= np.sum(P[:, i])
+
+    plt.figure(figsize=(15, 8))
+    plt.pcolormesh(f, db, P*100, cmap='CMRmap_r')
+    cbar = plt.colorbar(shrink=0.75, aspect=30, pad=0.05, extend='both')
+    cbar.set_label(r'Probability (%)', fontsize=20)
+    cbar.ax.tick_params(labelsize=16)
+    plt.semilogx(f, pp, lw=2, color='#888888')
+    plt.text(2.5e-3, -125, 'Hum', size=25,
+            bbox=dict(boxstyle='round',
+                    ec='#333333',
+                    fc='#87CEFA',
+                    ))
+    plt.text(6e-2, -130, 'SF', size=20,
+            bbox=dict(boxstyle='round',
+                    ec='#333333',
+                    fc='#87CEFA',
+                    ))
+    plt.text(0.11, -115, 'DF', size=20,
+            bbox=dict(boxstyle='round',
+                    ec='#333333',
+                    fc='#87CEFA',
+                    ))
+    plt.xlabel('Freuqency (Hz)', fontsize=25)
+    plt.ylabel('Velocity PSD (dB)', fontsize=25)
+    plt.xticks(fontsize=20)
+    plt.yticks(fontsize=20)
+    plt.tight_layout()
+    plt.savefig(f'{out_dir}/{t_start}__{t_start+timedelta(minutes=n_minute)}_f{freqmin}:{freqmax}_{mid_cha}_PPSD.png')
 
 
 def calc_angle_between_points(lat1, lon1, lat2, lon2):
@@ -334,47 +419,71 @@ def plot_rain_storms():
     plt.show()
 
 
-def plot_era5_data(grib_path):
-    from mpl_toolkits.basemap import Basemap, shiftgrid
-    import pygrib
-    plt.figure(figsize=(12,8))
+def plot_era5_data(file_path, grib=False):
+    import xarray as xr
+    import cartopy.crs as ccrs
     
-    grbs = pygrib.open(grib_path)
+    if grib:
+        data = xr.open_dataset(file_path, engine='cfgrib')
+        
+        times = data.time.values
+        steps = data.step.values
+        
+        arr = []
+        for time in times:
+            for step in steps:
+                t = time + step
+                hour_data = data.sel(time=time, step=step, longitude=1.50, latitude=53.0)
+                arr.append((t, float(hour_data.tp.values) * 10**3))      # convert to mm
+        df = pd.DataFrame(arr, columns=['timestamp','rainfall(mm)'])
+        df = df.set_index('timestamp')
+        # print(df)
+        df.to_csv('./results/checkpoints/hourly_rainfall.csv')
+        
+        plot_time = 'daily'
+        df = df.groupby(pd.to_datetime(df.index).date).agg(
+        {'rainfall(mm)': 'sum'}).reset_index()
+        df.index.name = 'timestamp'
+        print(df)
+        df.to_csv('./results/checkpoints/daily_rainfall.csv')
+    else: 
+        plot_time = file_path.split('/')[-1].split('_')[0]
+        df = pd.read_csv(file_path, parse_dates=['timestamp'], header=0)
+        df = df.set_index('timestamp')
+        print(df)
     
-    grb = grbs.select()[0]
-    data = grb.values
+    start_date = np.datetime64('2023-09-01')
     
-    # need to shift data grid longitudes from (0..360) to (-180..180)
-    lons = np.linspace(float(grb['longitudeOfFirstGridPointInDegrees']), float(grb['longitudeOfLastGridPointInDegrees']), int(grb['Ni'])+1)
-    lats = np.linspace(float(grb['latitudeOfFirstGridPointInDegrees']), float(grb['latitudeOfLastGridPointInDegrees']), int(grb['Nj'])+1)
-    data, lons = shiftgrid(0., data, lons, start=False)
-    grid_lon, grid_lat = np.meshgrid(lons, lats) #regularly spaced 2D grid
+    fig, ax = plt.subplots()
+    df = df[start_date:]
+    # ax.plot(mdates.date2num(df.index), df['rainfall(mm)'])
+    ax.bar(mdates.date2num(df.index), df['rainfall(mm)'])
+    ax.set_ylabel(f'{plot_time.capitalize()} rainfall (mm)')
+    fig.autofmt_xdate()
+    ax.xaxis.set_major_formatter(mdates.DateFormatter('%m/%Y'))
+    ax.xaxis.set_major_locator(mdates.MonthLocator(bymonth=(1, 4, 7, 10)))
     
-    m = Basemap(projection='cyl', llcrnrlon=lons.min(), \
-        urcrnrlon=lons.max(),llcrnrlat=lats.min(),urcrnrlat=lats.max(), \
-        resolution='c')
+    storms_data = pd.read_csv('./results/checkpoints/storms.csv', sep=',', index_col=0, comment='#')
+    prev_storm_end = 0
+    for storm in storms_data.index:
+        dates = storms_data.loc[storm, ['start_date', 'end_date']]
+        ax.axvspan(np.datetime64(dates['start_date']), np.datetime64(dates['end_date'])+1, label=storm, facecolor='r', alpha=0.3)
+        if prev_storm_end and np.datetime64(dates['end_date']) - prev_storm_end < 10:
+            ax.text(np.datetime64(dates['start_date']), 30, storm, rotation=90)
+        else:
+            ax.text(np.datetime64(dates['start_date']), 20, storm, rotation=90)
+        prev_storm_end = np.datetime64(dates['end_date'])
     
-    x, y = m(grid_lon, grid_lat)
-    
-    cs = m.pcolormesh(x,y,data,shading='flat',cmap=plt.cm.gist_stern_r)
-    
-    m.drawcoastlines()
-    m.drawmapboundary()
-    m.drawparallels(np.arange(-90.,120.,30.),labels=[1,0,0,0])
-    m.drawmeridians(np.arange(-180.,180.,60.),labels=[0,0,0,1])
-    
-    plt.colorbar(cs,orientation='vertical', shrink=0.5)
-    plt.title('CAMS AOD forecast') # Set the name of the variable to plot
-    plt.savefig(grib_path+'.png') # Set the output file name
+    plt.tight_layout()
+    # plt.show()
+    plt.savefig(f'./results/figures/{plot_time}_rainfall.png')
 
 
 if __name__ == '__main__':
-    dir_path = "../../temp_data_store/FirstData/"
-    # dir_path = "../../../../gpfs/data/DAS_data/Data/"
-    dir_path = "../../../../gpfs/scratch/gfs19eku/20240308/"
-    # dir_path = [dir_path, "../../../../gpfs/scratch/gfs19eku/2024_01_19/"]
-    task_t0 = datetime(year = 2024, month = 3, day = 8, 
-                       hour = 12, minute = 7, second = 49, microsecond = 0)
+    # dir_path = "../../temp_data_store/FirstData/"
+    dir_path = "../../../../gpfs/scratch/gfs19eku/20241008/"
+    task_t0 = datetime(year = 2024, month = 10, day = 8, 
+                       hour = 12, minute = 7, second = 46, microsecond = 0)
     
     properties = get_dir_properties(dir_path)
     prepro_para = {
@@ -387,7 +496,6 @@ if __name__ == '__main__':
         'freqmax': 49.9,
     }
 
-    # reader_array, timestamps = get_reader_array(dir_path)
     # if type(dir_path) == list:
     #     reader_array, timestamps = get_reader_array(dir_path[0])
     #     for path in dir_path[1:]:
@@ -395,8 +503,6 @@ if __name__ == '__main__':
     #         reader_array += arr; timestamps = np.concatenate((timestamps, stamps))
     # else: 
     #     reader_array, timestamps = get_reader_array(dir_path)
-
-    # reader_array, timestamps = get_reader_array(dir_path)
 
     # channel_slices = [[1500, 1500], [3000, 3000], [5000, 5000], [7000, 7000]]
     channel_slices = [[3000, 3000], [3150, 3150], [3500, 3500], [5900, 5900], [6200, 6200]]
@@ -408,14 +514,13 @@ if __name__ == '__main__':
         run_prepro_para = prepro_para.copy()
         run_prepro_para.update({'cha1':channels[0],
                                 'cha2':channels[1]+1})
-        ts_spectrogram(dir_path, run_prepro_para, task_t0)
-        # Second run between 0.01-5 Hz
-        run_prepro_para.update({'freqmax':5.0})
-        ts_spectrogram(dir_path, run_prepro_para, task_t0)
+        # ts_spectrogram(dir_path, run_prepro_para, task_t0)
+        ppsd(dir_path, run_prepro_para, task_t0)
+    #     # Second run between 0.01-5 Hz
+    #     run_prepro_para.update({'freqmax':5.0})
+    #     ts_spectrogram(dir_path, run_prepro_para, task_t0)
 
     # animated_spectrogram(reader_array, prepro_para, task_t0, timestamps)
-
-    # plot_gps_coords('results/linewalk_gps.csv')
     
     
     # corr_path = './results/saved_corrs/2024-02-05 12:01:00_4320mins_f0.01:49.9__3850:5750_1m.txt'
@@ -445,7 +550,8 @@ if __name__ == '__main__':
     
     # plot_weather()
     # plot_rain_storms()
-    plot_era5_data('era5_data.grib')
+    # plot_era5_data('era5_data.grib', grib=True)
+    # plot_era5_data('./results/checkpoints/daily_rainfall.csv')
     
     # gps_coords = pd.read_csv('results/checkpoints/interp_ch_pts.csv', sep=',', index_col=2)
     # long_max, trans_max = 0, 0
