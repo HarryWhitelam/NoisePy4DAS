@@ -72,9 +72,9 @@ def spatial_res_experiment():
 # task_t0 = datetime(year = 2023, month = 11, day = 9, 
 #                    hour = 13, minute = 39, second = 47, microsecond = 0)
 
-dir_path = "../../../../gpfs/scratch/gfs19eku/20240508/"
-task_t0 = datetime(year = 2024, month = 5, day = 8, 
-                   hour = 12, minute = 7, second = 49, microsecond = 0)
+dir_path = "../../../../gpfs/scratch/gfs19eku/20241008/"
+task_t0 = datetime(year = 2024, month = 10, day = 8, 
+                   hour = 12, minute = 7, second = 46, microsecond = 0)
 
 
 # frequency_experiment()
