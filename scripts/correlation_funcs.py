@@ -205,7 +205,7 @@ def plot_correlation(corr, prepro_para, cmap_param='bwr', save_corr=False, allow
     out_dir = f'./results/figures/{task_t0}_{n_minute}mins_{cha1}:{cha2}/'
     if not os.path.exists(out_dir):
         os.makedirs(out_dir)
-    out_name = f'{task_t0}_{n_minute}mins_{samp_freq}f{freqmin}:{freqmax}__{cha1}:{cha2}_{target_spatial_res}m_deconv'
+    out_name = f'{task_t0}_{n_minute}mins_{samp_freq}f{freqmin}:{freqmax}__{cha1}:{cha2}_{target_spatial_res}m'
     if allowed_times:
         for t1, t2 in allowed_times.items():
             out_name += f'_{t1}:{t2}'
