@@ -189,10 +189,9 @@ def ts_spectrogram(dir_path:str, prepro_para:dict, t_start:datetime):
     out_dir = f"./results/figures/PSD_Experiments/"
     
     # reader_array, timestamps = get_reader_array(dir_path)
-    if type(dir_path == str): 
+    if type(dir_path) == str: 
         reader_array, timestamps = get_reader_array(dir_path)
-
-    elif type(dir_path == list):
+    elif type(dir_path) == list:
         reader_array, timestamps = get_reader_array(dir_path[0])
         for path in dir_path[1:]:
             arr, stamps = get_reader_array(path)
@@ -481,11 +480,18 @@ def plot_era5_data(file_path, grib=False):
 
 if __name__ == '__main__':
     # dir_path = "../../temp_data_store/FirstData/"
-    dir_path = "../../../../gpfs/scratch/gfs19eku/20241008/"
-    task_t0 = datetime(year = 2024, month = 10, day = 8, 
-                       hour = 12, minute = 7, second = 46, microsecond = 0)
+    # dir_path = "../../../../gpfs/scratch/gfs19eku/20250208/"
+    dir_path = ["../../../../gpfs/scratch/gfs19eku/20241208/", "../../../../gpfs/data/DAS_data/20241211/"]
+    task_t0 = datetime(year = 2024, month = 12, day = 8, 
+                       hour = 12, minute = 7, second = 36, microsecond = 0)
     
-    properties = get_dir_properties(dir_path)
+    if type(dir_path) == list:
+        properties = get_dir_properties(dir_path[0])
+    elif type(dir_path) == str:
+        properties = get_dir_properties(dir_path)
+    else:
+        print(f'dir_path bad format: expected list/str, got {type(dir_path)}')
+
     prepro_para = {
         'cha1': 5900,
         'cha2': 5901,
@@ -496,16 +502,9 @@ if __name__ == '__main__':
         'freqmax': 49.9,
     }
 
-    # if type(dir_path) == list:
-    #     reader_array, timestamps = get_reader_array(dir_path[0])
-    #     for path in dir_path[1:]:
-    #         arr, stamps = get_reader_array(path)
-    #         reader_array += arr; timestamps = np.concatenate((timestamps, stamps))
-    # else: 
-    #     reader_array, timestamps = get_reader_array(dir_path)
-
     # channel_slices = [[1500, 1500], [3000, 3000], [5000, 5000], [7000, 7000]]
-    channel_slices = [[3000, 3000], [3150, 3150], [3500, 3500], [5900, 5900], [6200, 6200]]
+    # channel_slices = [[3000, 3000], [3150, 3150], [3500, 3500], [5900, 5900], [6200, 6200]]
+    channel_slices = [[750, 750], [788, 788], [875, 875], [1475, 1475], [1550, 1550]]
     # psd_with_channel_slicing(reader_array, prepro_para, task_t0, timestamps, channel_slices)
     # ppsd_attempt(dir_path)
 
@@ -514,8 +513,8 @@ if __name__ == '__main__':
         run_prepro_para = prepro_para.copy()
         run_prepro_para.update({'cha1':channels[0],
                                 'cha2':channels[1]+1})
-        # ts_spectrogram(dir_path, run_prepro_para, task_t0)
-        ppsd(dir_path, run_prepro_para, task_t0)
+        ts_spectrogram(dir_path, run_prepro_para, task_t0)
+        # ppsd(dir_path, run_prepro_para, task_t0)
     #     # Second run between 0.01-5 Hz
     #     run_prepro_para.update({'freqmax':5.0})
     #     ts_spectrogram(dir_path, run_prepro_para, task_t0)
