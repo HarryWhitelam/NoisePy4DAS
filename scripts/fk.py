@@ -569,8 +569,8 @@ def fc(d_fk_r, f, k, f_pick, k_pick, fmin_plot=0.0, fmax_plot=100.0, cmin_plot=2
 
 
 if __name__ == '__main__':
-	corr_path = './results/saved_corrs/2024-02-05 12:01:00_4320mins_f0.01:49.9__3850:8050_1m.txt'
-	# corr_path = './results/saved_corrs/2024-02-05 12:01:00_1440mins_100f0.01:50.0__3850:5750_1m.txt'
+	# corr_path = './results/saved_corrs/2024-02-05 12:01:00_4320mins_f0.01:49.9__3850:8050_1m.txt'
+	corr_path = './results/saved_corrs/2024-02-05 12:01:00_4320mins_f0.01:49.9__3850:5750_1m.txt'
 	# corr_path = './results/saved_corrs/2024-02-05 12:01:00_4320mins_20:00:00:02:00:00_12:00:00:18:00:00_100f0.01:50.0__3850:5750_1m.txt'
 	data = load_xcorr(corr_path)
 	dt = 1/100
@@ -582,5 +582,5 @@ if __name__ == '__main__':
 	# dx = prepro_para.get('spatial_res')
  
 	f, k, d_fk_r = fk(data, dt, dx, fmin_plot=5.0, fmax_plot=50.0)
-	d_filtered = fk_filter_velocity(d_fk_r, f, k, dt, dx)
+	# d_filtered = fk_filter_velocity(d_fk_r, f, k, dt, dx)
  

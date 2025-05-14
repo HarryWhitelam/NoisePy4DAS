@@ -14,7 +14,7 @@ from matplotlib.animation import FuncAnimation
 from matplotlib.colors import LogNorm
 from skimage.util import compare_images
 import contextily as cx
-from math import ceil, sin, cos, atan2, degrees, radians, log
+from math import ceil, sin, cos, atan2, degrees, radians, log, pi
 import xdas as xd
 
 from tdms_io import get_reader_array, get_data_from_array, get_dir_properties, load_xcorr
@@ -419,11 +419,12 @@ def plot_rain_storms():
     plt.show()
 
 
-def plot_era5_data(file_path, grib=False):
+def plot_era5_data(file_path:str):
     import xarray as xr
     import cartopy.crs as ccrs
     
-    if grib:
+    if file_path.split('.')[-1 == 'grib']:
+        var = file_path.split('.')[0].split('_')[-1]
         data = xr.open_dataset(file_path, engine='cfgrib')
         
         times = data.time.values
@@ -431,34 +432,51 @@ def plot_era5_data(file_path, grib=False):
         
         arr = []
         for time in times:
-            for step in steps:
-                t = time + step
-                hour_data = data.sel(time=time, step=step, longitude=1.50, latitude=53.0)
-                arr.append((t, float(hour_data.tp.values) * 10**3))      # convert to mm
-        df = pd.DataFrame(arr, columns=['timestamp','rainfall(mm)'])
+            if var == 'windspeed':
+                hour_data = data.sel(time=time, longitude=1.50, latitude=53.0)
+                arr.append((time, hour_data.v10.values, hour_data.u10.values))
+            elif var == 'rainfall':
+                for step in steps:
+                    t = time + step
+                    hour_data = data.sel(time=time, step=step, longitude=1.50, latitude=53.0)
+                    arr.append((t, hour_data.tp.values))
+        # df = pd.DataFrame(arr, columns=['timestamp','rainfall(mm)'])
+        df = pd.DataFrame(arr, columns=['timestamp', 'v10(m/s)', 'u10(m/s)'])
         df = df.set_index('timestamp')
-        # print(df)
-        df.to_csv('./results/checkpoints/hourly_rainfall.csv')
+        print(df)
+        df.to_csv(f'./results/checkpoints/hourly_{var}.csv')
         
         plot_time = 'daily'
-        df = df.groupby(pd.to_datetime(df.index).date).agg(
-        {'rainfall(mm)': 'sum'}).reset_index()
+        # df = df.groupby(pd.to_datetime(df.index).date).agg({'rainfall(mm)': 'sum'}).reset_index()
+        df = df.groupby(pd.to_datetime(df.index).date).agg({'u10(m/s)': 'mean', 'v10(m/s)': 'mean'})
         df.index.name = 'timestamp'
         print(df)
-        df.to_csv('./results/checkpoints/daily_rainfall.csv')
+        df.to_csv(f'./results/checkpoints/daily_{var}.csv')
     else: 
+        var = file_path.split('.')[-2].split('_')[-1]
         plot_time = file_path.split('/')[-1].split('_')[0]
         df = pd.read_csv(file_path, parse_dates=['timestamp'], header=0)
-        df = df.set_index('timestamp')
+        df = df.set_index('timestamp')        
+        if 'windspeed' in file_path:
+            df['V'] = np.sqrt(np.square(df['u10(m/s)']) + np.square(df['v10(m/s)']))
+            df['angle'] = np.mod(180 + 180/pi * np.arctan2(df['u10(m/s)'],df['v10(m/s)']), 360)
         print(df)
     
     start_date = np.datetime64('2023-09-01')
     
     fig, ax = plt.subplots()
     df = df[start_date:]
-    # ax.plot(mdates.date2num(df.index), df['rainfall(mm)'])
-    ax.bar(mdates.date2num(df.index), df['rainfall(mm)'])
-    ax.set_ylabel(f'{plot_time.capitalize()} rainfall (mm)')
+    # ax.bar(mdates.date2num(df.index), df['rainfall(mm)'])
+    # ax.set_ylabel(f'{plot_time.capitalize()} rainfall (mm)')
+    # ax.plot(mdates.date2num(df.index), df['u10(m/s)'], label='u10')
+    # ax.plot(mdates.date2num(df.index), df['v10(m/s)'], label='v10')
+    ax.plot(mdates.date2num(df.index), df['V'], label='V')
+    # ax2 = ax.twinx()
+    # ax2.plot(mdates.date2num(df.index), df['angle'], label='angle', color=(0.761, 0.455, 0, 0.5))
+    # plt.legend()
+    ax.set_ylabel(f'Average {plot_time} wind speed (m/s)')
+    # ax2.set_ylabel(f'{plot_time.capitalize()} wind angle')
+    # ax2.yaxis.label.set_color((0.761, 0.455, 0))
     fig.autofmt_xdate()
     ax.xaxis.set_major_formatter(mdates.DateFormatter('%m/%Y'))
     ax.xaxis.set_major_locator(mdates.MonthLocator(bymonth=(1, 4, 7, 10)))
@@ -468,33 +486,60 @@ def plot_era5_data(file_path, grib=False):
     for storm in storms_data.index:
         dates = storms_data.loc[storm, ['start_date', 'end_date']]
         ax.axvspan(np.datetime64(dates['start_date']), np.datetime64(dates['end_date'])+1, label=storm, facecolor='r', alpha=0.3)
-        if prev_storm_end and np.datetime64(dates['end_date']) - prev_storm_end < 10:
-            ax.text(np.datetime64(dates['start_date']), 30, storm, rotation=90)
-        else:
-            ax.text(np.datetime64(dates['start_date']), 20, storm, rotation=90)
-        prev_storm_end = np.datetime64(dates['end_date'])
+        # if prev_storm_end and np.datetime64(dates['end_date']) - prev_storm_end < 10:
+        #     ax.text(np.datetime64(dates['start_date']), 30, storm, rotation=90)
+        # else:
+        #     ax.text(np.datetime64(dates['start_date']), 20, storm, rotation=90)
+        # prev_storm_end = np.datetime64(dates['end_date'])
     
     plt.tight_layout()
     # plt.show()
-    plt.savefig(f'./results/figures/{plot_time}_rainfall.png')
+    plt.savefig(f'./results/figures/{plot_time}_{var}.png')
+
+
+def plot_tidal_data(file_path):
+    df = pd.read_csv(file_path, sep='\s+', skiprows=[0,1,2,3,4,5,6,7,8,10])
+    df.drop('Cycle', axis=1, inplace=True)
+    df.loc[df['ASLVBG02'].str.contains('N'), ['ASLVBG02', 'Residual']] = '-1.0'
+    df[['ASLVBG02', 'Residual']] = df[['ASLVBG02', 'Residual']].apply(lambda x: x.str.strip('M'))
+    df[['ASLVBG02', 'Residual']] = df[['ASLVBG02', 'Residual']].apply(pd.to_numeric)
+    # df['ASLVBG02'] = pd.to_numeric(df['ASLVBG02'].str.strip('M'))
+    df.set_index(pd.to_datetime(df['Date'] + df['Time'].astype(str), format = '%Y/%m/%d%H:%M:%S'), inplace=True)
+    
+    d0 = pd.to_datetime('2024-09-08T12:00:00', format='%Y-%m-%dT%H:%M:%S')
+    d1 = d0 + pd.to_timedelta(3, 'days')
+    plot_df = df[d0:d1]
+        
+    fig, ax = plt.subplots()
+    ax.plot(plot_df.index, plot_df['ASLVBG02'])
+    ax.xaxis.set_major_formatter(mdates.DateFormatter('%d/%m'))
+    ax.xaxis.set_major_locator(mdates.DayLocator())
+    ax.xaxis.set_minor_formatter(mdates.DateFormatter('%H:%M'))
+    ax.xaxis.set_minor_locator(mdates.HourLocator(12))
+    
+    ax.set_title('Cromer Tidal Gauge (National Oceanographic Centre)')
+    ax.set_ylabel('Tidal Height (m)')
+    
+    plt.tight_layout()
+    plt.savefig(f'./results/figures/Tidal_Plots/{d0.date()}_Tidal.png')
 
 
 if __name__ == '__main__':
     # dir_path = "../../temp_data_store/FirstData/"
-    dir_path = "../../../../gpfs/scratch/gfs19eku/20241008/"
-    task_t0 = datetime(year = 2024, month = 10, day = 8, 
-                       hour = 12, minute = 7, second = 46, microsecond = 0)
+    # dir_path = "../../../../gpfs/scratch/gfs19eku/20241008/"
+    # task_t0 = datetime(year = 2024, month = 10, day = 8, 
+    #                    hour = 12, minute = 7, second = 46, microsecond = 0)
     
-    properties = get_dir_properties(dir_path)
-    prepro_para = {
-        'cha1': 5900,
-        'cha2': 5901,
-        'sps': properties.get('SamplingFrequency[Hz]'),
-        'spatial_ratio': int(1 / properties.get('SpatialResolution[m]')),          # int(target_spatial_res/spatial_res)
-        'n_minute': 4320,
-        'freqmin': 0.01,
-        'freqmax': 49.9,
-    }
+    # properties = get_dir_properties(dir_path)
+    # prepro_para = {
+    #     'cha1': 5900,
+    #     'cha2': 5901,
+    #     'sps': properties.get('SamplingFrequency[Hz]'),
+    #     'spatial_ratio': int(1 / properties.get('SpatialResolution[m]')),          # int(target_spatial_res/spatial_res)
+    #     'n_minute': 4320,
+    #     'freqmin': 0.01,
+    #     'freqmax': 49.9,
+    # }
 
     # if type(dir_path) == list:
     #     reader_array, timestamps = get_reader_array(dir_path[0])
@@ -509,13 +554,13 @@ if __name__ == '__main__':
     # psd_with_channel_slicing(reader_array, prepro_para, task_t0, timestamps, channel_slices)
     # ppsd_attempt(dir_path)
 
-    for channels in channel_slices:
-        print(f'Beginning {channels} run...')
-        run_prepro_para = prepro_para.copy()
-        run_prepro_para.update({'cha1':channels[0],
-                                'cha2':channels[1]+1})
-        # ts_spectrogram(dir_path, run_prepro_para, task_t0)
-        ppsd(dir_path, run_prepro_para, task_t0)
+    # for channels in channel_slices:
+    #     print(f'Beginning {channels} run...')
+    #     run_prepro_para = prepro_para.copy()
+    #     run_prepro_para.update({'cha1':channels[0],
+    #                             'cha2':channels[1]+1})
+    #     # ts_spectrogram(dir_path, run_prepro_para, task_t0)
+    #     ppsd(dir_path, run_prepro_para, task_t0)
     #     # Second run between 0.01-5 Hz
     #     run_prepro_para.update({'freqmax':5.0})
     #     ts_spectrogram(dir_path, run_prepro_para, task_t0)
@@ -550,8 +595,11 @@ if __name__ == '__main__':
     
     # plot_weather()
     # plot_rain_storms()
-    # plot_era5_data('era5_data.grib', grib=True)
+    # plot_era5_data('era5_rainfall.grib')
     # plot_era5_data('./results/checkpoints/daily_rainfall.csv')
+    # plot_era5_data('era5_windspeed.grib')
+    plot_era5_data('./results/checkpoints/daily_windspeed.csv')
+    # plot_tidal_data('./results/checkpoints/2024CRO.txt')
     
     # gps_coords = pd.read_csv('results/checkpoints/interp_ch_pts.csv', sep=',', index_col=2)
     # long_max, trans_max = 0, 0
