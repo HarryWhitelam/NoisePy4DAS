@@ -292,7 +292,7 @@ def load_tdms(dir_path, n_minute):
     return get_data_from_array(reader_array, prepro_para, task_t0, timestamps, n_minute), prepro_para
 
 
-def load_xcorr(file_path, normalise=False, as_stream=False):
+def load_xcorr(file_path, normalise=False, as_stream=False, chas=None):
     xdata = np.loadtxt(file_path, delimiter=',')
     xdata = xdata[:, ~np.all(np.isnan(xdata), axis=0)]      # 06/01/25 added for Ni's data
     if normalise:
@@ -302,10 +302,16 @@ def load_xcorr(file_path, normalise=False, as_stream=False):
         stats = Stats()
         stats.delta = 1/100
         stats.npts = 801
-        for i in range(0, xdata.shape[1]):
-            stream.append(Trace(xdata[:, i], stats))
+        if chas: 
+            for cha in chas:
+                stream.append(Trace(xdata[:, cha], stats))
+        else:
+            for i in range(0, xdata.shape[1]):
+                stream.append(Trace(xdata[:, i], stats))
         return stream
-    return xdata
+    if chas:
+        return xdata[:, chas].T
+    return xdata.T
 
 
 if __name__ == '__main__':

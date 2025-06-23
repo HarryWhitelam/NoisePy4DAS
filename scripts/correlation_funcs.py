@@ -36,6 +36,7 @@ def set_prepro_parameters(dir_path, task_t0, freqmin=1, freqmax=49.9, target_spa
     freq_norm          = 'rma'             # 'no' for no whitening, or 'rma' for running-mean average, 'phase_only' for sign-bit normalization in freq domain.
     time_norm          = 'one_bit'             # 'no' for no normalization, or 'rma', 'one_bit' for normalization in time domain
     cc_method          = 'xcorr'           # 'xcorr' for pure cross correlation, 'deconv' for deconvolution; FOR "COHERENCY" PLEASE set freq_norm to "rma", time_norm to "no" and cc_method to "xcorr"
+    
     smooth_N           = 100               # moving window length for time domain normalization if selected (points)
     smoothspect_N      = 100               # moving window length to smooth spectrum amplitude (points)
     maxlag             = 4                 # lags of cross-correlation to save (sec)
@@ -50,6 +51,8 @@ def set_prepro_parameters(dir_path, task_t0, freqmin=1, freqmax=49.9, target_spa
     nsta               = len(cha_list)
     n_pair             = int((nsta+1)*nsta/2)
     n_lag              = maxlag * samp_freq * 2 + 1
+    
+    src_ch = None
     
     return {
         'freqmin':freqmin,
@@ -76,11 +79,21 @@ def set_prepro_parameters(dir_path, task_t0, freqmin=1, freqmax=49.9, target_spa
         'n_lag':n_lag,
         'n_minute':n_minute,
         'task_t0':task_t0,
+        'src_ch':src_ch,
     }
 
 
 def correlation(dir_path, prepro_para, corr_path=None, allowed_times=None):
-    n_lag, n_pair, cha1, cha2, effective_cha2, cha_list, n_minute, task_t0 = prepro_para.get('n_lag'), prepro_para.get('n_pair'), prepro_para.get('cha1'), prepro_para.get('cha2'), prepro_para.get('effective_cha2'), prepro_para.get('cha_list'), prepro_para.get('n_minute'), prepro_para.get('task_t0')
+    # Unpack required parameters from prepro_para
+    n_lag = prepro_para['n_lag']
+    n_pair = prepro_para['n_pair']
+    cha1 = prepro_para['cha1']
+    cha2 = prepro_para['cha2']
+    effective_cha2 = prepro_para['effective_cha2']
+    cha_list = prepro_para['cha_list']
+    n_minute = prepro_para['n_minute']
+    task_t0 = prepro_para['task_t0']
+    src_ch = prepro_para.get('src_ch')
     
     ### FIXME: these funcs require a LOT of listdir calls, could be made more efficient in the future
     file_array, timestamps = get_reader_array(dir_path, allowed_times)
@@ -123,25 +136,34 @@ def correlation(dir_path, prepro_para, corr_path=None, allowed_times=None):
         white_spect = data[ind]
 
         # loop over all stations
-        for iiS in range(len(sta)):
-            # smooth the source spectrum
-            sfft1 = DAS_module.smooth_source_spect(white_spect[iiS], prepro_para)
-            
-            # correlate one source with all receivers
-            corr, tindx = DAS_module.correlate(sfft1, white_spect[iiS:], prepro_para, Nfft)
-
-            # update the receiver list
-            tsta = sta[iiS:]
-            receiver_lst = tsta[tindx]
-
-            iS = int((effective_cha2*2 - cha1 - sta[iiS] + 1) * (sta[iiS] - cha1) / 2)
+        if src_ch:
+            sfft1 = DAS_module.smooth_source_spect(white_spect[src_ch - cha1], prepro_para)
+            corr, tindx = DAS_module.correlate(sfft1, white_spect, prepro_para, Nfft)
 
             # stacking one minute
-            corr_full[:, iS + receiver_lst - sta[iiS]] += corr.T
-            stack_full[:, iS + receiver_lst - sta[iiS]] += 1
+            corr_full[:, :] += corr.T
+            stack_full[:, :] += 1
+        
+        else:
+            for iiS in range(len(sta)):
+                # smooth the source spectrum
+                sfft1 = DAS_module.smooth_source_spect(white_spect[iiS], prepro_para)
+                
+                # correlate one source with all receivers
+                corr, tindx = DAS_module.correlate(sfft1, white_spect[iiS:], prepro_para, Nfft)
+
+                # update the receiver list
+                tsta = sta[iiS:]
+                receiver_lst = tsta[tindx]
+
+                iS = int((effective_cha2*2 - cha1 - sta[iiS] + 1) * (sta[iiS] - cha1) / 2)
+
+                # stacking one minute
+                corr_full[:, iS + receiver_lst - sta[iiS]] += corr.T
+                stack_full[:, iS + receiver_lst - sta[iiS]] += 1
             
         t_compute += time.time() - t1
-    corr_full /= stack_full    
+    corr_full /= stack_full
     print(f'corr_full max: {np.nanmax(corr_full)}; min: {np.nanmin(corr_full)}')
     print(f"{round(t_query, 2)} seconds in data query, {round(t_compute, 2)} seconds in xcorr computing")
     

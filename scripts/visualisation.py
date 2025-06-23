@@ -2,7 +2,7 @@ import os
 import numpy as np
 import pandas as pd
 import geopandas as gpd
-from scipy.signal import welch, ShortTimeFFT
+from scipy.signal import welch, ShortTimeFFT, decimate
 from scipy.signal.windows import gaussian
 from scipy.fft import rfft, rfftfreq
 from obspy.signal.filter import bandpass
@@ -182,7 +182,7 @@ def numerical_comparison(data_dict):
         print(f'Closest {col}: {closest}')
 
 
-def ts_spectrogram(dir_path:str, prepro_para:dict, t_start:datetime):
+def ts_spectrogram(dir_path:str, prepro_para:dict, t_start:datetime, decimation_factor=0):
     cha1, cha2, sps, freqmin, freqmax, n_minute = prepro_para.get('cha1'), prepro_para.get('cha2'), prepro_para.get('sps'), prepro_para.get('freqmin'), prepro_para.get('freqmax'), prepro_para.get('n_minute')
     
     # out_dir = f"./results/figures/{t_start}_{n_minute}mins_{cha1}:{cha2}/"        # changed for PSD experiments 17/02
@@ -211,6 +211,13 @@ def ts_spectrogram(dir_path:str, prepro_para:dict, t_start:datetime):
                             df=sps,
                             corners=4,
                             zerophase=True))
+    
+    if decimation_factor:
+        data = decimate(data,
+                        decimation_factor,
+                        ftype='iir',
+                        axis=1,
+                        zero_phase=True)
     
     N = data.shape[0]
     g_std = 12
