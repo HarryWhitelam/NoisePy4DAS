@@ -15,7 +15,6 @@ from matplotlib.colors import LogNorm
 from skimage.util import compare_images
 import contextily as cx
 from math import ceil, sin, cos, atan2, degrees, radians, log, pi
-import xdas as xd
 
 from tdms_io import get_reader_array, get_data_from_array, get_dir_properties, load_xcorr
 

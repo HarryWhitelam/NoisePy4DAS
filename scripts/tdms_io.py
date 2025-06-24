@@ -39,6 +39,20 @@ def get_reader_array(dir_path:str, allowed_times:dict=None):
     return reader_array, timestamps
 
 
+def get_subset_paths(t0, dir_path, dir_list, timestamps, delta=timedelta(minutes=1)):
+    tpf = (timestamps[1] - timestamps[0]).total_seconds()
+    start_idx = get_closest_index(timestamps, t0)
+    
+    end_time = timestamps[start_idx] + delta - timedelta(seconds=tpf)
+    end_idx = get_closest_index(timestamps, end_time)
+    
+    if (end_idx - start_idx + 1) != (delta.total_seconds()/tpf):
+        warnings.warn(f"WARNING: time subset not continuous; only {(end_idx - start_idx + 1)*tpf} seconds represented.")
+    
+    dir_list = [dir_path + file for file in dir_list[start_idx:end_idx+1]]
+    return dir_list, timestamps[start_idx:end_idx+1]
+
+
 def is_valid_time(timestamp, allowed_times):
     '''checks if timestamp is within allowed times'''
     t = timestamp.time()
@@ -105,14 +119,14 @@ def get_time_subset(reader_array:np.ndarray, start_time:datetime, timestamps:np.
 
 
 # returns a duration of data (default is 60s)
-def get_data_from_array(data_array:list, prepro_para:dict, start_time:datetime, timestamps:np.ndarray, duration:timedelta):
+def get_data_from_array(data_array:list, prepro_para:dict, start_time:datetime, timestamps:np.ndarray, duration:timedelta, skip_subset=False):
     cha1, cha2, sps, spatial_ratio = prepro_para.get('cha1'), prepro_para.get('cha2'), prepro_para.get('sps'), prepro_para.get('spatial_ratio')
 
     # make it so that if start_time is not a timestamp, the first minute in the array is returned
     current_time = 0
     t_size = data_array[0].get_data(cha1, cha2).shape[0]
     tdata = np.empty((int(duration.total_seconds() * sps), ceil((cha2-cha1+1)/spatial_ratio)))
-    data_array = get_time_subset(data_array, start_time, timestamps, tpf=t_size/sps, delta=duration, tolerance=30)   # tpf = time per file
+    if not skip_subset: data_array = get_time_subset(data_array, start_time, timestamps, tpf=t_size/sps, delta=duration, tolerance=30)   # tpf = time per file
     
     while current_time != duration.total_seconds() and len(data_array) != 0:
         data_file = data_array.pop(0)
