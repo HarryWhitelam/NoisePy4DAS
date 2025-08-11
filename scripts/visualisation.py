@@ -533,19 +533,20 @@ def plot_tidal_data(file_path):
 if __name__ == '__main__':
     # dir_path = "../../temp_data_store/FirstData/"
     # dir_path = "../../../../gpfs/scratch/gfs19eku/20241008/"
-    # task_t0 = datetime(year = 2024, month = 10, day = 8, 
-    #                    hour = 12, minute = 7, second = 46, microsecond = 0)
+    dir_path = "/data/localraid/20240205/"
+    task_t0 = datetime(year = 2024, month = 2, day = 5, 
+                       hour = 12, minute = 1, second = 0, microsecond = 0)
     
-    # properties = get_dir_properties(dir_path)
-    # prepro_para = {
-    #     'cha1': 5900,
-    #     'cha2': 5901,
-    #     'sps': properties.get('SamplingFrequency[Hz]'),
-    #     'spatial_ratio': int(1 / properties.get('SpatialResolution[m]')),          # int(target_spatial_res/spatial_res)
-    #     'n_minute': 4320,
-    #     'freqmin': 0.01,
-    #     'freqmax': 49.9,
-    # }
+    properties = get_dir_properties(dir_path)
+    prepro_para = {
+        'cha1': 5900,
+        'cha2': 5901,
+        'sps': properties.get('SamplingFrequency[Hz]'),
+        'spatial_ratio': int(1 / properties.get('SpatialResolution[m]')),          # int(target_spatial_res/spatial_res)
+        'n_minute': 4320,
+        'freqmin': 0.01,
+        'freqmax': 49.9,
+    }
 
     # if type(dir_path) == list:
     #     reader_array, timestamps = get_reader_array(dir_path[0])
@@ -560,16 +561,16 @@ if __name__ == '__main__':
     # psd_with_channel_slicing(reader_array, prepro_para, task_t0, timestamps, channel_slices)
     # ppsd_attempt(dir_path)
 
-    # for channels in channel_slices:
-    #     print(f'Beginning {channels} run...')
-    #     run_prepro_para = prepro_para.copy()
-    #     run_prepro_para.update({'cha1':channels[0],
-    #                             'cha2':channels[1]+1})
-    #     # ts_spectrogram(dir_path, run_prepro_para, task_t0)
-    #     ppsd(dir_path, run_prepro_para, task_t0)
-    #     # Second run between 0.01-5 Hz
-    #     run_prepro_para.update({'freqmax':5.0})
-    #     ts_spectrogram(dir_path, run_prepro_para, task_t0)
+    for channels in channel_slices:
+        print(f'Beginning {channels} run...')
+        run_prepro_para = prepro_para.copy()
+        run_prepro_para.update({'cha1':channels[0],
+                                'cha2':channels[1]+1})
+        # ts_spectrogram(dir_path, run_prepro_para, task_t0)
+        ppsd(dir_path, run_prepro_para, task_t0)
+        # Second run between 0.01-5 Hz
+        run_prepro_para.update({'freqmax':5.0})
+        ts_spectrogram(dir_path, run_prepro_para, task_t0)
 
     # animated_spectrogram(reader_array, prepro_para, task_t0, timestamps)
     
@@ -604,7 +605,7 @@ if __name__ == '__main__':
     # plot_era5_data('era5_rainfall.grib')
     # plot_era5_data('./results/checkpoints/daily_rainfall.csv')
     # plot_era5_data('era5_windspeed.grib')
-    plot_era5_data('./results/checkpoints/daily_windspeed.csv')
+    # plot_era5_data('./results/checkpoints/daily_windspeed.csv')
     # plot_tidal_data('./results/checkpoints/2024CRO.txt')
     
     # gps_coords = pd.read_csv('results/checkpoints/interp_ch_pts.csv', sep=',', index_col=2)

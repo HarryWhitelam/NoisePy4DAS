@@ -17,10 +17,13 @@ import matplotlib.pyplot as plt
 from tqdm import tqdm
 from tqdm.contrib.concurrent import process_map
 import multiprocessing
+import gc
+from memory_profiler import profile
 
 # from dasstore.zarr import Client
 from TDMS_Read import TdmsReader
 from tdms_io import get_reader_array, get_data_from_array, get_dir_properties, get_subset_paths
+from concurrent.futures import ProcessPoolExecutor, as_completed
 
 
 def set_prepro_parameters(dir_path, task_t0, freqmin=1.0, freqmax=49.9, target_spatial_res=5, cha1=4000, cha2=7999, n_minute=360):
@@ -86,7 +89,7 @@ def set_prepro_parameters(dir_path, task_t0, freqmin=1.0, freqmax=49.9, target_s
     
 
 def _process_minute(args):
-    (minute_t0, file_paths, prepro_para, timestamps) = args
+    (minute_t0, file_paths, prepro_para) = args
     n_lag = prepro_para['n_lag']
     n_pair = prepro_para['n_pair']
     cha1 = prepro_para['cha1']
@@ -97,12 +100,13 @@ def _process_minute(args):
     # Return corr_full, stack_full for this minute
     try:
         file_array = [TdmsReader(path) for path in file_paths]
-        tdata = get_data_from_array(file_array, prepro_para, minute_t0, timestamps, duration=timedelta(seconds=60), skip_subset=True)
+        tdata = get_data_from_array(file_array, prepro_para, minute_t0, timestamps=None, duration=timedelta(seconds=60), skip_subset=True)
         trace_stdS, dataS = DAS_module.preprocess_raw_make_stat(tdata, prepro_para)
         white_spect = DAS_module.noise_processing(dataS, prepro_para)
         Nfft = white_spect.shape[1]; Nfft2 = Nfft // 2
         data = white_spect[:, :Nfft2]
-        del dataS, white_spect
+        del file_array, tdata, dataS, white_spect
+        gc.collect()
 
         ind = np.where((trace_stdS < prepro_para['max_over_std']) &
                        (trace_stdS > 0) &
@@ -134,7 +138,6 @@ def _process_minute(args):
         print(f"Error in minute {minute_t0}: {e}")
         return np.zeros([n_lag, n_pair], dtype=np.float32), np.zeros([1, n_pair], dtype=np.int32)
 
-
 def parallel_xcorr(dir_path, prepro_para, corr_path=None, allowed_times=None):
     n_lag = prepro_para['n_lag']
     n_pair = prepro_para['n_pair']
@@ -150,21 +153,33 @@ def parallel_xcorr(dir_path, prepro_para, corr_path=None, allowed_times=None):
     for imin in pbar:
         pbar.set_description(f"Processing {imin}")
         minute_t0 = task_t0 + timedelta(minutes=imin)
-        paths_subset, timestamps_subset = get_subset_paths(minute_t0, dir_path, dir_list, timestamps)
-        args_list.append((minute_t0, paths_subset, prepro_para, timestamps_subset))
+        paths_subset, _ = get_subset_paths(minute_t0, dir_path, dir_list, timestamps)
+        args_list.append((minute_t0, paths_subset, prepro_para))
 
     # Use process_map for parallel processing with progress bar
     print("Starting multiprocessing")
-    results = process_map(_process_minute, args_list, max_workers=multiprocessing.cpu_count())
-    # results = process_map(_process_minute, args_list, max_workers=1)
-
-    # Aggregate results
     corr_full = np.zeros([n_lag, n_pair], dtype=np.float32)
     stack_full = np.zeros([1, n_pair], dtype=np.int32)
-    for corr, stack in results:
-        corr_full += corr
-        stack_full += stack
 
+    # with ProcessPoolExecutor(max_workers=multiprocessing.cpu_count()) as executor:
+    # with ProcessPoolExecutor(max_workers=2) as executor:
+    #     futures = [executor.submit(_process_minute, args) for args in args_list]
+    #     for future in tqdm(as_completed(futures), total=len(futures), desc="Parallel xcorr"):
+    #         corr, stack = future.result()
+    #         corr_full += corr
+    #         stack_full += stack
+    #         del corr, stack
+    #         gc.collect()
+    
+    # p = multiprocessing.Pool(multiprocessing.cpu_count())
+    p = multiprocessing.Pool(8)
+    with tqdm(total=len(args_list), desc="Parallel xcorr", position=0) as pbar:
+        for corr, stack in p.imap(_process_minute, args_list, chunksize=1):
+            corr_full += corr
+            stack_full += stack
+            pbar.update(1)
+    p.close()
+    
     corr_full /= stack_full
     print(f'corr_full max: {np.nanmax(corr_full)}; min: {np.nanmin(corr_full)}')
 
@@ -321,7 +336,7 @@ def plot_correlation(corr, prepro_para, cmap_param='bwr', save_corr=False, allow
     out_dir = f'./results/figures/{task_t0}_{n_minute}mins_{cha1}:{cha2}/'
     if not os.path.exists(out_dir):
         os.makedirs(out_dir)
-    out_name = f'{task_t0}_{n_minute}mins_{samp_freq}f{freqmin}:{freqmax}__{cha1}:{cha2}_{target_spatial_res}m_deconv'
+    out_name = f'{task_t0}_{n_minute}mins_{samp_freq}f{freqmin}:{freqmax}__{cha1}:{cha2}_{target_spatial_res}m'
     if allowed_times:
         for t1, t2 in allowed_times.items():
             out_name += f'_{t1}:{t2}'
