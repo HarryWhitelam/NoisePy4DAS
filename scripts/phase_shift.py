@@ -21,7 +21,7 @@ def load_xcorr(file_path, normalise=False, chas=None):
     if normalise:
         xdata = xdata/np.sqrt(np.sum(xdata**2))
     stats = Stats()
-    stats.delta = 1/50
+    stats.delta = 1/100
     stats.npts = 801
     if chas: 
         for cha in chas:
@@ -114,15 +114,19 @@ def print_freq_c_summaries(img, c, fs, step=5):
         print(f'c responses at {fs[f_idx]} Hz: max {max_c} m/s')
 
 
-def get_max_cs(img, c, fmax_idx):
+def get_max_cs(img, c, f, f_freq=1):
     max_cs = []
-    for f in img[:, 0:fmax_idx].T:
-        max_cs.append(c[np.argmax(f)])
-    return max_cs
+    fs = [min(f, key=lambda x:abs(x-target_f)) for target_f in np.arange(fmin, fmax, f_freq)]
+    f_idx = [np.where(f==f_val) for f_val in fs]
+    
+    # for f_val in img[:, 0:len(f)].T:
+    for f_val in f_idx:
+        max_cs.append(c[np.argmax(img[:, f_val].T)])
+    return fs, max_cs
 
 
-if __name__ == '__main__':    
-    corr_path = './results/saved_corrs/2024-05-08 12:07:49_4320mins_100f0.01:50.0__3850:5750_1m.txt'
+if __name__ == '__main__':
+    # corr_path = './results/saved_corrs/2024-02-05 12:01:00_4320mins_f0.01:49.9__3850:5750_1m.txt'
     # corr_path = './results/saved_corrs/2024-02-05 12:01:00_4320mins_f0.01:49.9__3300:3750_1m.txt'
     # corr_path = './results/saved_corrs/2024-02-05 12:01:00_4320mins_f0.01:49.9__3850:8050_1m.txt'
     # corr_path = './results/saved_corrs/2024-02-05 12:01:00_4320mins_f0.01:49.9__2000:3999_1m.txt'
@@ -162,14 +166,16 @@ if __name__ == '__main__':
     ax.set_xlabel("Frequency (Hz)")
     ax.set_ylabel("Phase velocity (m/s)")
     bar = fig.colorbar(im, ax=ax, pad = 0.1) # if bad add in "format = lambda x, pos: '{:.1f}'.format(x*100)"
+    fs, max_cs = get_max_cs(img, c, f)
+    ax.scatter(fs, max_cs, facecolors='none', edgecolors='k')
     plt.tight_layout()
     plt.show()
-    # fig.savefig(f'{out_dir}{out_name}.png')
+    fig.savefig(f'{out_dir}{out_name}.png')
     
     
     ### max amplitude plot + line of best fit
     # max_cs = get_max_cs(img, c, len(f))
-    # ax.plot(f, max_cs, color='black')
+    # ax.line(f, max_cs, facecolors='none', edgecolors='k')
     # print(f'max_cs: {len(max_cs)}; f: {f.shape}')
     # coefs = poly.polyfit(f, max_cs, 4)
     # ffit = poly.polyval(f, coefs)
@@ -184,9 +190,12 @@ if __name__ == '__main__':
         img[:, fi] /= np.max(img[:, fi])
     fig, ax = plt.subplots(figsize=(7.0,5.0))
     im = ax.imshow(img[:,:],aspect='auto', origin='lower', extent=(f[0], f[-1], c[0], c[-1]), interpolation='bilinear')
+    ax.set_xlabel("Frequency (Hz)")
+    ax.set_ylabel("Phase velocity (m/s)")
+    bar = fig.colorbar(im, ax=ax, pad = 0.1) # if bad add in "format = lambda x, pos: '{:.1f}'.format(x*100)"
     plt.tight_layout()
     plt.show()
-    # fig.savefig(f'{out_dir}{out_name}_f_norm.png')
+    fig.savefig(f'{out_dir}{out_name}_f_norm.png')
 
     # pcolormesh attempt
     # fig, ax = plt.subplots(figsize=(7.0, 5.0))
@@ -197,4 +206,4 @@ if __name__ == '__main__':
     # plt.tight_layout()
     # fig.savefig(f'{out_dir}pcolormesh_attempt.png')
 
-    print_freq_c_summaries(img, c, f, step=1)
+    # print_freq_c_summaries(img, c, f, step=1)

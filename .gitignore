@@ -146,3 +146,5 @@ results/*
 *.segy
 *.h5
 *.hdf5
+*.grib
+*.grib.*.idx

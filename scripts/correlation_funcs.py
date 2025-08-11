@@ -15,13 +15,18 @@ import numpy as np
 import DAS_module
 import matplotlib.pyplot as plt
 from tqdm import tqdm
+from tqdm.contrib.concurrent import process_map
+import multiprocessing
+import gc
+from memory_profiler import profile
 
 # from dasstore.zarr import Client
 from TDMS_Read import TdmsReader
-from tdms_io import get_reader_array, get_data_from_array, get_dir_properties
+from tdms_io import get_reader_array, get_data_from_array, get_dir_properties, get_subset_paths
+from concurrent.futures import ProcessPoolExecutor, as_completed
 
 
-def set_prepro_parameters(dir_path, task_t0, freqmin=1, freqmax=49.9, target_spatial_res=5, cha1=4000, cha2=7999, n_minute=360):
+def set_prepro_parameters(dir_path, task_t0, freqmin=1.0, freqmax=49.9, target_spatial_res=5, cha1=4000, cha2=7999, n_minute=360):
     properties = get_dir_properties(dir_path)
     
     cha_spacing = properties.get('SpatialResolution[m]') * properties.get('Fibre Length Multiplier')
@@ -36,6 +41,7 @@ def set_prepro_parameters(dir_path, task_t0, freqmin=1, freqmax=49.9, target_spa
     freq_norm          = 'rma'             # 'no' for no whitening, or 'rma' for running-mean average, 'phase_only' for sign-bit normalization in freq domain.
     time_norm          = 'one_bit'             # 'no' for no normalization, or 'rma', 'one_bit' for normalization in time domain
     cc_method          = 'xcorr'           # 'xcorr' for pure cross correlation, 'deconv' for deconvolution; FOR "COHERENCY" PLEASE set freq_norm to "rma", time_norm to "no" and cc_method to "xcorr"
+    
     smooth_N           = 100               # moving window length for time domain normalization if selected (points)
     smoothspect_N      = 100               # moving window length to smooth spectrum amplitude (points)
     maxlag             = 4                 # lags of cross-correlation to save (sec)
@@ -50,6 +56,8 @@ def set_prepro_parameters(dir_path, task_t0, freqmin=1, freqmax=49.9, target_spa
     nsta               = len(cha_list)
     n_pair             = int((nsta+1)*nsta/2)
     n_lag              = maxlag * samp_freq * 2 + 1
+    
+    src_ch = None
     
     return {
         'freqmin':freqmin,
@@ -76,11 +84,125 @@ def set_prepro_parameters(dir_path, task_t0, freqmin=1, freqmax=49.9, target_spa
         'n_lag':n_lag,
         'n_minute':n_minute,
         'task_t0':task_t0,
+        'src_ch':src_ch,
     }
+    
+
+def _process_minute(args):
+    (minute_t0, file_paths, prepro_para) = args
+    n_lag = prepro_para['n_lag']
+    n_pair = prepro_para['n_pair']
+    cha1 = prepro_para['cha1']
+    effective_cha2 = prepro_para['effective_cha2']
+    cha_list = prepro_para['cha_list']
+    src_ch = prepro_para['src_ch']
+    
+    # Return corr_full, stack_full for this minute
+    try:
+        file_array = [TdmsReader(path) for path in file_paths]
+        tdata = get_data_from_array(file_array, prepro_para, minute_t0, timestamps=None, duration=timedelta(seconds=60), skip_subset=True)
+        trace_stdS, dataS = DAS_module.preprocess_raw_make_stat(tdata, prepro_para)
+        white_spect = DAS_module.noise_processing(dataS, prepro_para)
+        Nfft = white_spect.shape[1]; Nfft2 = Nfft // 2
+        data = white_spect[:, :Nfft2]
+        del file_array, tdata, dataS, white_spect
+        gc.collect()
+
+        ind = np.where((trace_stdS < prepro_para['max_over_std']) &
+                       (trace_stdS > 0) &
+                       (np.isnan(trace_stdS) == 0))[0]
+        if not len(ind):
+            return np.zeros([n_lag, n_pair], dtype=np.float32), np.zeros([1, n_pair], dtype=np.int32)
+        sta = cha_list[ind]
+        white_spect = data[ind]
+
+        corr_full = np.zeros([n_lag, n_pair], dtype=np.float32)
+        stack_full = np.zeros([1, n_pair], dtype=np.int32)
+
+        if src_ch:
+            sfft1 = DAS_module.smooth_source_spect(white_spect[src_ch - cha1], prepro_para)
+            corr, tindx = DAS_module.correlate(sfft1, white_spect, prepro_para, Nfft)
+            corr_full[:, :] += corr.T
+            stack_full[:, :] += 1
+        else:
+            for iiS in range(len(sta)):
+                sfft1 = DAS_module.smooth_source_spect(white_spect[iiS], prepro_para)
+                corr, tindx = DAS_module.correlate(sfft1, white_spect[iiS:], prepro_para, Nfft)
+                tsta = sta[iiS:]
+                receiver_lst = tsta[tindx]
+                iS = int((effective_cha2*2 - cha1 - sta[iiS] + 1) * (sta[iiS] - cha1) / 2)
+                corr_full[:, iS + receiver_lst - sta[iiS]] += corr.T
+                stack_full[:, iS + receiver_lst - sta[iiS]] += 1
+        return corr_full, stack_full
+    except Exception as e:
+        print(f"Error in minute {minute_t0}: {e}")
+        return np.zeros([n_lag, n_pair], dtype=np.float32), np.zeros([1, n_pair], dtype=np.int32)
+
+def parallel_xcorr(dir_path, prepro_para, corr_path=None, allowed_times=None):
+    n_lag = prepro_para['n_lag']
+    n_pair = prepro_para['n_pair']
+    n_minute = prepro_para['n_minute']
+    task_t0 = prepro_para['task_t0']
+
+    _, timestamps = get_reader_array(dir_path, allowed_times)
+
+    # Prepare argument list for each minute
+    args_list = []
+    dir_list = sorted([filename for filename in os.listdir(dir_path) if filename.endswith(('.tdms', '.segy'))])
+    pbar = tqdm(range(n_minute))
+    for imin in pbar:
+        pbar.set_description(f"Processing {imin}")
+        minute_t0 = task_t0 + timedelta(minutes=imin)
+        paths_subset, _ = get_subset_paths(minute_t0, dir_path, dir_list, timestamps)
+        args_list.append((minute_t0, paths_subset, prepro_para))
+
+    # Use process_map for parallel processing with progress bar
+    print("Starting multiprocessing")
+    corr_full = np.zeros([n_lag, n_pair], dtype=np.float32)
+    stack_full = np.zeros([1, n_pair], dtype=np.int32)
+
+    # with ProcessPoolExecutor(max_workers=multiprocessing.cpu_count()) as executor:
+    # with ProcessPoolExecutor(max_workers=2) as executor:
+    #     futures = [executor.submit(_process_minute, args) for args in args_list]
+    #     for future in tqdm(as_completed(futures), total=len(futures), desc="Parallel xcorr"):
+    #         corr, stack = future.result()
+    #         corr_full += corr
+    #         stack_full += stack
+    #         del corr, stack
+    #         gc.collect()
+    
+    # p = multiprocessing.Pool(multiprocessing.cpu_count())
+    p = multiprocessing.Pool(8)
+    with tqdm(total=len(args_list), desc="Parallel xcorr", position=0) as pbar:
+        for corr, stack in p.imap(_process_minute, args_list, chunksize=1):
+            corr_full += corr
+            stack_full += stack
+            pbar.update(1)
+    p.close()
+    
+    corr_full /= stack_full
+    print(f'corr_full max: {np.nanmax(corr_full)}; min: {np.nanmin(corr_full)}')
+
+    if corr_path:
+        saved_corr = np.loadtxt(corr_path, delimiter=',')
+        if saved_corr.shape == corr_full.shape:
+            corr_full += saved_corr
+        else:
+            warn(f'Shape mismatch between current correlation matrix and saved correlation matrix: {corr_full.shape} (current) against {saved_corr.shape} (saved)')
+    return corr_full
 
 
 def correlation(dir_path, prepro_para, corr_path=None, allowed_times=None):
-    n_lag, n_pair, cha1, cha2, effective_cha2, cha_list, n_minute, task_t0 = prepro_para.get('n_lag'), prepro_para.get('n_pair'), prepro_para.get('cha1'), prepro_para.get('cha2'), prepro_para.get('effective_cha2'), prepro_para.get('cha_list'), prepro_para.get('n_minute'), prepro_para.get('task_t0')
+    # Unpack required parameters from prepro_para
+    n_lag = prepro_para['n_lag']
+    n_pair = prepro_para['n_pair']
+    cha1 = prepro_para['cha1']
+    cha2 = prepro_para['cha2']
+    effective_cha2 = prepro_para['effective_cha2']
+    cha_list = prepro_para['cha_list']
+    n_minute = prepro_para['n_minute']
+    task_t0 = prepro_para['task_t0']
+    src_ch = prepro_para['src_ch']
     
     ### FIXME: these funcs require a LOT of listdir calls, could be made more efficient in the future
     file_array, timestamps = get_reader_array(dir_path, allowed_times)
@@ -123,25 +245,34 @@ def correlation(dir_path, prepro_para, corr_path=None, allowed_times=None):
         white_spect = data[ind]
 
         # loop over all stations
-        for iiS in range(len(sta)):
-            # smooth the source spectrum
-            sfft1 = DAS_module.smooth_source_spect(white_spect[iiS], prepro_para)
-            
-            # correlate one source with all receivers
-            corr, tindx = DAS_module.correlate(sfft1, white_spect[iiS:], prepro_para, Nfft)
-
-            # update the receiver list
-            tsta = sta[iiS:]
-            receiver_lst = tsta[tindx]
-
-            iS = int((effective_cha2*2 - cha1 - sta[iiS] + 1) * (sta[iiS] - cha1) / 2)
+        if src_ch:
+            sfft1 = DAS_module.smooth_source_spect(white_spect[src_ch - cha1], prepro_para)
+            corr, tindx = DAS_module.correlate(sfft1, white_spect, prepro_para, Nfft)
 
             # stacking one minute
-            corr_full[:, iS + receiver_lst - sta[iiS]] += corr.T
-            stack_full[:, iS + receiver_lst - sta[iiS]] += 1
+            corr_full[:, :] += corr.T
+            stack_full[:, :] += 1
+        
+        else:
+            for iiS in range(len(sta)):
+                # smooth the source spectrum
+                sfft1 = DAS_module.smooth_source_spect(white_spect[iiS], prepro_para)
+                
+                # correlate one source with all receivers
+                corr, tindx = DAS_module.correlate(sfft1, white_spect[iiS:], prepro_para, Nfft)
+
+                # update the receiver list
+                tsta = sta[iiS:]
+                receiver_lst = tsta[tindx]
+
+                iS = int((effective_cha2*2 - cha1 - sta[iiS] + 1) * (sta[iiS] - cha1) / 2)
+
+                # stacking one minute
+                corr_full[:, iS + receiver_lst - sta[iiS]] += corr.T
+                stack_full[:, iS + receiver_lst - sta[iiS]] += 1
             
         t_compute += time.time() - t1
-    corr_full /= stack_full    
+    corr_full /= stack_full
     print(f'corr_full max: {np.nanmax(corr_full)}; min: {np.nanmin(corr_full)}')
     print(f"{round(t_query, 2)} seconds in data query, {round(t_compute, 2)} seconds in xcorr computing")
     
