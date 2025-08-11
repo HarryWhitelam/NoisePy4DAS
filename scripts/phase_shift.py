@@ -130,7 +130,7 @@ if __name__ == '__main__':
     # corr_path = './results/saved_corrs/2024-02-05 12:01:00_4320mins_f0.01:49.9__3300:3750_1m.txt'
     # corr_path = './results/saved_corrs/2024-02-05 12:01:00_4320mins_f0.01:49.9__3850:8050_1m.txt'
     # corr_path = './results/saved_corrs/2024-02-05 12:01:00_4320mins_f0.01:49.9__2000:3999_1m.txt'
-    corr_path = './results/saved_corrs/2024-02-05 12:01:00_4320mins_100f0.01:50.0__4168:4568_1m.txt'
+    # corr_path = './results/saved_corrs/2024-02-05 12:01:00_4320mins_100f0.01:50.0__4168:4568_1m.txt'
     # corr_path = './results/saved_corrs/2024-02-05 12:01:00_1440mins_100f0.01:50.0__3850:5750_1m.txt'
     # corr_path = './results/saved_corrs/2024-02-05 12:01:00_4320mins_20:00:00:02:00:00_12:00:00:18:00:00_100f0.01:50.0__3850:5750_1m.txt'
     # corr_path = './results/saved_corrs/SeaDAS_CCF.txt'
