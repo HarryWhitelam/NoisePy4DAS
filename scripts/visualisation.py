@@ -1,9 +1,10 @@
 import os
 import numpy as np
+import psutil
 import pandas as pd
 import geopandas as gpd
-from scipy.signal import welch, ShortTimeFFT, decimate
-from scipy.signal.windows import gaussian
+from scipy.signal import welch, ShortTimeFFT, decimate, convolve2d, savgol_filter
+from scipy.signal.windows import gaussian, hamming
 from scipy.fft import rfft, rfftfreq
 from obspy.signal.filter import bandpass
 from obspy.signal.spectral_estimation import get_nlnm, get_nhnm
@@ -15,8 +16,11 @@ from matplotlib.colors import LogNorm
 from skimage.util import compare_images
 import contextily as cx
 from math import ceil, sin, cos, atan2, degrees, radians, log, pi
+import multiprocessing
+from tqdm import tqdm
+from time import time
 
-from tdms_io import get_reader_array, get_data_from_array, get_dir_properties, load_xcorr
+from tdms_io import get_reader_array, get_filepath_array, get_data_from_array, get_dir_properties, load_xcorr
 
 
 def dms_to_dd(degrees, minutes=0, seconds=0):
@@ -181,168 +185,276 @@ def numerical_comparison(data_dict):
         print(f'Closest {col}: {closest}')
 
 
-
-def ts_spectrogram(dir_path:str, prepro_para:dict, t_start:datetime, save_spec=False, decimation_factor=0):
-    cha1, cha2, sps, freqmin, freqmax, n_minute = prepro_para.get('cha1'), prepro_para.get('cha2'), prepro_para.get('sps'), prepro_para.get('freqmin'), prepro_para.get('freqmax'), prepro_para.get('n_minute')
+def parallel_spectral_analysis():
+    dir_list = ['/data/QNAP1_Data/Data/']
     
-    # out_dir = f"./results/figures/{t_start}_{n_minute}mins_{cha1}:{cha2}/"        # changed for PSD experiments 17/02
+    t_start = datetime(year=2025, month=4, day=1)
+    t_end = datetime(year=2025, month=5, day=1)
+    
+    for m in [1,2,3,5,6,7]:
+        t_start = datetime(year=2025, month=m, day=1)
+        t_end = datetime(year=2025, month=m+1, day=1)
+        n_minutes = (t_end - t_start).total_seconds() // 60
+        
+        channels = [750, 788, 875, 1475]  # removed [1550, 1550]
+        
+        for dir_path in dir_list:
+            args_list = []
+            prepro_para = {
+                'target_sps': 100,
+                'target_spatial_res': 1,
+                'n_minute': n_minutes,
+                'freqmin': 0.01,
+                'freqmax': 49.9,
+            }
+            
+            filepath_array, timestamps = get_filepath_array(dir_path, t_start, t_end)
+            t_start = timestamps[0].replace(microsecond=0)
+            print(f'Data running from {t_start} to {timestamps[-1].replace(microsecond=0)}')
+            data = get_data_from_array(filepath_array, prepro_para, t_start, timestamps, duration=timedelta(minutes=n_minutes), channels=channels)
+        
+            for i, channel in enumerate(channels):
+                run_prepro_para = prepro_para.copy()
+                run_prepro_para.update({'cha1':channel,
+                                        'cha2':channel+1})
+                channel_data = data[:,i]
+                #                 dir_path, prepro_para, t_start, save_spec, mem_check, data
+                args_list.append((dir_path, run_prepro_para, t_start, True, False, channel_data))
+        
+            p = multiprocessing.Pool(multiprocessing.cpu_count())
+            with tqdm(total=len(args_list), desc=f"{dir_path} spectrograms", position=0) as pbar:
+                for spec in p.starmap(ts_spectrogram, args_list, chunksize=1):
+                    pbar.update(1)
+            p.close()
+            
+            p = multiprocessing.Pool(multiprocessing.cpu_count())
+            with tqdm(total=len(args_list), desc=f"{dir_path} PPSDs", position=0) as pbar:
+                for psd in p.starmap(ppsd, args_list, chunksize=1):
+                    pbar.update(1)
+            p.close()
+
+def ts_spectrogram(dir_path:str, prepro_para:dict, t_start:datetime, save_spec=False, mem_check=False, data=None):
+    if mem_check:
+        process = psutil.Process(os.getpid())
+        mem_dict = {'Start': process.memory_info().rss / (1024 ** 2)}
+    cha1, sps, freqmin, freqmax, n_minute = prepro_para.get('cha1'), prepro_para.get('target_sps'), prepro_para.get('freqmin'), prepro_para.get('freqmax'), prepro_para.get('n_minute')
+    
     out_dir = f"./results/figures/PSD_Experiments/"
     
-    # reader_array, timestamps = get_reader_array(dir_path)
-    if type(dir_path) == str: 
+    if type(data)==type(None):
         reader_array, timestamps = get_reader_array(dir_path)
-    elif type(dir_path) == list:
-        reader_array, timestamps = get_reader_array(dir_path[0])
-        for path in dir_path[1:]:
-            arr, stamps = get_reader_array(path)
-            reader_array += arr; timestamps = np.concatenate((timestamps, stamps))
-    else: 
-        print(f'dir_path bad format: expected list/str, got {type(dir_path)}')
-
-    mid_cha = int(0.5 * (cha1 + cha2))
-    prepro_para.update({'cha1':mid_cha, 'cha2':mid_cha+1})
+        if t_start == None: t_start = timestamps[0].replace(microsecond=0)
+        data = get_data_from_array(reader_array, prepro_para, t_start, timestamps, duration=timedelta(minutes=n_minute))[:, 0]
     
-    data = get_data_from_array(reader_array, prepro_para, t_start, timestamps, duration=timedelta(minutes=n_minute))[:, 0]
+    if mem_check: mem_dict.update({'Data loaded': process.memory_info().rss / (1024 ** 2)})
     
     data = np.float32(bandpass(data,
                             0.9 * freqmin,
-                            1.1 * freqmax,
+                            freqmax,
                             df=sps,
                             corners=4,
                             zerophase=True))
-    if decimation_factor:
-        data = decimate(data,
-                        decimation_factor,
-                        ftype='iir',
-                        zero_phase=True)
-    
-    if decimation_factor:
-        data = decimate(data,
-                        decimation_factor,
-                        ftype='iir',
-                        axis=1,
-                        zero_phase=True)
     
     N = data.shape[0]
-    g_std = 12
-    gaussian_win = gaussian(sps, g_std, sym=True)   # 02/05/25 changed from 100 to 500
-    stft = ShortTimeFFT(gaussian_win, hop=50, fs=sps, scale_to='psd')
+    win = hamming(int(sps*60), sym=True)
+    # g_std = 12
+    # gaussian_win = gaussian(sps*60, g_std, sym=True)
+    stft = ShortTimeFFT(win, hop=int(sps*54), fs=sps, scale_to='psd')
     spec = stft.spectrogram(data)
+    if mem_check: mem_dict.update({'Spec gen': process.memory_info().rss / (1024 ** 2)})
 
-    fig1, ax1 = plt.subplots(figsize=(6., 4.))
-    t_lo, t_hi = stft.extent(N)[:2]
-    ax1.set_title(rf"{t_start} at channel {cha1}")
-    ax1.set(xlabel=f"Time $t$ in seconds ({stft.p_num(N)} slices, " +
-                rf"$\Delta t = {stft.delta_t:g}\,$s)",
-            ylabel=f"Freq. $f$ in Hz ({stft.f_pts} bins, " +
-                rf"$\Delta f = {stft.delta_f:g}\,$Hz)",
-            xlim=(t_lo, t_hi))
-    print(f'spec max: {spec.max()}; spec min: {spec.min()}')
-    # spec = 10 * np.log10(np.fmax(spec, 1e-4))     # disabled for now, norm below is doing the same essentially
+    fig = plt.figure()
+    ax = fig.add_subplot(111)
+    t_min, t_max = stft.extent(N)[:2]
+    ax.set_title(rf"{t_start} at channel {cha1}")
+    # print(f'spec max: {spec.max()}; spec min: {spec.min()}')
+    spec = 10 * np.log10(spec + 1e-12)
     ext = stft.extent(N)
-    im1 = ax1.imshow(spec, origin='lower', aspect='auto', norm=LogNorm(vmin=1e-4), 
-                     extent=ext, cmap='jet')
+    # print(ext)
+    # print(f't slices: {stft.p_num(N)}, delta t: {stft.delta_t}')
+    # print(f'f bins: {stft.f_pts}, delta f: {stft.delta_f}')
+    im1 = ax.imshow(spec, origin='lower', aspect='auto', 
+                     extent=ext, cmap='jet', vmin=np.percentile(spec,1), vmax=np.percentile(spec,99))
+    ax.set_yscale('log')
+    plt.grid(which='both')
+    
     if n_minute > 1440:
-        _ = plt.xticks(np.linspace(0, ext[1], int(n_minute/1440)+1), pd.date_range(t_start, t_start+timedelta(minutes=n_minute), freq='D'), rotation=30)
-        _ = plt.xticks(np.linspace(0, ext[1], int(n_minute/360)+1), minor=True)
+        n_days = int(n_minute / 1440) + 1
+        midnight_start = t_start.replace(hour=0, minute=0, second=0, microsecond=0)
+        tick_dates = pd.date_range(midnight_start, periods=n_days, freq=timedelta(days=(n_days//6)))
+        
+        tick_positions = []
+        for tick_date in tick_dates:
+            minutes_from_start = (tick_date - t_start).total_seconds() / 60
+            tick_positions.append((minutes_from_start / n_minute) * ext[1])
+        
+        valid_ticks = [(pos, date) for pos, date in zip(tick_positions, tick_dates) 
+                    if 0 <= pos <= ext[1]]
+        if valid_ticks:
+            positions, dates = zip(*valid_ticks)
+            _ = plt.xticks(positions, [d.strftime('%Y-%m-%d') for d in dates], rotation=30)
+        
+        minor_tick_interval = 1440 / n_minute * ext[1]
+        minor_positions = np.arange(0, ext[1], minor_tick_interval)
+        _ = plt.xticks(minor_positions, minor=True)
     else: 
         _ = plt.xticks(np.linspace(0, ext[1], 4), pd.date_range(t_start, t_start+timedelta(minutes=n_minute), periods=4), rotation=30)
         _ = plt.xticks(np.linspace(0, ext[1], 16), minor=True)
-    plt.ylim(freqmin, freqmax)
-    fig1.colorbar(im1, label='PSD ' + r"$20\,\log_{10}|S_x(t, f)|$ in dB")
+    
+    ax.set_ylabel('Frequency (Hz)')
+    ax.set_xlim(t_min, t_max)
+    ax.set_ylim(freqmin, freqmax)
+    # fig.colorbar(im1, label='PSD ' + r"$20\,\log_{10}|S_x(t, f)|$ in dB")
+    fig.colorbar(im1, label='Nano strainrate PSD (dB)')
     plt.tight_layout()
     if not os.path.exists(out_dir):
         os.makedirs(out_dir)
-    # plt.savefig(f'{out_dir}/{t_start}__{t_start+timedelta(minutes=n_minute)}_f{freqmin}:{freqmax}_psd.png')     # also changed for experiments 17/02
-    plt.savefig(f'{out_dir}/{t_start}__{t_start+timedelta(minutes=n_minute)}_f{freqmin}:{freqmax}_{mid_cha}_spectrogram.png')
+    plt.savefig(f'{out_dir}/{t_start}__{t_start+timedelta(minutes=n_minute)}_f{freqmin}:{freqmax}_{cha1}_spectrogram.png')
     if save_spec:
-        np.savetxt(f'./results/saved_specs/{t_start}__{t_start+timedelta(minutes=n_minute)}_f{freqmin}:{freqmax}_{mid_cha}_spec.txt', spec, delimiter=",")
+        np.savetxt(f'./results/saved_specs/{t_start}__{t_start+timedelta(minutes=n_minute)}_f{freqmin}:{freqmax}_{cha1}_spec.txt', spec, delimiter=",")
+    if mem_check: 
+        mem_dict.update({'End': process.memory_info().rss / (1024 ** 2)})
+        print(f'[PID {os.getpid()}] ts_spectrogram memory usage (MB): {mem_dict}')
 
 
-def ppsd(dir_path:str, prepro_para:dict, t_start:datetime):
-    from scipy.signal import convolve2d, savgol_filter
-    
-    cha1, cha2, fs, freqmin, freqmax, n_minute = prepro_para.get('cha1'), prepro_para.get('cha2'), prepro_para.get('sps'), prepro_para.get('freqmin'), prepro_para.get('freqmax'), prepro_para.get('n_minute')
+def ppsd(dir_path:str, prepro_para:dict, t_start:datetime, save_ppsd=False, mem_check=False, data=None):
+    if mem_check:
+        process = psutil.Process(os.getpid())
+        mem_dict = {'Start': process.memory_info().rss / (1024 ** 2)}
+    cha1, sps, freqmin, freqmax, n_minute = prepro_para.get('cha1'), prepro_para.get('target_sps'), prepro_para.get('freqmin'), prepro_para.get('freqmax'), prepro_para.get('n_minute')
     out_dir = f"./results/figures/PSD_Experiments/"
     
-    if type(dir_path == str): 
+    if type(data)==type(None):
         reader_array, timestamps = get_reader_array(dir_path)
-
-    elif type(dir_path == list):
-        reader_array, timestamps = get_reader_array(dir_path[0])
-        for path in dir_path[1:]:
-            arr, stamps = get_reader_array(path)
-            reader_array += arr; timestamps = np.concatenate((timestamps, stamps))
-    else: 
-        print(f'dir_path bad format: expected list/str, got {type(dir_path)}')
-
-    mid_cha = int(0.5 * (cha1 + cha2))
-    prepro_para.update({'cha1':mid_cha, 'cha2':mid_cha+1})
+        if t_start == None: t_start = timestamps[0].replace(microsecond=0)
+        data = get_data_from_array(reader_array, prepro_para, t_start, timestamps, duration=timedelta(minutes=n_minute))[:, 0]
+    if mem_check: mem_dict.update({'Data loaded': process.memory_info().rss / (1024 ** 2)})
     
-    data = get_data_from_array(reader_array, prepro_para, t_start, timestamps, duration=timedelta(minutes=n_minute))[:, 0]
+    data = np.float32(bandpass(data,
+                            0.9 * freqmin,
+                            1.1 * freqmax if 1.1 * freqmax < sps / 2 else freqmax,  # nyquists check
+                            df=sps,
+                            corners=4,
+                            zerophase=True))
+    
 
     nfft = 2 ** 17
-    nr = 251
+    nr = 501
     hn = nfft // 2
+    
+    # First pass: collect sample of PSD values to determine range
+    sample_fd_values = []
+    seg_length = int(60 * sps)
+    n_segs = len(data) // seg_length
+    sample_segs =  n_segs // 10 # Sample first 10% of segments
+    
+    for i in range(sample_segs):
+        d = data[i*seg_length:(i+1)*seg_length]
+        if len(d) == seg_length:
+            fft_d = np.fft.fft(d, nfft)
+            psd_lin = (np.abs(fft_d) ** 2) / (nfft * sps)
+            fd = 10 * np.log10(psd_lin + 1e-12)
+            sample_fd_values.extend(fd[:hn].flatten())
+    
+    # Calculate adaptive range using percentiles
+    fd_min = np.percentile(sample_fd_values, 0.01)
+    fd_max = np.percentile(sample_fd_values, 99.99)
+    # print(f"Adaptive dB range: {fd_min:.1f} to {fd_max:.1f}")
+    
+    # Create adaptive binning
+    db_range = fd_max - fd_min
+    scale = (nr - 1) / db_range
+    offset = -fd_min
+    if mem_check: mem_dict.update({'Data loaded': process.memory_info().rss / (1024 ** 2)})
+    
+    # Second pass: bin with adaptive scaling
     psd = np.zeros((nr, hn))
     p = np.zeros(hn)
-    for d in data:
-        fd = 10 * np.log10(abs(np.fft.fft(d, nfft)) ** 2 / nfft)
-        p += fd[:hn]
-        for j in range(hn):
-            index = int(fd[j]+250)
-            if index < 0:
-                index = 0
-            if index > 250:
-                index = 250
-            psd[index, j] += 1
+    
+    for i in range(n_segs):
+        d = data[i*seg_length:(i+1)*seg_length]
+        if len(d) == seg_length:
+            fft_d = np.fft.fft(d, nfft)
+            psd_lin = (np.abs(fft_d) ** 2) / (nfft * sps)
+            fd = 10 * np.log10(psd_lin + 1e-12)
             
-            
-    f1 = 5e-4; f2 = 0.45
-    f = np.arange(nfft) * fs / (nfft-1)
-    fn1 = int(f1*nfft/fs); fn2 = int(f2*nfft/fs)
-
+            p += fd[:hn]
+            for j in range(hn):
+                index = int((fd[j] + offset) * scale)
+                if index < 0:
+                    index = 0
+                elif index >= nr:
+                    index = nr - 1
+                psd[index, j] += 1
+    if mem_check: mem_dict.update({'Second pass': process.memory_info().rss / (1024 ** 2)})
+    
+    # Create proper dB axis
+    db = np.linspace(fd_min, fd_max, nr)
+    # print(f'down: {down_clip}; up: {up_clip}')
+    
+    f1 = freqmin; f2 = freqmax
+    f = np.arange(nfft) * sps / (nfft)
+    fn1 = int(f1*nfft/sps); fn2 = int(f2*nfft/sps)
+    
     nrf = 10
     f = f[fn1: fn2+1]; f = f[::nrf]
-    P = psd[:, fn1: fn2]
+    P = psd[:, fn1: fn2+1]
     pp = savgol_filter(p, 11, 2)
-    pp = pp[fn1: fn2+1] / data.shape[0]; pp = pp[::nrf]
+    pp = pp[fn1: fn2+1] / n_segs; pp = pp[::nrf]
     P = P[::1, ::nrf]
     sl = 2
     P = convolve2d(P, np.ones((sl, sl))/sl**2, 'same')
-    db = np.arange(nr) - 250
-    P = P[50: 171]; db = db[50: 171]
     for i in range(len(P[0])):
         P[:, i] /= np.sum(P[:, i])
+    if mem_check: mem_dict.update({'P gen': process.memory_info().rss / (1024 ** 2)})
 
-    plt.figure(figsize=(15, 8))
-    plt.pcolormesh(f, db, P*100, cmap='CMRmap_r')
-    cbar = plt.colorbar(shrink=0.75, aspect=30, pad=0.05, extend='both')
-    cbar.set_label(r'Probability (%)', fontsize=20)
-    cbar.ax.tick_params(labelsize=16)
-    plt.semilogx(f, pp, lw=2, color='#888888')
-    plt.text(2.5e-3, -125, 'Hum', size=25,
-            bbox=dict(boxstyle='round',
-                    ec='#333333',
-                    fc='#87CEFA',
-                    ))
-    plt.text(6e-2, -130, 'SF', size=20,
-            bbox=dict(boxstyle='round',
-                    ec='#333333',
-                    fc='#87CEFA',
-                    ))
-    plt.text(0.11, -115, 'DF', size=20,
-            bbox=dict(boxstyle='round',
-                    ec='#333333',
-                    fc='#87CEFA',
-                    ))
-    plt.xlabel('Freuqency (Hz)', fontsize=25)
-    plt.ylabel('Velocity PSD (dB)', fontsize=25)
-    plt.xticks(fontsize=20)
-    plt.yticks(fontsize=20)
+    plt.figure()
+    plt.pcolormesh(f, db, P*100, cmap='viridis')
+    plt.xscale('log')
+    plt.grid(which='both')
+    plt.colorbar(shrink=0.75, aspect=30, pad=0.05, extend='both', label=r'Probability (%)')
+    # cbar.ax.tick_params(labelsize=16)
+    plt.semilogx(f, pp, lw=1.2, color='#888888')
+    plt.xlabel('Frequency (Hz)')
+    plt.ylabel('Nano strainrate PSD (dB)')
+    # plt.xticks(fontsize=20)
+    # plt.yticks(fontsize=20)
+    plt.title(rf"{t_start} at channel {cha1}")
     plt.tight_layout()
-    plt.savefig(f'{out_dir}/{t_start}__{t_start+timedelta(minutes=n_minute)}_f{freqmin}:{freqmax}_{mid_cha}_PPSD.png')
+    plt.savefig(f'{out_dir}/{t_start}__{t_start+timedelta(minutes=n_minute)}_f{freqmin}:{freqmax}_{cha1}_PPSD.png')
+    if mem_check: 
+        mem_dict.update({'End': process.memory_info().rss / (1024 ** 2)})
+        print(f'[PID {os.getpid()}] ts_spectrogram memory usage (MB): {mem_dict}')
 
+
+def spectral_power_ts(f_ranges:list, avg_time:timedelta):
+    ### plan
+    # load saved_specs
+    spec = np.loadtxt('./results/saved_specs/2024-02-05 12:01:00__2024-02-08 12:01:00_f0.01:49.9_3000_spec.txt', delimiter=',')
+    # print(spec.shape)       # 3001 frequency bins, 4801 time bins
+    
+    # (0.0, 259254.0, 0.0, 50.016666666666666)
+    # t slices: 4801, delta t: 54.0
+    delta_t = timedelta(seconds=54)
+    slices_per_chunk = int(avg_time.total_seconds() / delta_t.total_seconds())
+    n_chunks = spec.shape[1] // slices_per_chunk
+    # f bins: 3001, delta f: 0.016666666666666666
+    f_bins = np.array(0.0 + np.arange(0, 3001) * 0.016666666666666666)
+    mean_fs = {}
+    for f_min, f_max in f_ranges:
+        idxs = [i for i,f in enumerate(f_bins) if f_min <= f <= f_max]
+        f_spec = spec[idxs,:]
+        chunk_means = []
+        for i in range(n_chunks):
+            chunk = f_spec[:, i*slices_per_chunk:(i+1)*slices_per_chunk]
+            chunk_means.append(chunk.mean())
+        mean_fs[(f_min, f_max)] = chunk_means
+    
+    df = pd.DataFrame(mean_fs)
+    print(df)
+    df.plot()
+    plt.show()
+    
 
 def calc_angle_between_points(lat1, lon1, lat2, lon2):
     '''Input lat-lons as degrees!!!'''
@@ -389,200 +501,32 @@ def sensitivity_analysis(gps_track:pd.DataFrame, target_ch, plot=True):
         plt.show()
     
     return np.sum(long_sens), np.sum(trans_sens)
-    
-
-def plot_weather():
-    weather_data = pd.read_csv('./results/checkpoints/weather.csv', sep=',', index_col=[0, 1], comment='#', na_values=['   --- ', '   ---'])
-    weather_data.index = [np.datetime64(f'{date[0]}-{date[1] if date[1] > 9 else f"0{date[1]}"}', 'D') for date in weather_data.index]
-    # print(weather_data)
-    deployment_data = weather_data.loc[np.datetime64('2023-09-01'):]
-    axs = deployment_data.plot.line(None, subplots=True, legend=False, grid=True, figsize=(12, 12))
-    for ax, label in zip(axs, ['Max temp (degC)', 'Min temp (degC)', 'AF (days)', 'Rainfall (mm)', 'Sun (hours)']):
-        ax.set_ylabel(label)
-    plt.tight_layout()
-    plt.savefig('./results/figures/weather_data.png')
-    plt.show()
-
-
-def plot_rain_storms():
-    weather_data = pd.read_csv('./results/checkpoints/weather.csv', sep=',', index_col=[0, 1], comment='#', na_values=['   --- ', '   ---'], skipinitialspace=True)
-    weather_data.index = [np.datetime64(f'{date[0]}-{date[1] if date[1] > 9 else f"0{date[1]}"}', 'D') for date in weather_data.index]
-    rain_data = weather_data.loc[np.datetime64('2023-09-01'):, ['rain']]
-    rain_data['rain'] = rain_data['rain'].astype(float)
-    
-    fig, ax = plt.subplots(figsize=(12, 12))
-    ax.plot(rain_data.index, rain_data['rain'])
-    ax.set_ylabel('Rainfall (mm)')
-    ax.grid(which='both') 
-    ax.xaxis.set_major_locator(mdates.MonthLocator(bymonth=(1,4,7,10)))
-    ax.xaxis.set_minor_locator(mdates.MonthLocator(bymonth=()))
-    
-    storms_data = pd.read_csv('./results/checkpoints/storms.csv', sep=',', index_col=0, comment='#')
-    prev_storm_end = 0
-    for storm in storms_data.index:
-        dates = storms_data.loc[storm, ['start_date', 'end_date']]
-        ax.axvspan(np.datetime64(dates['start_date']), np.datetime64(dates['end_date'])+1, label=storm, facecolor='r', alpha=0.5)
-        if prev_storm_end and np.datetime64(dates['end_date']) - prev_storm_end < 10:
-            ax.text(np.datetime64(dates['start_date']), 30, storm, rotation=90)
-        else:
-            ax.text(np.datetime64(dates['start_date']), 20, storm, rotation=90)
-        prev_storm_end = np.datetime64(dates['end_date'])
-    plt.tight_layout()
-    # plt.savefig('./results/figures/rainfall_storms.png')
-    plt.show()
-
-
-def plot_era5_data(file_path:str):
-    import xarray as xr
-    import cartopy.crs as ccrs
-    
-    if file_path.split('.')[-1 == 'grib']:
-        var = file_path.split('.')[0].split('_')[-1]
-        data = xr.open_dataset(file_path, engine='cfgrib')
-        
-        times = data.time.values
-        steps = data.step.values
-        
-        arr = []
-        for time in times:
-            if var == 'windspeed':
-                hour_data = data.sel(time=time, longitude=1.50, latitude=53.0)
-                arr.append((time, hour_data.v10.values, hour_data.u10.values))
-            elif var == 'rainfall':
-                for step in steps:
-                    t = time + step
-                    hour_data = data.sel(time=time, step=step, longitude=1.50, latitude=53.0)
-                    arr.append((t, hour_data.tp.values))
-        # df = pd.DataFrame(arr, columns=['timestamp','rainfall(mm)'])
-        df = pd.DataFrame(arr, columns=['timestamp', 'v10(m/s)', 'u10(m/s)'])
-        df = df.set_index('timestamp')
-        print(df)
-        df.to_csv(f'./results/checkpoints/hourly_{var}.csv')
-        
-        plot_time = 'daily'
-        # df = df.groupby(pd.to_datetime(df.index).date).agg({'rainfall(mm)': 'sum'}).reset_index()
-        df = df.groupby(pd.to_datetime(df.index).date).agg({'u10(m/s)': 'mean', 'v10(m/s)': 'mean'})
-        df.index.name = 'timestamp'
-        print(df)
-        df.to_csv(f'./results/checkpoints/daily_{var}.csv')
-    else: 
-        var = file_path.split('.')[-2].split('_')[-1]
-        plot_time = file_path.split('/')[-1].split('_')[0]
-        df = pd.read_csv(file_path, parse_dates=['timestamp'], header=0)
-        df = df.set_index('timestamp')        
-        if 'windspeed' in file_path:
-            df['V'] = np.sqrt(np.square(df['u10(m/s)']) + np.square(df['v10(m/s)']))
-            df['angle'] = np.mod(180 + 180/pi * np.arctan2(df['u10(m/s)'],df['v10(m/s)']), 360)
-        print(df)
-    
-    start_date = np.datetime64('2023-09-01')
-    
-    fig, ax = plt.subplots()
-    df = df[start_date:]
-    # ax.bar(mdates.date2num(df.index), df['rainfall(mm)'])
-    # ax.set_ylabel(f'{plot_time.capitalize()} rainfall (mm)')
-    # ax.plot(mdates.date2num(df.index), df['u10(m/s)'], label='u10')
-    # ax.plot(mdates.date2num(df.index), df['v10(m/s)'], label='v10')
-    ax.plot(mdates.date2num(df.index), df['V'], label='V')
-    # ax2 = ax.twinx()
-    # ax2.plot(mdates.date2num(df.index), df['angle'], label='angle', color=(0.761, 0.455, 0, 0.5))
-    # plt.legend()
-    ax.set_ylabel(f'Average {plot_time} wind speed (m/s)')
-    # ax2.set_ylabel(f'{plot_time.capitalize()} wind angle')
-    # ax2.yaxis.label.set_color((0.761, 0.455, 0))
-    fig.autofmt_xdate()
-    ax.xaxis.set_major_formatter(mdates.DateFormatter('%m/%Y'))
-    ax.xaxis.set_major_locator(mdates.MonthLocator(bymonth=(1, 4, 7, 10)))
-    
-    storms_data = pd.read_csv('./results/checkpoints/storms.csv', sep=',', index_col=0, comment='#')
-    prev_storm_end = 0
-    for storm in storms_data.index:
-        dates = storms_data.loc[storm, ['start_date', 'end_date']]
-        ax.axvspan(np.datetime64(dates['start_date']), np.datetime64(dates['end_date'])+1, label=storm, facecolor='r', alpha=0.3)
-        # if prev_storm_end and np.datetime64(dates['end_date']) - prev_storm_end < 10:
-        #     ax.text(np.datetime64(dates['start_date']), 30, storm, rotation=90)
-        # else:
-        #     ax.text(np.datetime64(dates['start_date']), 20, storm, rotation=90)
-        # prev_storm_end = np.datetime64(dates['end_date'])
-    
-    plt.tight_layout()
-    # plt.show()
-    plt.savefig(f'./results/figures/{plot_time}_{var}.png')
-
-
-def plot_tidal_data(file_path):
-    df = pd.read_csv(file_path, sep='\s+', skiprows=[0,1,2,3,4,5,6,7,8,10])
-    df.drop('Cycle', axis=1, inplace=True)
-    df.loc[df['ASLVBG02'].str.contains('N'), ['ASLVBG02', 'Residual']] = '-1.0'
-    df[['ASLVBG02', 'Residual']] = df[['ASLVBG02', 'Residual']].apply(lambda x: x.str.strip('M'))
-    df[['ASLVBG02', 'Residual']] = df[['ASLVBG02', 'Residual']].apply(pd.to_numeric)
-    # df['ASLVBG02'] = pd.to_numeric(df['ASLVBG02'].str.strip('M'))
-    df.set_index(pd.to_datetime(df['Date'] + df['Time'].astype(str), format = '%Y/%m/%d%H:%M:%S'), inplace=True)
-    
-    d0 = pd.to_datetime('2024-09-08T12:00:00', format='%Y-%m-%dT%H:%M:%S')
-    d1 = d0 + pd.to_timedelta(3, 'days')
-    plot_df = df[d0:d1]
-        
-    fig, ax = plt.subplots()
-    ax.plot(plot_df.index, plot_df['ASLVBG02'])
-    ax.xaxis.set_major_formatter(mdates.DateFormatter('%d/%m'))
-    ax.xaxis.set_major_locator(mdates.DayLocator())
-    ax.xaxis.set_minor_formatter(mdates.DateFormatter('%H:%M'))
-    ax.xaxis.set_minor_locator(mdates.HourLocator(12))
-    
-    ax.set_title('Cromer Tidal Gauge (National Oceanographic Centre)')
-    ax.set_ylabel('Tidal Height (m)')
-    
-    plt.tight_layout()
-    plt.savefig(f'./results/figures/Tidal_Plots/{d0.date()}_Tidal.png')
 
 
 if __name__ == '__main__':
-    # dir_path = "../../temp_data_store/FirstData/"
-    # dir_path = "../../../../gpfs/scratch/gfs19eku/20241008/"
-    dir_path = "/data/localraid/20240205/"
-    task_t0 = datetime(year = 2024, month = 2, day = 5, 
-                       hour = 12, minute = 1, second = 0, microsecond = 0)
+    parallel_spectral_analysis()
     
-    if type(dir_path) == list:
-        print('Getting dir props.')
-        properties = get_dir_properties(dir_path[0])
-        print('Directory properties gathered.')
-    elif type(dir_path) == str:
-        properties = get_dir_properties(dir_path)
-        print('Directory properties gathered.')
-    else:
-        print(f'dir_path bad format: expected list/str, got {type(dir_path)}')
-
-    prepro_para = {
-        'cha1': 5900,
-        'cha2': 5901,
-        'sps': properties.get('SamplingFrequency[Hz]'),
-        'spatial_ratio': int(1 / properties.get('SpatialResolution[m]')),          # int(target_spatial_res/spatial_res)
-        'n_minute': 4320,
-        'freqmin': 0.001,
-        'freqmax': 49.9,
-        # 'freqmax': 1.9,
-    }
-
-    # channel_slices = [[1500, 1500], [3000, 3000], [5000, 5000], [7000, 7000]]
-    # channel_slices = [[3000, 3000], [3150, 3150], [3500, 3500], [5900, 5900], [6200, 6200]]
-    channel_slices = [[750, 750], [788, 788], [875, 875], [1475, 1475], [1550, 1550]]
-    # psd_with_channel_slicing(reader_array, prepro_para, task_t0, timestamps, channel_slices)
-    # ppsd_attempt(dir_path)
-
-    for channels in channel_slices:
-        print(f'Beginning {channels} run...')
-        run_prepro_para = prepro_para.copy()
-        run_prepro_para.update({'cha1':channels[0],
-                                'cha2':channels[1]+1})
-        ts_spectrogram(dir_path, run_prepro_para, task_t0, save_spec=True, decimation_factor=5)
-        # ppsd(dir_path, run_prepro_para, task_t0)
-        # Second run between 0.01-5 Hz
-        run_prepro_para.update({'freqmax':5.0})
-        ts_spectrogram(dir_path, run_prepro_para, task_t0)
-
-    # animated_spectrogram(reader_array, prepro_para, task_t0, timestamps)
+    # f_ranges = [[0.1, 0.6], [8, 11]]
+    # avg_time = timedelta(minutes=60)
+    # spectral_power_ts(f_ranges, avg_time)
+    
+    
+    
+    
+    
+    
+    ############################ ARCHIVE ############################
+    
+    # dir_path = "/data/localraid/20250208/"
+    # task_t0 = datetime(year = 2025, month = 2, day = 8, 
+    #                    hour = 12, minute = 7, second = 53, microsecond = 0)
+    # dir_path = "/data/localraid/20250108/"
+    # task_t0 = datetime(year = 2025, month = 1, day = 8, 
+    #                    hour = 12, minute = 0, second = 23, microsecond = 0)
+    # dir_path = "/data/localraid/20241208/"
+    # task_t0 = datetime(year = 2024, month = 12, day = 8, 
+    #                    hour = 12, minute = 7, second = 36, microsecond = 0)
+    
     
     # corr_path = './results/saved_corrs/2024-02-05 12:01:00_4320mins_f0.01:49.9__3850:5750_1m.txt'
     # stream = load_xcorr(corr_path, as_stream=True)

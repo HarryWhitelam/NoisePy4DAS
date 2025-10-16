@@ -1,7 +1,7 @@
 import sys
 sys.path.append("./src")
 sys.path.append("./DASstore")
-
+import gc
 from TDMS_Read import TdmsReader
 from SegyReader import SegyReader
 import os
@@ -15,28 +15,70 @@ from obspy.core.utcdatetime import UTCDateTime
 from datetime import datetime, timedelta, time as dt_time
 from math import floor, ceil
 from skimage.transform import resize
+from scipy.signal import decimate
 
 
-def get_reader_array(dir_path:str, allowed_times:dict=None):
-    dir_list = [filename for filename in os.listdir(dir_path) if filename.endswith(('.tdms', '.segy'))]
-    file_ext = '.' + dir_list[0].rsplit('.', 1)[1]
-    reader_array = [None] * int(len(dir_list))
-    timestamps = np.empty(len(reader_array), dtype=datetime)
-    for count, file in enumerate(dir_list):
-        match file_ext:
-            case '.tdms': reader = TdmsReader(dir_path + file)
-            case '.segy': reader = SegyReader(dir_path + file)
-        timestamp = reader.get_properties().get('GPSTimeStamp')
-        if allowed_times and not is_valid_time(timestamp, allowed_times):
-            continue
-        reader_array[count] = reader
-        timestamps[count] = timestamp
-    timestamps = np.delete(timestamps, np.where(timestamps == None))
-    reader_array = [reader for reader in reader_array if reader is not None]
-    reader_array = [x for y, x in sorted(zip(timestamps, reader_array))]
-    timestamps.sort()
-    print(f'{len(timestamps)} files available from {timestamps[0]} to {timestamps[-1]}')
-    return reader_array, timestamps
+# def get_reader_array(dir_path:str, allowed_times:dict=None):
+#     dir_list = [filename for filename in os.listdir(dir_path) if filename.endswith(('.tdms', '.segy'))]
+#     file_ext = '.' + dir_list[0].rsplit('.', 1)[1]
+#     reader_array = [None] * int(len(dir_list))
+#     timestamps = np.empty(len(reader_array), dtype=datetime)
+#     for count, file in enumerate(dir_list):
+#         match file_ext:
+#             case '.tdms': reader = TdmsReader(dir_path + file)
+#             case '.segy': reader = SegyReader(dir_path + file)
+#         timestamp = reader.get_properties().get('GPSTimeStamp')
+#         if allowed_times and not is_valid_time(timestamp, allowed_times):
+#             continue
+#         reader_array[count] = reader
+#         timestamps[count] = timestamp
+#     timestamps = np.delete(timestamps, np.where(timestamps == None))
+#     reader_array = [reader for reader in reader_array if reader is not None]
+#     reader_array = [x for y, x in sorted(zip(timestamps, reader_array))]
+#     timestamps.sort()
+#     print(f'{len(timestamps)} files available from {timestamps[0]} to {timestamps[-1]}')
+#     return reader_array, timestamps
+
+
+def get_reader_array(root_dir:str, t_start:datetime=None, t_end:datetime=None):
+    files = []
+    for dir_path, dir_names, file_names in os.walk(root_dir):
+        for file in file_names:
+            if file.endswith(('.tdms', '.segy')): 
+                try: 
+                    timestamp = datetime.strptime(file[-24:-9], '%Y%m%d_%H%M%S')
+                except Exception: 
+                    continue        # basically there was no datetime within the file
+                if t_start and timestamp < t_start:
+                    continue
+                if t_end and timestamp > t_end:
+                    continue
+                files.append((TdmsReader(os.path.join(dir_path, file)), timestamp))
+    files.sort(key=lambda x: x[1])
+    reader_array, timestamps = zip(*files)
+    # print(f'Range: {timestamps[0]}: {timestamps[-1]}')
+    # timestamps = np.asarray(timestamps, dtype=datetime)
+    # timestamps.sort()
+    return list(reader_array), np.asarray(timestamps, dtype=datetime)
+
+
+def get_filepath_array(root_dir:str, t_start:datetime=None, t_end:datetime=None):
+    files = []
+    for dir_path, dir_names, file_names in os.walk(root_dir):
+        for file in file_names:
+            if file.endswith(('.tdms', '.segy')): 
+                try: 
+                    timestamp = datetime.strptime(file[-24:-9], '%Y%m%d_%H%M%S')
+                except Exception: 
+                    continue        # basically there was no datetime within the file
+                if t_start and timestamp < t_start:
+                    continue
+                if t_end and timestamp > t_end:
+                    continue
+                files.append((os.path.join(dir_path, file), timestamp))
+    files.sort(key=lambda x: x[1])
+    reader_array, timestamps = zip(*files)
+    return list(reader_array), np.asarray(timestamps, dtype=datetime)
 
 
 def get_subset_paths(t0, dir_path, dir_list, timestamps, delta=timedelta(minutes=1)):
@@ -46,8 +88,9 @@ def get_subset_paths(t0, dir_path, dir_list, timestamps, delta=timedelta(minutes
     end_time = timestamps[start_idx] + delta - timedelta(seconds=tpf)
     end_idx = get_closest_index(timestamps, end_time)
     
-    if (end_idx - start_idx + 1) != (delta.total_seconds()/tpf):
-        warnings.warn(f"WARNING: time subset not continuous; only {(end_idx - start_idx + 1)*tpf} seconds represented.")
+    ### this is broken, doesn't account for the time in the last file
+    # if (end_idx - start_idx + 1) != (delta.total_seconds()/tpf):
+    #     warnings.warn(f"WARNING: time subset not continuous; only {(end_idx - start_idx + 1)*tpf} seconds represented.")
     
     dir_list = [dir_path + file for file in dir_list[start_idx:end_idx+1]]
     return dir_list, timestamps[start_idx:end_idx+1]
@@ -99,44 +142,112 @@ def get_dir_properties(dir_path:str):
 
 
 # returns a delta-long array of reader files starting at the timestamp given
-def get_time_subset(reader_array:np.ndarray, start_time:datetime, timestamps:np.ndarray, tpf:int, delta:timedelta=timedelta(seconds=60), tolerance:int=300):
+def get_time_subset(reader_array:np.ndarray, start_time:datetime, timestamps:np.ndarray, delta:timedelta=timedelta(seconds=60), tolerance:int=300):
     # tolerence is the time in s that the closest timestamp can be away from the desired start_time
-    # timestamps MUST be orted, and align with reader array (i.e. timestamps[n] represents reader_array[n])
     start_idx = get_closest_index(timestamps, start_time)
     if abs((start_time - timestamps[start_idx]).total_seconds()) > tolerance:
         warnings.warn(f"Error: first file ({timestamps[start_idx]}) is over {tolerance} seconds away from the given start time ({start_time}).")
     
-    end_time = timestamps[start_idx] + delta - timedelta(seconds=tpf)
+    end_time = timestamps[start_idx] + delta
     end_idx = get_closest_index(timestamps, end_time)
     if (end_time - timestamps[end_idx]).total_seconds() > tolerance:
-        warnings.warn(f"WARNING: end file ({timestamps[end_idx]}) is over {tolerance} seconds away from the calculated end time.")
-    # print(f"Given t={start_time}, snippet selected from {timestamps[start_idx]} to {timestamps[end_idx]}!")
-    
-    if (end_idx - start_idx + 1) != (delta.total_seconds()/tpf):
-        warnings.warn(f"WARNING: time subset not continuous; only {(end_idx - start_idx + 1)*tpf} seconds represented.")
-    
-    return reader_array[start_idx:end_idx+1]
+        warnings.warn(f"WARNING: end file ({timestamps[end_idx]}) is over {tolerance} seconds away from the calculated end time.")    
+    ### this is broken, as above in get_subset_paths, doesn't account for the time in the last file
+    # if (timestamps[end_idx] - timestamps[start_idx]).total_seconds() != (delta.total_seconds()):
+    #     warnings.warn(f"WARNING: time subset not continuous; only {(timestamps[end_idx] - timestamps[start_idx]).total_seconds()} seconds represented.")
+    return reader_array[start_idx:end_idx-1]
 
 
 # returns a duration of data (default is 60s)
-def get_data_from_array(data_array:list, prepro_para:dict, start_time:datetime, timestamps:np.ndarray, duration:timedelta, skip_subset=False):
-    cha1, cha2, sps, spatial_ratio = prepro_para.get('cha1'), prepro_para.get('cha2'), prepro_para.get('sps'), prepro_para.get('spatial_ratio')
+# def get_data_from_array(data_array:list, prepro_para:dict, start_time:datetime, timestamps:np.ndarray, duration:timedelta, channels=False):
+#     cha1, cha2, sps, spatial_ratio = prepro_para.get('cha1'), prepro_para.get('cha2'), prepro_para.get('sps'), prepro_para.get('spatial_ratio')
 
+#     # make it so that if start_time is not a timestamp, the first minute in the array is returned
+#     current_time = 0
+#     if channels: 
+#         tdata = np.empty((int(duration.total_seconds() * sps), len(channels)))
+#     else: 
+#         tdata = np.empty((int(duration.total_seconds() * sps), ceil((cha2-cha1+1)/spatial_ratio)))
+#     data_array = get_time_subset(data_array, start_time, timestamps, delta=duration, tolerance=30)
+    
+#     with tqdm(total=(duration.total_seconds()), desc=f'[Process {os.getpid()}] Loading data (in seconds)', position=1, leave=False) as pbar:
+#         while current_time != duration.total_seconds() and len(data_array) != 0:
+#             data_file = data_array.pop(0)
+#             if type(data_file) == str:
+#                 data_file = TdmsReader(data_file)
+#             props = data_file.get_properties()
+#             if channels:
+#                 data = data_file.get_data(channels[0], channels[-1])
+#                 data = data[:,np.array(channels)-channels[0]]
+#             else:
+#                 data = data_file.get_data(cha1, cha2)
+#                 data = data[:, ::spatial_ratio]
+#             data = scale(data, props)
+#             if props.get('SamplingFrequency[Hz]') != sps:
+#                 data = decimate(data,
+#                         int(sps / props.get('SamplingFrequency[Hz]')),
+#                         ftype='iir',
+#                         zero_phase=True)
+#             current_row = current_time * sps
+#             t_size = data.shape[0]
+#             tdata[int(current_row):int(current_row+(t_size)), :] = data
+#             current_time += t_size/sps
+            
+#             # attempting to avoid issue of open file limit
+#             data_file._tdms_file.close()
+#             del data_file
+#             gc.collect()
+#             pbar.update(t_size/sps)
+    
+#     return tdata
+
+
+# adapting this so that all channel requests work off of 1m channels - as though distance along cable
+def get_data_from_array(data_array:list, prepro_para:dict, start_time:datetime, timestamps:np.ndarray, duration:timedelta, channels=False):
+    cha1, cha2, target_sps, target_spatial_res = prepro_para.get('cha1'), prepro_para.get('cha2'), prepro_para.get('target_sps'), prepro_para.get('target_spatial_res')
     # make it so that if start_time is not a timestamp, the first minute in the array is returned
     current_time = 0
-    t_size = data_array[0].get_data(cha1, cha2).shape[0]
-    tdata = np.empty((int(duration.total_seconds() * sps), ceil((cha2-cha1+1)/spatial_ratio)))
-    if not skip_subset: data_array = get_time_subset(data_array, start_time, timestamps, tpf=t_size/sps, delta=duration, tolerance=30)   # tpf = time per file
+    if channels: 
+        tdata = np.empty((int(duration.total_seconds() * target_sps), len(channels)))
+    else: 
+        tdata = np.empty((int(duration.total_seconds() * target_sps), ceil((cha2-cha1+1)/target_spatial_res)))
+    data_array = get_time_subset(data_array, start_time, timestamps, delta=duration, tolerance=30)
     
-    while current_time != duration.total_seconds() and len(data_array) != 0:
-        data_file = data_array.pop(0)
-        props = data_file.get_properties()
-        data = data_file.get_data(cha1, cha2)
-        data = scale(data, props)
-        data = data[:, ::spatial_ratio]
-        current_row = current_time * sps
-        tdata[int(current_row):int(current_row+(t_size)), :] = data
-        current_time += t_size/sps
+    with tqdm(total=(duration.total_seconds()), desc=f'[Process {os.getpid()}] Loading data (in seconds)', position=1, leave=False) as pbar:
+        while current_time != duration.total_seconds() and len(data_array) != 0:
+            data_file = data_array.pop(0)
+            if type(data_file) == str:
+                data_file = TdmsReader(data_file)
+            props = data_file.get_properties()
+            spatial_res = props.get('SpatialResolution[m]')
+            spatial_ratio = int(target_spatial_res/spatial_res)
+            if channels:
+                file_channels = [int(channel*spatial_ratio) for channel in channels]
+                data = data_file.get_data(file_channels[0], file_channels[-1])
+                data = data[:,np.array(file_channels)-file_channels[0]]
+            else:
+                cha1, cha2 = int(cha1*spatial_ratio), int(cha2*spatial_ratio)
+                data = data_file.get_data(cha1, cha2)
+                data = data[:, ::spatial_ratio]
+            data = scale(data, props)
+            if props.get('SamplingFrequency[Hz]') > target_sps:
+                data = decimate(data,
+                                int(props.get('SamplingFrequency[Hz]') / target_sps),
+                                ftype='iir',
+                                zero_phase=True, 
+                                axis=0)
+            elif props.get('SamplingFrequency[Hz]') < target_sps:
+                warnings.warn(f"Sampling frequency below target frequency! Timestamp: {props.get('GPSTimeStamp')}; fs: {props.get('SamplingFrequency[Hz]')}")
+            current_row = current_time * target_sps
+            t_size = data.shape[0]
+            tdata[int(current_row):int(current_row+(t_size)), :] = data
+            current_time += t_size/target_sps
+            
+            # attempting to avoid issue of open file limit
+            data_file._tdms_file.close()
+            del data_file
+            gc.collect()
+            pbar.update(t_size/target_sps)
     
     return tdata
 

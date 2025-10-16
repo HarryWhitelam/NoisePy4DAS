@@ -88,7 +88,7 @@ def set_prepro_parameters(dir_path, task_t0, freqmin=1.0, freqmax=49.9, target_s
     }
     
 
-def _process_minute(args):
+def process_minute(args):
     (minute_t0, file_paths, prepro_para) = args
     n_lag = prepro_para['n_lag']
     n_pair = prepro_para['n_pair']
@@ -163,7 +163,7 @@ def parallel_xcorr(dir_path, prepro_para, corr_path=None, allowed_times=None):
 
     # with ProcessPoolExecutor(max_workers=multiprocessing.cpu_count()) as executor:
     # with ProcessPoolExecutor(max_workers=2) as executor:
-    #     futures = [executor.submit(_process_minute, args) for args in args_list]
+    #     futures = [executor.submit(process_minute, args) for args in args_list]
     #     for future in tqdm(as_completed(futures), total=len(futures), desc="Parallel xcorr"):
     #         corr, stack = future.result()
     #         corr_full += corr
@@ -174,7 +174,7 @@ def parallel_xcorr(dir_path, prepro_para, corr_path=None, allowed_times=None):
     # p = multiprocessing.Pool(multiprocessing.cpu_count())
     p = multiprocessing.Pool(8)
     with tqdm(total=len(args_list), desc="Parallel xcorr", position=0) as pbar:
-        for corr, stack in p.imap(_process_minute, args_list, chunksize=1):
+        for corr, stack in p.imap(process_minute, args_list, chunksize=1):
             corr_full += corr
             stack_full += stack
             pbar.update(1)
