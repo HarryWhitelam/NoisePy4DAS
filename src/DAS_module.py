@@ -371,7 +371,7 @@ def taper(data):
         if npts*0.05>20:wlen = 20
         else:wlen = int(npts*0.05)
         # taper values
-        # func = _get_function_from_entry_point('taper', 'hann')        # HW: edited out bc scipy layout changed (windows moved into scipy.signal.windows)
+        # func = _get_function_from_entry_point('taper', 'hann')        # HW: edited out bc scipy layout changed (windows moved into scipy.signal.windows), 'func' changed to hann below
         from scipy.signal.windows import hann
         if 2*wlen == npts:
             taper_sides = hann(2*wlen)

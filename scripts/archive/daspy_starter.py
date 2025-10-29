@@ -36,14 +36,9 @@ gps_path = '../../Deployment/gps_coords.csv'
 
 
 ### Location Interpolation
-# txt_url = 'http://piweb.ooirsn.uw.edu/das/processed/metadata/Geometry/OOI_RCA_DAS_channel_location/north_cable_latlon.txt'
-# track_pt = np.loadtxt(txt_url)[:, ::-1]
-# known_pt = np.array([[*track_pt[0], 942], [*track_pt[-1], 32459]])
-# print(track_pt)
-# print(known_pt)
-
 track_pt = np.loadtxt('results/checkpoints/track_pts.csv', delimiter=',', skiprows=1, usecols=(2,1), comments='#') # read in the track points and swap the two columns (let longitude precede latitude)
-known_pt = np.loadtxt('results/checkpoints/known_pts.csv', delimiter=',', skiprows=1, usecols=(1,0,2), comments='#')
+new_track_pt = np.loadtxt('results/checkpoints/trim_walk_20250613.csv', delimiter=',', skiprows=1, usecols=(0,1), comments='#') # read in the track points and swap the two columns (let longitude precede latitude)
+known_pt = np.loadtxt('results/checkpoints/trim_walk_20250613_known.csv', delimiter=',', skiprows=1, usecols=(1,0,2), comments='#')
 # print(track_pt)
 # print(known_pt)
 
@@ -51,16 +46,19 @@ known_pt = np.loadtxt('results/checkpoints/known_pts.csv', delimiter=',', skipro
 track_pt = track_pt[::-1]       # upside down :(
 # print(test_track_pt.shape)
 
-interp_ch = location_interpolation(known_pt, track_pt=track_pt, dx=0.25)
-# print(interp_ch) # longitude, latitude, and channel number
+interp_ch = location_interpolation(known_pt, track_pt=new_track_pt, dx=1.0)
+print(interp_ch) # longitude, latitude, and channel number
 interp_ch_df = pd.DataFrame(interp_ch, columns=['lon', 'lat', 'channel_no'])[['lat', 'lon', 'channel_no']]      # rearranged for lat, lon, ch_no
-# interp_ch_df.to_csv('results/interp_ch_pts.csv', index=False)
+interp_ch_df.to_csv('results/checkpoints/new_interp_ch_pts.csv', index=False)
 
-plt.scatter(interp_ch[:, 0], interp_ch[:, 1], c=interp_ch[:, 2], cmap='bone')
-plt.scatter(track_pt[:, 0], track_pt[:, 1], c='k', s=1)
+interp_ch = pd.read_csv()
+
+plt.scatter(interp_ch[:, 0], interp_ch[:, 1], c='r', s=2)
+# plt.scatter(new_track_pt[:, 0], new_track_pt[:, 1], c='b', s=1)
+# plt.scatter(track_pt[:, 0], track_pt[:, 1], c='k', s=1)
 
 ### HIGHLIGHTS
-highlight_mask = np.isin(interp_ch[:, 2], [4300, 4000, 5000, 6000, 7000, 8000])
+highlight_mask = np.isin(interp_ch[:, 2], [3000, 3150, 3500, 5900, 6200])
 highlight_ch = interp_ch[highlight_mask, :]
 plt.scatter(highlight_ch[:, 0], highlight_ch[:, 1], c='b', s=30)
 print(highlight_ch)

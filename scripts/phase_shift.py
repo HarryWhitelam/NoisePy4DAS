@@ -23,7 +23,7 @@ def load_xcorr(file_path, normalise=False, chas=None):
     stats = Stats()
     stats.delta = 1/100
     stats.npts = 801
-    if chas: 
+    if chas is not None: 
         for cha in chas:
             stream.append(Trace(xdata[:, cha], stats))
     else:
@@ -114,7 +114,7 @@ def print_freq_c_summaries(img, c, fs, step=5):
         print(f'c responses at {fs[f_idx]} Hz: max {max_c} m/s')
 
 
-def get_max_cs(img, c, f, f_freq=1):
+def get_max_cs(img, c, f, fmin, fmax, f_freq=1):
     max_cs = []
     fs = [min(f, key=lambda x:abs(x-target_f)) for target_f in np.arange(fmin, fmax, f_freq)]
     f_idx = [np.where(f==f_val) for f_val in fs]
@@ -166,7 +166,7 @@ if __name__ == '__main__':
     ax.set_xlabel("Frequency (Hz)")
     ax.set_ylabel("Phase velocity (m/s)")
     bar = fig.colorbar(im, ax=ax, pad = 0.1) # if bad add in "format = lambda x, pos: '{:.1f}'.format(x*100)"
-    fs, max_cs = get_max_cs(img, c, f)
+    fs, max_cs = get_max_cs(img, c, f, fmin, fmax)
     ax.scatter(fs, max_cs, facecolors='none', edgecolors='k')
     plt.tight_layout()
     plt.show()
