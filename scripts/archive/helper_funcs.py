@@ -9,6 +9,44 @@ def haversine_distance(lat1, lon1, lat2, lon2):
 def closest(points, v):
     return min(points, key=lambda p: haversine_distance(v[0],v[1],p[1],p[0]))
 
+def spectral_comparison(data_dict, fs, ncols=2, subplots=False, find_nearest=False):
+    if find_nearest:
+        fft_arr = []    
+    nrows = len(data_dict) // ncols + (len(data_dict) % ncols > 0)
+    fig = plt.figure(figsize=(15, 12))
+    
+    for n, (key, val) in enumerate(data_dict.items()):
+        val = val.mean(axis=1)
+        freqs, psd = welch(val.T, fs=fs)
+        if find_nearest:
+            fft_arr.append([key, freqs, psd])
+        if subplots:
+            ax = plt.subplot(nrows, ncols, n + 1)
+            ax.semilogy(freqs, psd, label=f'test {key}')
+            ax.title.set_text(key)
+        else:
+            plt.semilogy(freqs, psd, label=key)
+
+    if find_nearest:
+        dists = [np.linalg.norm(fft[2] - fft_arr[0][2]) for fft in fft_arr[1:]]
+        print(f'Closest spectrogram is {fft_arr[dists.index(min(dists))+1][0]}')
+    
+    plt.legend()
+    fig.tight_layout()
+    plt.show()
+
+    
+def numerical_comparison(data_dict):
+    df = pd.DataFrame(columns=['id', 'mean', 'std'])
+    df['id'] = list(data_dict.keys())
+    df['mean'] = [data.mean() for data in data_dict.values()]
+    df['std'] = [data.std() for data in data_dict.values()]
+    print(df)
+    
+    for col in df.columns[1:]:
+        closest = df.loc[(df[col][1:] - df[col][0]).abs().idxmin()]['id']
+        print(f'Closest {col}: {closest}')
+
 
 track_pt = np.loadtxt('res/track_pts.csv', delimiter=',', skiprows=1, usecols=(1,2), comments='#')[:, ::-1] # read in the track points and swap the two columns (let longitude precede latitude)
 known_pt = np.loadtxt('res/known_pts.csv', delimiter=',', skiprows=1, usecols=(1,0,2), comments='#')

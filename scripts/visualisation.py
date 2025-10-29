@@ -3,22 +3,19 @@ import numpy as np
 import psutil
 import pandas as pd
 import geopandas as gpd
-from scipy.signal import welch, ShortTimeFFT, decimate, convolve2d, savgol_filter
-from scipy.signal.windows import gaussian, hamming
+from scipy.signal import welch, ShortTimeFFT, convolve2d, savgol_filter
+from scipy.signal.windows import hamming
 from scipy.fft import rfft, rfftfreq
-from obspy.signal.filter import bandpass
 from obspy.signal.spectral_estimation import get_nlnm, get_nhnm
 from datetime import datetime, timedelta
+from dateutil.relativedelta import relativedelta
 import matplotlib.pyplot as plt
-import matplotlib.dates as mdates
 from matplotlib.animation import FuncAnimation
-from matplotlib.colors import LogNorm
 from skimage.util import compare_images
 import contextily as cx
-from math import ceil, sin, cos, atan2, degrees, radians, log, pi
+from math import ceil, sin, cos, atan2, degrees, radians
 import multiprocessing
 from tqdm import tqdm
-from time import time
 
 from tdms_io import get_reader_array, get_filepath_array, get_data_from_array, get_dir_properties, load_xcorr
 
@@ -45,87 +42,6 @@ def plot_gps_coords(file_path):
     plt.show()
 
 
-def psd_with_channel_slicing(reader_array, prepro_para, task_t0, timestamps, channels):
-    fig = plt.figure(figsize=(15, 10))
-    
-    prepro_para['cha1'], prepro_para['cha2'] = channels[0], channels[1]
-    tdata = get_data_from_array(reader_array, prepro_para, task_t0, timestamps, timedelta(minutes=1))
-    
-    N = 60000
-    yf = rfft(tdata.T)
-    yf /= 1/prepro_para.get('sps')
-    yf = (2*prepro_para.get('sps')/N) * abs(yf**2)
-    yf = 10 * np.log10(yf)
-    xf = rfftfreq(N, 1/prepro_para.get('sps'))
-
-    #make figure logarithmic
-    ax = fig.add_subplot()
-    ax.set_xscale('log')
-    # ax.set_ylim(None, 100)
-
-    plt.ylabel('Amplitude (db)')
-    plt.xlabel('Frequency [Hz]')
-
-    plt.plot(xf, yf.T)
-    
-    nlnm_freq, nlnm_psd = get_nlnm()
-    nhnm_freq, nhnm_psd = get_nhnm()
-    plt.plot(nlnm_freq, nlnm_psd, label="NLNM", linestyle="dashed")
-    plt.plot(nhnm_freq, nhnm_psd, label="NHNM", linestyle="dashed")
-    plt.show()
-    
-    
-    freqs, psd = welch(tdata.T, fs=prepro_para.get('sps'))
-    plt.semilogy(freqs, psd.T, color='b')
-    
-    plt.xlabel('Frequency [Hz]')
-    plt.ylabel('Power Spectral Density [V**2/Hz]')
-    
-    # ax.set_xlim(freqs[0], freqs[-1])
-    plt.xlim(freqs[0], 50)
-    # ax.set_ylim(1e8, max(psd)*2)
-    plt.show()
-
-
-def animated_spectrogram(reader_array, prepro_para, task_t0, timestamps):
-    def update(channel_idx):
-        channel_data = tdata[:, channel_idx]
-        
-        freqs, psd = welch(channel_data.T, fs=prepro_para.get('sps'))
-        # plt.semilogy(freqs, psd, color='b')
-        line.set_data(freqs, psd)
-        title.set_text(f'Power Spectral Density (Channel {prepro_para.get("cha1") + (channel_idx * prepro_para.get("spatial_ratio"))})')
-        return line, title
-    
-    n_channels = ceil((prepro_para.get('cha2') - prepro_para.get('cha1') + 1) / prepro_para.get('spatial_ratio'))
-    tdata = get_data_from_array(reader_array, prepro_para, task_t0, timestamps)
-    freqs, psd = welch(tdata[:, 0].T, fs=prepro_para.get('sps'))
-    
-    fig, ax = plt.subplots(figsize=(12, 6))
-    line, = ax.semilogy([], [], color='b')
-    
-    ax.set_xlabel('Frequency [Hz]')
-    ax.set_ylabel('Power Spectral Density [V**2/Hz]')
-    ax.grid(True)
-    
-    # ax.set_xlim(freqs[0], freqs[-1])
-    ax.set_xlim(freqs[0], 50)
-    ax.set_ylim(1e8, max(psd)*2)
-    
-    title = ax.text(0.5, 1.05, "Test start", transform=ax.transAxes, ha="center")
-    
-    ani = FuncAnimation(
-        fig, 
-        update,
-        frames=n_channels,
-        interval=75,
-        repeat=True,
-    )
-    # plt.show()
-    # file name format: psd_cha1:cha2_spatial_res.gif or something like that
-    ani.save(f'psd_{prepro_para.get("cha1")}:{prepro_para.get("cha2")}_{prepro_para.get("spatial_ratio")*0.25}m.gif', writer='pillow')
-
-
 def image_comparison(data_dict, comp_ids, method='all', ncols=2, cmap='gray'):
     data_list = list(data_dict.values())
     if method in ('diff', 'all'):
@@ -146,57 +62,14 @@ def image_comparison(data_dict, comp_ids, method='all', ncols=2, cmap='gray'):
     plt.show()
 
 
-def spectral_comparison(data_dict, fs, ncols=2, subplots=False, find_nearest=False):
-    if find_nearest:
-        fft_arr = []    
-    nrows = len(data_dict) // ncols + (len(data_dict) % ncols > 0)
-    fig = plt.figure(figsize=(15, 12))
-    
-    for n, (key, val) in enumerate(data_dict.items()):
-        val = val.mean(axis=1)
-        freqs, psd = welch(val.T, fs=fs)
-        if find_nearest:
-            fft_arr.append([key, freqs, psd])
-        if subplots:
-            ax = plt.subplot(nrows, ncols, n + 1)
-            ax.semilogy(freqs, psd, label=f'test {key}')
-            ax.title.set_text(key)
-        else:
-            plt.semilogy(freqs, psd, label=key)
-
-    if find_nearest:
-        dists = [np.linalg.norm(fft[2] - fft_arr[0][2]) for fft in fft_arr[1:]]
-        print(f'Closest spectrogram is {fft_arr[dists.index(min(dists))+1][0]}')
-    
-    plt.legend()
-    fig.tight_layout()
-    plt.show()
-
-    
-def numerical_comparison(data_dict):
-    df = pd.DataFrame(columns=['id', 'mean', 'std'])
-    df['id'] = list(data_dict.keys())
-    df['mean'] = [data.mean() for data in data_dict.values()]
-    df['std'] = [data.std() for data in data_dict.values()]
-    print(df)
-    
-    for col in df.columns[1:]:
-        closest = df.loc[(df[col][1:] - df[col][0]).abs().idxmin()]['id']
-        print(f'Closest {col}: {closest}')
-
-
 def parallel_spectral_analysis():
     dir_list = ['/data/QNAP1_Data/Data/']
-    
-    t_start = datetime(year=2025, month=4, day=1)
-    t_end = datetime(year=2025, month=5, day=1)
-    
-    for m in [1,2,3,5,6,7]:
+    for m in [1,2,3,4,5,6,7]:
         t_start = datetime(year=2025, month=m, day=1)
-        t_end = datetime(year=2025, month=m+1, day=1)
+        t_end = t_start + relativedelta(months=1)
         n_minutes = (t_end - t_start).total_seconds() // 60
         
-        channels = [750, 788, 875, 1475]  # removed [1550, 1550]
+        channels = [750, 788, 875, 1475]
         
         for dir_path in dir_list:
             args_list = []
@@ -218,65 +91,59 @@ def parallel_spectral_analysis():
                 run_prepro_para.update({'cha1':channel,
                                         'cha2':channel+1})
                 channel_data = data[:,i]
-                #                 dir_path, prepro_para, t_start, save_spec, mem_check, data
-                args_list.append((dir_path, run_prepro_para, t_start, True, False, channel_data))
+                #                 dir_path, prepro_para, t_start, save_spec, data, plot_tides
+                args_list.append((dir_path, run_prepro_para, t_start, True, channel_data, False))
         
             p = multiprocessing.Pool(multiprocessing.cpu_count())
             with tqdm(total=len(args_list), desc=f"{dir_path} spectrograms", position=0) as pbar:
-                for spec in p.starmap(ts_spectrogram, args_list, chunksize=1):
+                for _ in p.starmap(ts_spectrogram, args_list, chunksize=1):
                     pbar.update(1)
             p.close()
             
-            p = multiprocessing.Pool(multiprocessing.cpu_count())
-            with tqdm(total=len(args_list), desc=f"{dir_path} PPSDs", position=0) as pbar:
-                for psd in p.starmap(ppsd, args_list, chunksize=1):
-                    pbar.update(1)
-            p.close()
+            # p = multiprocessing.Pool(multiprocessing.cpu_count())
+            # with tqdm(total=len(args_list), desc=f"{dir_path} PPSDs", position=0) as pbar:
+            #     for _ in p.starmap(ppsd, args_list, chunksize=1):
+            #         pbar.update(1)
+            # p.close()
 
-def ts_spectrogram(dir_path:str, prepro_para:dict, t_start:datetime, save_spec=False, mem_check=False, data=None):
-    if mem_check:
-        process = psutil.Process(os.getpid())
-        mem_dict = {'Start': process.memory_info().rss / (1024 ** 2)}
+def ts_spectrogram(dir_path:str, prepro_para:dict, t_start:datetime, save_spec=False, data=None, plot_tides=None):
     cha1, sps, freqmin, freqmax, n_minute = prepro_para.get('cha1'), prepro_para.get('target_sps'), prepro_para.get('freqmin'), prepro_para.get('freqmax'), prepro_para.get('n_minute')
     
-    out_dir = f"./results/figures/PSD_Experiments/"
+    out_dir = f"./results/figures/PSD_Experiments/dense_f/"
     
     if type(data)==type(None):
         reader_array, timestamps = get_reader_array(dir_path)
         if t_start == None: t_start = timestamps[0].replace(microsecond=0)
         data = get_data_from_array(reader_array, prepro_para, t_start, timestamps, duration=timedelta(minutes=n_minute))[:, 0]
     
-    if mem_check: mem_dict.update({'Data loaded': process.memory_info().rss / (1024 ** 2)})
-    
-    data = np.float32(bandpass(data,
-                            0.9 * freqmin,
-                            freqmax,
-                            df=sps,
-                            corners=4,
-                            zerophase=True))
-    
     N = data.shape[0]
-    win = hamming(int(sps*60), sym=True)
+    win = hamming(int(sps*600), sym=True)               # 28/10/2025 longer window, longer time averaging! Output name changed!
     # g_std = 12
     # gaussian_win = gaussian(sps*60, g_std, sym=True)
-    stft = ShortTimeFFT(win, hop=int(sps*54), fs=sps, scale_to='psd')
+    stft = ShortTimeFFT(win, hop=int(sps*540), fs=sps, scale_to='psd')
     spec = stft.spectrogram(data)
-    if mem_check: mem_dict.update({'Spec gen': process.memory_info().rss / (1024 ** 2)})
 
     fig = plt.figure()
     ax = fig.add_subplot(111)
     t_min, t_max = stft.extent(N)[:2]
     ax.set_title(rf"{t_start} at channel {cha1}")
-    # print(f'spec max: {spec.max()}; spec min: {spec.min()}')
     spec = 10 * np.log10(spec + 1e-12)
     ext = stft.extent(N)
-    # print(ext)
-    # print(f't slices: {stft.p_num(N)}, delta t: {stft.delta_t}')
-    # print(f'f bins: {stft.f_pts}, delta f: {stft.delta_f}')
     im1 = ax.imshow(spec, origin='lower', aspect='auto', 
-                     extent=ext, cmap='jet', vmin=np.percentile(spec,1), vmax=np.percentile(spec,99))
+                     extent=ext, cmap='jet', vmin=np.nanpercentile(spec,1), vmax=np.nanpercentile(spec,99))
     ax.set_yscale('log')
     plt.grid(which='both')
+    
+    if plot_tides:
+        ax1 = ax.twinx()
+        # print(ax.get_xticks())
+        # print(ax1.get_xticks())
+        tidal_df = pd.read_csv('./results/checkpoints/CRO_final.csv', parse_dates=True, index_col=0)
+        tidal_df = tidal_df[t_start:t_start+timedelta(minutes=n_minute)]
+        # [(ts - t_start).total_seconds() / 60 for ts in tidal_df.index]
+        ax1.plot([(ts - t_start).total_seconds() for ts in tidal_df.index], tidal_df['ASLVBG02'])
+        ax1.set_ylabel('Tidal Height (m)')
+        plt.sca(ax=ax)
     
     if n_minute > 1440:
         n_days = int(n_minute / 1440) + 1
@@ -300,27 +167,21 @@ def ts_spectrogram(dir_path:str, prepro_para:dict, t_start:datetime, save_spec=F
     else: 
         _ = plt.xticks(np.linspace(0, ext[1], 4), pd.date_range(t_start, t_start+timedelta(minutes=n_minute), periods=4), rotation=30)
         _ = plt.xticks(np.linspace(0, ext[1], 16), minor=True)
-    
     ax.set_ylabel('Frequency (Hz)')
     ax.set_xlim(t_min, t_max)
     ax.set_ylim(freqmin, freqmax)
-    # fig.colorbar(im1, label='PSD ' + r"$20\,\log_{10}|S_x(t, f)|$ in dB")
+    
     fig.colorbar(im1, label='Nano strainrate PSD (dB)')
-    plt.tight_layout()
+    # plt.tight_layout()
     if not os.path.exists(out_dir):
         os.makedirs(out_dir)
-    plt.savefig(f'{out_dir}/{t_start}__{t_start+timedelta(minutes=n_minute)}_f{freqmin}:{freqmax}_{cha1}_spectrogram.png')
+    plt.savefig(f'{out_dir}/{t_start}__{t_start+timedelta(minutes=n_minute)}_f{freqmin}:{freqmax}_{cha1}_long_spectrogram{"_tides" if plot_tides else ""}.png')
     if save_spec:
-        np.savetxt(f'./results/saved_specs/{t_start}__{t_start+timedelta(minutes=n_minute)}_f{freqmin}:{freqmax}_{cha1}_spec.txt', spec, delimiter=",")
-    if mem_check: 
-        mem_dict.update({'End': process.memory_info().rss / (1024 ** 2)})
-        print(f'[PID {os.getpid()}] ts_spectrogram memory usage (MB): {mem_dict}')
+        np.savetxt(f'./results/saved_specs/dense_f/{t_start}__{t_start+timedelta(minutes=n_minute)}_f{freqmin}:{freqmax}_{cha1}_spec.txt', spec, delimiter=",")
+    # plt.show()
 
 
-def ppsd(dir_path:str, prepro_para:dict, t_start:datetime, save_ppsd=False, mem_check=False, data=None):
-    if mem_check:
-        process = psutil.Process(os.getpid())
-        mem_dict = {'Start': process.memory_info().rss / (1024 ** 2)}
+def ppsd(dir_path:str, prepro_para:dict, t_start:datetime, save_ppsd=False, data=None):
     cha1, sps, freqmin, freqmax, n_minute = prepro_para.get('cha1'), prepro_para.get('target_sps'), prepro_para.get('freqmin'), prepro_para.get('freqmax'), prepro_para.get('n_minute')
     out_dir = f"./results/figures/PSD_Experiments/"
     
@@ -328,15 +189,6 @@ def ppsd(dir_path:str, prepro_para:dict, t_start:datetime, save_ppsd=False, mem_
         reader_array, timestamps = get_reader_array(dir_path)
         if t_start == None: t_start = timestamps[0].replace(microsecond=0)
         data = get_data_from_array(reader_array, prepro_para, t_start, timestamps, duration=timedelta(minutes=n_minute))[:, 0]
-    if mem_check: mem_dict.update({'Data loaded': process.memory_info().rss / (1024 ** 2)})
-    
-    data = np.float32(bandpass(data,
-                            0.9 * freqmin,
-                            1.1 * freqmax if 1.1 * freqmax < sps / 2 else freqmax,  # nyquists check
-                            df=sps,
-                            corners=4,
-                            zerophase=True))
-    
 
     nfft = 2 ** 17
     nr = 501
@@ -357,15 +209,14 @@ def ppsd(dir_path:str, prepro_para:dict, t_start:datetime, save_ppsd=False, mem_
             sample_fd_values.extend(fd[:hn].flatten())
     
     # Calculate adaptive range using percentiles
-    fd_min = np.percentile(sample_fd_values, 0.01)
-    fd_max = np.percentile(sample_fd_values, 99.99)
+    fd_min = np.nanpercentile(sample_fd_values, 0.01)
+    fd_max = np.nanpercentile(sample_fd_values, 99.99)
     # print(f"Adaptive dB range: {fd_min:.1f} to {fd_max:.1f}")
     
     # Create adaptive binning
     db_range = fd_max - fd_min
     scale = (nr - 1) / db_range
     offset = -fd_min
-    if mem_check: mem_dict.update({'Data loaded': process.memory_info().rss / (1024 ** 2)})
     
     # Second pass: bin with adaptive scaling
     psd = np.zeros((nr, hn))
@@ -373,7 +224,8 @@ def ppsd(dir_path:str, prepro_para:dict, t_start:datetime, save_ppsd=False, mem_
     
     for i in range(n_segs):
         d = data[i*seg_length:(i+1)*seg_length]
-        if len(d) == seg_length:
+        ### current fix for NaNs is to skip any section containing NaNs, not exactly robust >:|
+        if len(d) == seg_length and ~np.isnan(d).any():
             fft_d = np.fft.fft(d, nfft)
             psd_lin = (np.abs(fft_d) ** 2) / (nfft * sps)
             fd = 10 * np.log10(psd_lin + 1e-12)
@@ -386,7 +238,6 @@ def ppsd(dir_path:str, prepro_para:dict, t_start:datetime, save_ppsd=False, mem_
                 elif index >= nr:
                     index = nr - 1
                 psd[index, j] += 1
-    if mem_check: mem_dict.update({'Second pass': process.memory_info().rss / (1024 ** 2)})
     
     # Create proper dB axis
     db = np.linspace(fd_min, fd_max, nr)
@@ -406,7 +257,6 @@ def ppsd(dir_path:str, prepro_para:dict, t_start:datetime, save_ppsd=False, mem_
     P = convolve2d(P, np.ones((sl, sl))/sl**2, 'same')
     for i in range(len(P[0])):
         P[:, i] /= np.sum(P[:, i])
-    if mem_check: mem_dict.update({'P gen': process.memory_info().rss / (1024 ** 2)})
 
     plt.figure()
     plt.pcolormesh(f, db, P*100, cmap='viridis')
@@ -422,39 +272,151 @@ def ppsd(dir_path:str, prepro_para:dict, t_start:datetime, save_ppsd=False, mem_
     plt.title(rf"{t_start} at channel {cha1}")
     plt.tight_layout()
     plt.savefig(f'{out_dir}/{t_start}__{t_start+timedelta(minutes=n_minute)}_f{freqmin}:{freqmax}_{cha1}_PPSD.png')
-    if mem_check: 
-        mem_dict.update({'End': process.memory_info().rss / (1024 ** 2)})
-        print(f'[PID {os.getpid()}] ts_spectrogram memory usage (MB): {mem_dict}')
 
 
-def spectral_power_ts(f_ranges:list, avg_time:timedelta):
+def spectral_power_ts(f_ranges:list, window_length:timedelta, target_cha=None, t0=None, t1=None):
     ### plan
     # load saved_specs
-    spec = np.loadtxt('./results/saved_specs/2024-02-05 12:01:00__2024-02-08 12:01:00_f0.01:49.9_3000_spec.txt', delimiter=',')
-    # print(spec.shape)       # 3001 frequency bins, 4801 time bins
+    files = []
+    for dir_path, dir_names, file_names in os.walk('./results/saved_specs/months/'):
+        for file in file_names:
+            try:
+                f_split = file.split('_')
+                t_start = datetime.strptime(f_split[0], '%Y-%m-%d %H:%M:%S')
+                t_end = datetime.strptime(f_split[2], '%Y-%m-%d %H:%M:%S')
+                if int(f_split[-2]) != target_cha: continue
+                if t0 and t_start <= t0: continue
+                if t1 and t_end >= t1: continue
+            except Exception: 
+                continue        # basically there was no datetime within the file
+            files.append((os.path.join(dir_path, file), t_start))
     
-    # (0.0, 259254.0, 0.0, 50.016666666666666)
-    # t slices: 4801, delta t: 54.0
-    delta_t = timedelta(seconds=54)
-    slices_per_chunk = int(avg_time.total_seconds() / delta_t.total_seconds())
-    n_chunks = spec.shape[1] // slices_per_chunk
-    # f bins: 3001, delta f: 0.016666666666666666
-    f_bins = np.array(0.0 + np.arange(0, 3001) * 0.016666666666666666)
-    mean_fs = {}
-    for f_min, f_max in f_ranges:
-        idxs = [i for i,f in enumerate(f_bins) if f_min <= f <= f_max]
-        f_spec = spec[idxs,:]
-        chunk_means = []
-        for i in range(n_chunks):
-            chunk = f_spec[:, i*slices_per_chunk:(i+1)*slices_per_chunk]
-            chunk_means.append(chunk.mean())
-        mean_fs[(f_min, f_max)] = chunk_means
+    mean_df = pd.DataFrame(columns=['timestamp', *[f'{f_range[0]}_{f_range[1]}' for f_range in f_ranges]]).set_index('timestamp')
+    cosine_window = np.cos(np.linspace(-np.pi/2, np.pi/2, int(window_length.total_seconds() / 54)))
+    cosine_window = cosine_window / cosine_window.sum()
+    for file_path, t_start in files:
+        spec = np.loadtxt(file_path, delimiter=',')
+        f_size, t_size = spec.shape
+        
+        # (0.0, 259254.0, 0.0, 50.016666666666666)
+        # delta_t = timedelta(seconds=54)
+        # slices_per_chunk = int(avg_time.total_seconds() / delta_t.total_seconds())
+        # n_chunks = spec.shape[1] // slices_per_chunk
+        f_bins = np.linspace(0.0, 50.016666666666666, f_size)
+        
+        for f_min, f_max in f_ranges:
+            f_idxs = [i for i, f in enumerate(f_bins) if f_min <= f <= f_max]
+            freq_mean = spec[f_idxs, :].mean(axis=0)
+            filtered = np.convolve(freq_mean, cosine_window, mode='same')
+            for j in range(t_size):
+                t = t_start + timedelta(seconds=54 * j)
+                mean_df.loc[t, f'{f_min}_{f_max}'] = filtered[j]
     
-    df = pd.DataFrame(mean_fs)
-    print(df)
-    df.plot()
-    plt.show()
+    # mean_df = pd.DataFrame(mean_fs)
+    mean_df.sort_index(inplace=True)
+    mean_df.plot(figsize=(10,3))
+    plt.tight_layout()
+    plt.savefig(f'./results/figures/ts_spec_lines/high_f_{t0}_{t1}_{window_length.total_seconds()/60}min_avg.png')
+    # plt.show()
+
+
+def plot_year_spectrogram(target_cha=None, t0=None, t1=None):
+    files = []
+    for dir_path, dir_names, file_names in os.walk('./results/saved_specs/months/'):
+        for file in file_names:
+            try:
+                f_split = file.split('_')
+                t_start = datetime.strptime(f_split[0], '%Y-%m-%d %H:%M:%S')
+                t_end = datetime.strptime(f_split[2], '%Y-%m-%d %H:%M:%S')
+                if target_cha and int(f_split[-2]) != target_cha: continue
+                if t0 and t_start <= t0: continue
+                if t1 and t_end >= t1: continue
+            except Exception: 
+                continue        # basically there was no datetime within the file
+            files.append((os.path.join(dir_path, file), t_start))
+    files.sort(key=lambda x: x[1])
     
+    nrows = 4
+    nfiles = len(files)
+    ncols = int(np.ceil(nfiles / nrows))
+    fig, axs = plt.subplots(nrows, 1, figsize=(ncols*8, nrows*4), sharey=True)
+    
+    time_bin_counts = [np.loadtxt(f[0], delimiter=',').shape[1] for f in files]
+    cumulative_offsets = np.cumsum([0] + time_bin_counts[:-1])
+    for i, (file_path, t_start) in enumerate(files):
+        row = i // ncols
+        spec = np.loadtxt(file_path, delimiter=',')
+        f_size, t_size = spec.shape
+        f_bins = np.linspace(0.01, 50.016666666666666, f_size)
+        time_axis = [t_start + timedelta(seconds=54 * j) for j in range(t_size)]
+        col_offset = cumulative_offsets[i]
+        y_edges = np.linspace(f_bins[0], f_bins[-1], f_size+1)
+        x_edges = np.arange(col_offset, col_offset + t_size + 1)
+        axs[row].pcolormesh(x_edges, y_edges, spec, cmap='jet',
+                            vmin=np.nanpercentile(spec, 1), vmax=np.nanpercentile(spec, 99), shading='auto')
+        axs[row].set_yscale('log')
+        if not hasattr(axs[row], 'all_time_axes'):
+            axs[row].all_time_axes = []
+        axs[row].all_time_axes.append((col_offset, time_axis))
+
+    for ax in axs:
+        all_times = []
+        for col_offset, time_axis in getattr(ax, 'all_time_axes', []):
+            all_times.extend([(col_offset + idx, t) for idx, t in enumerate(time_axis)])
+        if not all_times:
+            continue
+        positions, times = zip(*all_times)
+        times = pd.Series(times, index=positions)
+
+        # Minor ticks: every day (unlabeled)
+        day_starts = times[times.dt.hour == 0]
+        minor_tick_positions = day_starts.index
+
+        # Major ticks: ~4 evenly spaced dates per month (at midnight)
+        months = pd.Series(times.dt.to_period('M').unique())
+        major_tick_positions = []
+        major_tick_labels = []
+        for month in months:
+            month_days = day_starts[day_starts.dt.to_period('M') == month]
+            if len(month_days) > 0:
+                # Pick 4 evenly spaced days in this month
+                idxs = np.linspace(0, len(month_days)-1, 5, dtype=int)[:-1]
+                for i in idxs:
+                    major_tick_positions.append(month_days.index[i])
+                    major_tick_labels.append(month_days.iloc[i].strftime('%Y-%m-%d'))
+
+        ax.set_xticks(major_tick_positions)
+        ax.set_xticklabels(major_tick_labels, rotation=30)
+        ax.set_xticks(minor_tick_positions, minor=True)
+        ax.tick_params(axis='x', which='minor', length=4, labelsize=0)
+        ax.set_ylabel('Frequency (Hz)')
+    plt.tight_layout()
+    plt.savefig(f'./results/figures/yearspec_{t0}_{t1}.png')
+
+
+def get_spectral_mean(target_cha=None, t0=None, t1=None):
+    files = []
+    for dir_path, dir_names, file_names in os.walk('./results/saved_specs/months/'):
+        for file in file_names:
+            try:
+                f_split = file.split('_')
+                t_start = datetime.strptime(f_split[0], '%Y-%m-%d %H:%M:%S')
+                t_end = datetime.strptime(f_split[2], '%Y-%m-%d %H:%M:%S')
+                if target_cha and int(f_split[-2]) != target_cha: continue
+                if t0 and t_start <= t0: continue
+                if t1 and t_end >= t1: continue
+            except Exception: 
+                continue        # basically there was no datetime within the file
+            files.append((os.path.join(dir_path, file), t_start))
+    files.sort(key=lambda x: x[1])
+    
+    mean_df = pd.DataFrame()
+    for i, (file_path, t_start) in enumerate(files):
+        spec = np.loadtxt(file_path, delimiter=',')
+        means = np.nanmean(spec, axis=1)
+        mean_df = pd.concat([mean_df, pd.Series([t_start, *means])], axis=1)
+    mean_df.to_csv('./results/checkpoints/monthly_means.csv')
+
 
 def calc_angle_between_points(lat1, lon1, lat2, lon2):
     '''Input lat-lons as degrees!!!'''
@@ -504,14 +466,14 @@ def sensitivity_analysis(gps_track:pd.DataFrame, target_ch, plot=True):
 
 
 if __name__ == '__main__':
-    parallel_spectral_analysis()
+    # parallel_spectral_analysis()
     
-    # f_ranges = [[0.1, 0.6], [8, 11]]
-    # avg_time = timedelta(minutes=60)
-    # spectral_power_ts(f_ranges, avg_time)
-    
-    
-    
+    # f_ranges = [[1.2, 5], [8, 11], [12, 25]]       # [0.01, 0.05], [0.1, 0.6], [0.7, 1.1], [1.2, 5], [8, 11], [12, 25]
+    # avg_time = timedelta(days=2)
+    t0 = datetime(year=2024, month=7, day=1); t1 = datetime(year=2025, month=7, day=2)
+    # spectral_power_ts(f_ranges, avg_time, target_cha=788, t0=t0, t1=t1)
+    plot_year_spectrogram(target_cha=788, t0=t0, t1=t1)
+    # get_spectral_mean(788, t0, t1)
     
     
     

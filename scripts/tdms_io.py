@@ -11,6 +11,7 @@ import pickle
 from tqdm import tqdm
 from obspy import Stream, Trace
 from obspy.core.trace import Stats
+from obspy.signal.filter import bandpass
 from obspy.core.utcdatetime import UTCDateTime
 from datetime import datetime, timedelta, time as dt_time
 from math import floor, ceil
@@ -64,7 +65,9 @@ def get_reader_array(root_dir:str, t_start:datetime=None, t_end:datetime=None):
 
 def get_filepath_array(root_dir:str, t_start:datetime=None, t_end:datetime=None):
     files = []
-    for dir_path, dir_names, file_names in os.walk(root_dir):
+    exclude = ['20250326_Jack_Experiments']
+    for dir_path, dir_names, file_names in os.walk(root_dir, topdown=True):
+        dir_names[:] = [d for d in dir_names if d not in exclude]
         for file in file_names:
             if file.endswith(('.tdms', '.segy')): 
                 try: 
@@ -149,6 +152,7 @@ def get_time_subset(reader_array:np.ndarray, start_time:datetime, timestamps:np.
         warnings.warn(f"Error: first file ({timestamps[start_idx]}) is over {tolerance} seconds away from the given start time ({start_time}).")
     
     end_time = timestamps[start_idx] + delta
+    print(f'end_time: {end_time}')
     end_idx = get_closest_index(timestamps, end_time)
     if (end_time - timestamps[end_idx]).total_seconds() > tolerance:
         warnings.warn(f"WARNING: end file ({timestamps[end_idx]}) is over {tolerance} seconds away from the calculated end time.")    
@@ -204,27 +208,37 @@ def get_time_subset(reader_array:np.ndarray, start_time:datetime, timestamps:np.
 
 # adapting this so that all channel requests work off of 1m channels - as though distance along cable
 def get_data_from_array(data_array:list, prepro_para:dict, start_time:datetime, timestamps:np.ndarray, duration:timedelta, channels=False):
-    cha1, cha2, target_sps, target_spatial_res = prepro_para.get('cha1'), prepro_para.get('cha2'), prepro_para.get('target_sps'), prepro_para.get('target_spatial_res')
+    cha1, cha2, target_sps, target_spatial_res, freqmin, freqmax = prepro_para.get('cha1'), prepro_para.get('cha2'), prepro_para.get('target_sps'), prepro_para.get('target_spatial_res'), prepro_para.get('freqmin'), prepro_para.get('freqmax')
     # make it so that if start_time is not a timestamp, the first minute in the array is returned
     current_time = 0
     if channels: 
         tdata = np.empty((int(duration.total_seconds() * target_sps), len(channels)))
     else: 
         tdata = np.empty((int(duration.total_seconds() * target_sps), ceil((cha2-cha1+1)/target_spatial_res)))
-    data_array = get_time_subset(data_array, start_time, timestamps, delta=duration, tolerance=30)
+    tdata.fill(np.NaN)
+    # data_array = get_time_subset(data_array, start_time, timestamps, delta=duration, tolerance=30)        # removed on 27/10/25 not needed anymore? 
     
     with tqdm(total=(duration.total_seconds()), desc=f'[Process {os.getpid()}] Loading data (in seconds)', position=1, leave=False) as pbar:
         while current_time != duration.total_seconds() and len(data_array) != 0:
             data_file = data_array.pop(0)
             if type(data_file) == str:
-                data_file = TdmsReader(data_file)
+                try:
+                    data_file = TdmsReader(data_file)
+                except: 
+                    print(f'Failed at {data_file}')
             props = data_file.get_properties()
-            spatial_res = props.get('SpatialResolution[m]')
-            spatial_ratio = int(target_spatial_res/spatial_res)
+            
+            if props.get('GPSTimeStamp').replace(microsecond=0) != (start_time + timedelta(seconds=current_time)):
+                # print(f'Padding from {(start_time + timedelta(seconds=current_time))} to {props.get("GPSTimeStamp").replace(microsecond=0)}')
+                diff = (props.get('GPSTimeStamp').replace(microsecond=0) - (start_time + timedelta(seconds=current_time))).total_seconds()
+                # current_row = current_time * target_sps
+                # tdata[int(current_row):int(current_row+(diff*target_sps)), :] = np.NaN
+                current_time += diff
+                pbar.update(diff)
+            spatial_ratio = int(target_spatial_res/props.get('SpatialResolution[m]'))
             if channels:
                 file_channels = [int(channel*spatial_ratio) for channel in channels]
-                data = data_file.get_data(file_channels[0], file_channels[-1])
-                data = data[:,np.array(file_channels)-file_channels[0]]
+                data = data_file.get_data(file_channels[0], file_channels[-1])[:,np.array(file_channels)-file_channels[0]]
             else:
                 cha1, cha2 = int(cha1*spatial_ratio), int(cha2*spatial_ratio)
                 data = data_file.get_data(cha1, cha2)
@@ -238,9 +252,18 @@ def get_data_from_array(data_array:list, prepro_para:dict, start_time:datetime, 
                                 axis=0)
             elif props.get('SamplingFrequency[Hz]') < target_sps:
                 warnings.warn(f"Sampling frequency below target frequency! Timestamp: {props.get('GPSTimeStamp')}; fs: {props.get('SamplingFrequency[Hz]')}")
-            current_row = current_time * target_sps
+            data = np.float32(bandpass(data,
+                            0.9 * freqmin,
+                            freqmax,
+                            df=target_sps,
+                            corners=4,
+                            zerophase=True))
+            current_row = int(current_time * target_sps)
             t_size = data.shape[0]
-            tdata[int(current_row):int(current_row+(t_size)), :] = data
+            if t_size > tdata.shape[0] - current_row:        # clips final file
+                data = data[:tdata.shape[0]-current_row,:]
+                t_size = data.shape[0]
+            tdata[current_row:current_row+t_size, :] = data
             current_time += t_size/target_sps
             
             # attempting to avoid issue of open file limit
