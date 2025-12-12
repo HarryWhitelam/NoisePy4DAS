@@ -1,25 +1,11 @@
-import os
 import numpy as np
 import pandas as pd
-import geopandas as gpd
-from scipy.signal import welch, ShortTimeFFT, decimate
-from scipy.signal.windows import gaussian, hamming
-from scipy.fft import rfft, rfftfreq
-from obspy.signal.filter import bandpass
-from obspy.signal.spectral_estimation import get_nlnm, get_nhnm
 from datetime import datetime, timedelta
 import matplotlib.pyplot as plt
 import matplotlib.dates as mdates
-from matplotlib.animation import FuncAnimation
-from matplotlib.colors import LogNorm
-from skimage.util import compare_images
-import contextily as cx
-from math import ceil, sin, cos, atan2, degrees, radians, log, pi
-import xdas as xd
 import xarray as xr
-import cartopy.crs as ccrs
+from math import pi
 
-from tdms_io import get_reader_array, get_data_from_array, get_dir_properties, load_xcorr
 
 
 def dms_to_dd(degrees, minutes=0, seconds=0):
@@ -260,7 +246,8 @@ def plot_tidal_data(file_path, t_start:datetime, t_end):
     ax.set_ylabel('Tidal Height (m)')
     
     plt.tight_layout()
-    plt.savefig(f'./results/figures/Tidal_Plots/{t_start.date()}_{t_end.date()}_tidal.png')
+    # plt.savefig(f'./results/figures/Tidal_Plots/{t_start.date()}_{t_end.date()}_tidal.png')
+    plt.show()
 
 
 def plot_waverider_csv(file_path:str, plot_daily=False, get_df=False):
@@ -344,31 +331,33 @@ def plot_met_csv(file_path:str, plot_daily=False, get_df=False):
     plt.savefig(f"./results/figures/{'daily' if plot_daily else 'hourly'}_windspeed.png")
 
 
-def plot_combined_weather(plot_daily=False, plot_storms=False): 
+def plot_combined_weather(plot_daily=False, plot_storms=False, t_start=None, t_end=None): 
     df_wave = plot_waverider_csv('./results/checkpoints/hpg_wave.csv', plot_daily=plot_daily, get_df=True)
     df_met = plot_met_csv('./results/checkpoints/hpg_met.csv', plot_daily=plot_daily, get_df=True)
     df_era5 = plot_era5_csv('./results/checkpoints/combined_weather.csv', plot_daily=plot_daily, get_df=True)
     df = pd.concat([df_wave, df_met, df_era5], axis=1)
     
-    vars = ['V(m/s)','Hs(Hm0)(m)','Tp(s)','Tz(Tm)(s)','rainfall(mm)']
+    if t_end is timedelta:
+        t_end = t_start + t_end
+    df = df[t_start:t_end]
+    df = df[[('00:00' or '30:00') in str(s) for s in df.index]]
+    
+    vars = ['Wind(m/s)','Hs(Hm0)(m)','Tp(s)','Tz(Tm)(s)','rainfall(mm)']
     labels = ['Wind speed (m/s)','Wave height (m)','Peak wave period (s)','Zero-crossing period (s)','Rainfall (mm)']
     
-    fig, axs = plt.subplots(len(vars), 1, sharex=True, figsize=(8,10))
-    # windspeed
-    # waveheight
-    # tp
-    # tz
-    # rainfall
+    fig, axs = plt.subplots(len(vars), 1, figsize=(12, 6), sharex=True)
     for ax, col, label in zip(axs, vars, labels):
         if col=='rainfall(mm)':
-            ax.bar(mdates.date2num(df.index), df[col], width=1.6)
+            ax.bar(mdates.date2num(df.index), df[col])
         else:
             ax.plot(mdates.date2num(df.index), df[col])
         ax.set_ylabel(label)
+        ax.grid(axis='x', which='both')
     fig.autofmt_xdate()
-    ax.xaxis.set_major_formatter(mdates.DateFormatter('%m/%Y'))
-    ax.xaxis.set_major_locator(mdates.MonthLocator(bymonth=(1, 4, 7, 10)))
-    ax.xaxis.set_minor_locator(mdates.MonthLocator(bymonth=(2, 3, 5, 6, 8, 9, 11, 12)))
+    ax.xaxis.set_major_formatter(mdates.DateFormatter('%d/%m/%Y'))
+    # ax.xaxis.set_major_locator(mdates.MonthLocator(bymonth=(1, 4, 7, 10)))
+    # ax.xaxis.set_minor_locator(mdates.MonthLocator(bymonth=(2, 3, 5, 6, 8, 9, 11, 12)))
+    ax.xaxis.set_major_locator(mdates.DayLocator())
     
     if plot_storms:
         storms_data = pd.read_csv('./results/checkpoints/storms.csv', sep=',', index_col=0, comment='#')
@@ -376,18 +365,23 @@ def plot_combined_weather(plot_daily=False, plot_storms=False):
             dates = storms_data.loc[storm, ['start_date', 'end_date']]
             axs[-1].axvspan(np.datetime64(dates['start_date']), np.datetime64(dates['end_date'])+1, label=storm, facecolor='r', alpha=0.3)
     
-    plt.tight_layout()
-    plt.savefig(f"./results/figures/{'daily' if plot_daily else 'hourly'}_combined.png")
+    plt.subplots_adjust(hspace=0)
+    # plt.savefig(f"./results/figures/{'daily' if plot_daily else 'hourly'}_combined.png")
+    plt.show()
 
 
 if __name__ == "__main__":
     daily = False
+    m = 5
+    d0 = datetime(year=2025, month=m, day=1)
+    d1 = datetime(year=2025, month=(m+1)%12, day=1)
+    d0 = datetime(year=2024, month=12, day=8); d1 = datetime(year=2024, month=12, day=14)
     # plot_weather()
     # plot_rain_storms()
     # era5_data_to_csv('era5_final.grib')
     # plot_era5_csv('./results/checkpoints/combined_weather.csv', plot_daily=daily, plot_storms=True)
-    plot_tidal_data('./results/checkpoints/CRO_final.csv', datetime(year=2025, month=4, day=1), datetime(year=2025, month=4, day=10))
+    # plot_tidal_data('./results/checkpoints/CRO_final.csv', d0, d1)
     
     # plot_waverider_csv('./results/checkpoints/hpg_wave.csv', plot_daily=daily)
     # plot_met_csv('./results/checkpoints/hpg_met.csv', plot_daily=daily)
-    # plot_combined_weather(plot_daily=daily, plot_storms=True)
+    plot_combined_weather(plot_daily=daily, plot_storms=False, t_start=d0, t_end=d1)

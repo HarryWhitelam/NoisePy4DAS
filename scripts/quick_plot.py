@@ -47,8 +47,8 @@ def max_min_strain_rate(data, channel_bounds=None):
 dir_path =  "/data/QNAP1_Data/Data/20250718"
 # file_path =  "/data/QNAP1_Data/Data/20241015_1m_spatial/100hz_UTC_20241017_113924.138.tdms"
 
-n_minutes = 30
-t_start = datetime(year=2025, month=7, day=29, hour=23, minute=24, second=0)
+n_minutes = 60
+t_start = datetime(year=2025, month=7, day=29, hour=23, minute=35, second=0)
 t_end = t_start + timedelta(minutes=n_minutes)
 
 prepro_para = {
@@ -78,7 +78,8 @@ plt.xlabel('Channel No.')
 plt.title(t_start)
 plt.set_cmap('bwr')
 fig1.colorbar(img1, label= "Nano Strain per Second [nm/m/s]")
-# plt.savefig('./results/figures/jet_waterfall.png')
+plt.tight_layout()
+plt.savefig('./results/figures/kamchatka_waterfall.png')
 plt.show()
 
 

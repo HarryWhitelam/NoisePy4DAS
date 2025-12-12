@@ -81,7 +81,9 @@ inventory = client.get_stations(network="GB")
 # t = UTCDateTime("2025-01-12T19:45:00.0")      # Norway
 # t = UTCDateTime("2025-03-28T06:30:00.0")      # Myanmar
 # t = UTCDateTime("2025-03-30T12:15:00.0")      # Tonga
-t = UTCDateTime("2024-06-08T00:00:00.0")       # idk
-st = client.get_waveforms("GB", "BEDF", "00", "HH?", t, t + (86400*4),
+# t = UTCDateTime("2024-06-08T00:00:00.0")       # idk
+t = UTCDateTime("2025-07-29T23:30:00.0")       # kamchatka
+
+st = client.get_waveforms("GB", "BEDF", "00", "HH?", t, t + (3600*2),
                           attach_response=True)
 st.plot()
