@@ -19,28 +19,6 @@ from skimage.transform import resize
 from scipy.signal import decimate
 
 
-# def get_reader_array(dir_path:str, allowed_times:dict=None):
-#     dir_list = [filename for filename in os.listdir(dir_path) if filename.endswith(('.tdms', '.segy'))]
-#     file_ext = '.' + dir_list[0].rsplit('.', 1)[1]
-#     reader_array = [None] * int(len(dir_list))
-#     timestamps = np.empty(len(reader_array), dtype=datetime)
-#     for count, file in enumerate(dir_list):
-#         match file_ext:
-#             case '.tdms': reader = TdmsReader(dir_path + file)
-#             case '.segy': reader = SegyReader(dir_path + file)
-#         timestamp = reader.get_properties().get('GPSTimeStamp')
-#         if allowed_times and not is_valid_time(timestamp, allowed_times):
-#             continue
-#         reader_array[count] = reader
-#         timestamps[count] = timestamp
-#     timestamps = np.delete(timestamps, np.where(timestamps == None))
-#     reader_array = [reader for reader in reader_array if reader is not None]
-#     reader_array = [x for y, x in sorted(zip(timestamps, reader_array))]
-#     timestamps.sort()
-#     print(f'{len(timestamps)} files available from {timestamps[0]} to {timestamps[-1]}')
-#     return reader_array, timestamps
-
-
 def get_reader_array(root_dir:str, t_start:datetime=None, t_end:datetime=None):
     files = []
     for dir_path, dir_names, file_names in os.walk(root_dir):
@@ -57,15 +35,13 @@ def get_reader_array(root_dir:str, t_start:datetime=None, t_end:datetime=None):
                 files.append((TdmsReader(os.path.join(dir_path, file)), timestamp))
     files.sort(key=lambda x: x[1])
     reader_array, timestamps = zip(*files)
-    # print(f'Range: {timestamps[0]}: {timestamps[-1]}')
-    # timestamps = np.asarray(timestamps, dtype=datetime)
-    # timestamps.sort()
     return list(reader_array), np.asarray(timestamps, dtype=datetime)
 
 
 def get_filepath_array(root_dir:str, t_start:datetime=None, t_end:datetime=None):
     files = []
-    exclude = ['20250326_Jack_Experiments']
+    # exclude = ['20250326_Jack_Experiments', 'Archive']
+    exclude = ['Archive']
     for dir_path, dir_names, file_names in os.walk(root_dir, topdown=True):
         dir_names[:] = [d for d in dir_names if d not in exclude]
         for file in file_names:
@@ -79,24 +55,27 @@ def get_filepath_array(root_dir:str, t_start:datetime=None, t_end:datetime=None)
                 if t_end and timestamp > t_end:
                     continue
                 files.append((os.path.join(dir_path, file), timestamp))
+    if len(files) == 0:
+        print(f'No files found between {t_start} and {t_end}!')
     files.sort(key=lambda x: x[1])
     reader_array, timestamps = zip(*files)
     return list(reader_array), np.asarray(timestamps, dtype=datetime)
 
 
-def get_subset_paths(t0, dir_path, dir_list, timestamps, delta=timedelta(minutes=1)):
+# def get_subset_paths(t0, dir_path, dir_list, timestamps, delta=timedelta(minutes=1)):
+def get_subset_paths(t0, paths, timestamps, delta=timedelta(minutes=1)):
     tpf = (timestamps[1] - timestamps[0]).total_seconds()
-    start_idx = get_closest_index(timestamps, t0)
+    start_idx = get_closest_index_before(timestamps, t0)
     
-    end_time = timestamps[start_idx] + delta - timedelta(seconds=tpf)
-    end_idx = get_closest_index(timestamps, end_time)
+    end_time = t0 + delta
+    end_idx = get_closest_index_before(timestamps, end_time)
     
     ### this is broken, doesn't account for the time in the last file
     # if (end_idx - start_idx + 1) != (delta.total_seconds()/tpf):
     #     warnings.warn(f"WARNING: time subset not continuous; only {(end_idx - start_idx + 1)*tpf} seconds represented.")
     
-    dir_list = [dir_path + file for file in dir_list[start_idx:end_idx+1]]
-    return dir_list, timestamps[start_idx:end_idx+1]
+    # dir_list = [dir_path + file for file in dir_list[start_idx:end_idx+1]]
+    return paths[start_idx:end_idx+1], timestamps[start_idx:end_idx+1]
 
 
 def is_valid_time(timestamp, allowed_times):
@@ -129,17 +108,36 @@ def get_closest_index(timestamps:np.ndarray, time:datetime):
     return idx
 
 
+def get_closest_index_before(timestamps:np.ndarray, time:datetime, inclusive:bool=True):
+    """
+    Return the closest timestamp in `timestamps` that is before (or equal to, if inclusive=True) `time`.
+    Returns None if no such timestamp exists.
+
+    Args:
+        timestamps: 1D sorted numpy array of datetimes
+        time: target datetime
+        inclusive: if True, allow a timestamp equal to `time`; if False, require strictly earlier
+
+    Returns:
+        datetime or None
+    """
+    side = 'right' if inclusive else 'left'
+    idx = timestamps.searchsorted(time, side=side)
+    if idx == 0:
+        return None
+    return idx - 1
+
+
 def get_dir_properties(dir_path:str):
-    with os.scandir(dir_path) as files:
-        for file in files:
-            if file.is_file() and file.path.endswith(('.tdms', '.segy')):
-                file_path = file.path
-                file_ext = '.' + file_path.rsplit('.', 1)[1]
+    # with os.scandir(dir_path) as files:
+    for dir_path, dir_names, file_names in os.walk(dir_path, topdown=True):
+        for file in file_names:
+            if file.endswith(('.tdms', '.segy')):
+                match file.rsplit('.', 1)[-1]:
+                    case 'tdms': file_reader = TdmsReader(f'{dir_path}/{file}')
+                    case 'segy': file_reader = SegyReader(f'{dir_path}/{file}')
+                    case _: print("BAD FILE EXTENSION!!!!!!")
                 break
-    match file_ext:
-        case '.tdms': file_reader = TdmsReader(file_path)
-        case '.segy': file_reader = SegyReader(file_path)
-        case _: print("BAD FILE EXTENSION!!!!!!")
     file_reader._read_properties()
     return file_reader.get_properties()
 
@@ -147,13 +145,13 @@ def get_dir_properties(dir_path:str):
 # returns a delta-long array of reader files starting at the timestamp given
 def get_time_subset(reader_array:np.ndarray, start_time:datetime, timestamps:np.ndarray, delta:timedelta=timedelta(seconds=60), tolerance:int=300):
     # tolerence is the time in s that the closest timestamp can be away from the desired start_time
-    start_idx = get_closest_index(timestamps, start_time)
+    start_idx = get_closest_index_before(timestamps, start_time)
     if abs((start_time - timestamps[start_idx]).total_seconds()) > tolerance:
         warnings.warn(f"Error: first file ({timestamps[start_idx]}) is over {tolerance} seconds away from the given start time ({start_time}).")
     
     end_time = timestamps[start_idx] + delta
     print(f'end_time: {end_time}')
-    end_idx = get_closest_index(timestamps, end_time)
+    end_idx = get_closest_index_before(timestamps, end_time)
     if (end_time - timestamps[end_idx]).total_seconds() > tolerance:
         warnings.warn(f"WARNING: end file ({timestamps[end_idx]}) is over {tolerance} seconds away from the calculated end time.")    
     ### this is broken, as above in get_subset_paths, doesn't account for the time in the last file
@@ -207,16 +205,19 @@ def get_time_subset(reader_array:np.ndarray, start_time:datetime, timestamps:np.
 
 
 # adapting this so that all channel requests work off of 1m channels - as though distance along cable
-def get_data_from_array(data_array:list, prepro_para:dict, start_time:datetime, timestamps:np.ndarray, duration:timedelta, channels=False):
-    cha1, cha2, target_sps, target_spatial_res, freqmin, freqmax = prepro_para.get('cha1'), prepro_para.get('cha2'), prepro_para.get('target_sps'), prepro_para.get('target_spatial_res'), prepro_para.get('freqmin'), prepro_para.get('freqmax')
-    # make it so that if start_time is not a timestamp, the first minute in the array is returned
+def get_data_from_array(data_array:list, prepro_para:dict, start_time:datetime, duration:timedelta, channels=None, filter=True):
+    cha1                = prepro_para.get('cha1')
+    cha2                = prepro_para.get('cha2')
+    samp_freq           = prepro_para.get('samp_freq')
+    target_spatial_res  = prepro_para.get('target_spatial_res')
+    freqmin             = prepro_para.get('freqmin')
+    freqmax             = prepro_para.get('freqmax')
     current_time = 0
     if channels: 
-        tdata = np.empty((int(duration.total_seconds() * target_sps), len(channels)))
+        tdata = np.empty((int(duration.total_seconds() * samp_freq), len(channels)))
     else: 
-        tdata = np.empty((int(duration.total_seconds() * target_sps), ceil((cha2-cha1+1)/target_spatial_res)))
+        tdata = np.empty((int(duration.total_seconds() * samp_freq), ceil((cha2-cha1+1)/target_spatial_res)))
     tdata.fill(np.NaN)
-    # data_array = get_time_subset(data_array, start_time, timestamps, delta=duration, tolerance=30)        # removed on 27/10/25 not needed anymore? 
     
     with tqdm(total=(duration.total_seconds()), desc=f'[Process {os.getpid()}] Loading data (in seconds)', position=1, leave=False) as pbar:
         while current_time != duration.total_seconds() and len(data_array) != 0:
@@ -228,50 +229,70 @@ def get_data_from_array(data_array:list, prepro_para:dict, start_time:datetime, 
                     print(f'Failed at {data_file}')
             props = data_file.get_properties()
             
-            if props.get('GPSTimeStamp').replace(microsecond=0) != (start_time + timedelta(seconds=current_time)):
-                # print(f'Padding from {(start_time + timedelta(seconds=current_time))} to {props.get("GPSTimeStamp").replace(microsecond=0)}')
-                diff = (props.get('GPSTimeStamp').replace(microsecond=0) - (start_time + timedelta(seconds=current_time))).total_seconds()
-                # current_row = current_time * target_sps
-                # tdata[int(current_row):int(current_row+(diff*target_sps)), :] = np.NaN
-                current_time += diff
-                pbar.update(diff)
+            props_ts = props.get('GPSTimeStamp').replace(microsecond=0)
+            expected_ts = start_time + timedelta(seconds=current_time)
+            delta_secs = int(round((props_ts - expected_ts).total_seconds()))
+            if delta_secs > 0:
+                pbar.update(delta_secs)
+                current_time += delta_secs
+                expected_ts = start_time + timedelta(seconds=current_time)
+            skip_seconds = 0
+            if delta_secs < 0:
+                skip_seconds = -delta_secs
+            
             spatial_ratio = int(target_spatial_res/props.get('SpatialResolution[m]'))
             if channels:
-                file_channels = [int(channel*spatial_ratio) for channel in channels]
+                file_channels = [int(channel/spatial_ratio) for channel in channels]
                 data = data_file.get_data(file_channels[0], file_channels[-1])[:,np.array(file_channels)-file_channels[0]]
             else:
-                cha1, cha2 = int(cha1*spatial_ratio), int(cha2*spatial_ratio)
-                data = data_file.get_data(cha1, cha2)
+                c1, c2 = int(cha1/props.get('SpatialResolution[m]')), int(cha2/props.get('SpatialResolution[m]'))   # get channels for each file
+                data = data_file.get_data(c1, c2)
                 data = data[:, ::spatial_ratio]
             data = scale(data, props)
-            if props.get('SamplingFrequency[Hz]') > target_sps:
+            if props.get('SamplingFrequency[Hz]') > samp_freq:
                 data = decimate(data,
-                                int(props.get('SamplingFrequency[Hz]') / target_sps),
+                                int(props.get('SamplingFrequency[Hz]') / samp_freq),
                                 ftype='iir',
                                 zero_phase=True, 
                                 axis=0)
-            elif props.get('SamplingFrequency[Hz]') < target_sps:
+            elif props.get('SamplingFrequency[Hz]') < samp_freq:
                 warnings.warn(f"Sampling frequency below target frequency! Timestamp: {props.get('GPSTimeStamp')}; fs: {props.get('SamplingFrequency[Hz]')}")
-            data = np.float32(bandpass(data,
-                            0.9 * freqmin,
-                            freqmax,
-                            df=target_sps,
-                            corners=4,
-                            zerophase=True))
-            current_row = int(current_time * target_sps)
+            if data.shape[1] == 0:
+                print(props.get('GPSTimeStamp'))
+                print(f'SHAPE: {data.shape}')
+                print(f'Channels: {c1}, {c2} || {cha1}, {cha2}')
+                print(f'SpatialRes: {props.get("SpatialResolution[m]")}')
+            if filter: 
+                data = np.float32(bandpass(data,
+                                           0.9 * freqmin,
+                                           1.1 * freqmax,
+                                           df=samp_freq,
+                                           corners=4,
+                                           zerophase=True))
+            if 'skip_seconds' in locals() and skip_seconds > 0:
+                skip_rows = int(skip_seconds * samp_freq)
+                if skip_rows >= data.shape[0]:
+                    # this file finishes before the expected start time -> skip it
+                    pbar.update(data.shape[0] / float(samp_freq))
+                    del data
+                    continue
+                data = data[skip_rows:, :]
+            current_row = int(current_time * samp_freq)
             t_size = data.shape[0]
             if t_size > tdata.shape[0] - current_row:        # clips final file
                 data = data[:tdata.shape[0]-current_row,:]
                 t_size = data.shape[0]
-            tdata[current_row:current_row+t_size, :] = data
-            current_time += t_size/target_sps
+            try:
+                tdata[current_row:current_row+t_size, :] = data
+            except: 
+                print(f"Loading failed at {start_time}, current_time: {current_time}.")
+            current_time += t_size/samp_freq
             
             # attempting to avoid issue of open file limit
             data_file._tdms_file.close()
             del data_file
             gc.collect()
-            pbar.update(t_size/target_sps)
-    
+            pbar.update(t_size/samp_freq)
     return tdata
 
 
@@ -318,21 +339,21 @@ def mean_downsample(data:np.ndarray, temporal_ratio:int, spatial_ratio:int):
     return ds_data
 
 
-def downsample_data(data:np.ndarray, props:dict, target_sps:float, target_spatial_res:float):
+def downsample_data(data:np.ndarray, props:dict, samp_freq:float, target_spatial_res:float):
     sps = props.get('SamplingFrequency[Hz]')
     spatial_res = props.get('SpatialResolution[m]')
     
-    if not target_sps: target_sps = sps
+    if not samp_freq: samp_freq = sps
     if not target_spatial_res: target_spatial_res = spatial_res
     
-    if (temporal_ratio := int(sps/target_sps)) != sps/target_sps:             # reversed as time-reciprocal
+    if (temporal_ratio := int(sps/samp_freq)) != sps/samp_freq:             # reversed as time-reciprocal
         warnings.warn(f'Target sps not a factor of current sps, some data will be lost. Resultant ratio cast to {temporal_ratio}.')
     if (spatial_ratio := int(target_spatial_res/spatial_res)) != target_spatial_res/spatial_res:
         warnings.warn(f'Target spatial res not a factor of current spatial res, some data will be lost. Resultant ratio cast to {spatial_ratio}.')
     return resize(data, output_shape=(data.shape[0] / temporal_ratio, data.shape[1] / spatial_ratio))
 
 
-def downsample_tdms(file_path:str, save_as:str=None, out_dir:str=None, target_sps:int=None, target_spatial_res:int=None):
+def downsample_tdms(file_path:str, save_as:str=None, out_dir:str=None, samp_freq:int=None, target_spatial_res:int=None):
     if not file_path.endswith('.tdms'):
         warnings.warn(f'Not TDMS file! Use other downsampler please.')
         return
@@ -341,9 +362,9 @@ def downsample_tdms(file_path:str, save_as:str=None, out_dir:str=None, target_sp
     data = tdms.get_data()
     data = scale(data, props)
     
-    if target_sps or target_spatial_res:
-        data = downsample_data(data, props, target_sps, target_spatial_res)
-        if target_sps:         props.update({'SamplingFrequency[Hz]': target_sps})
+    if samp_freq or target_spatial_res:
+        data = downsample_data(data, props, samp_freq, target_spatial_res)
+        if samp_freq:         props.update({'SamplingFrequency[Hz]': samp_freq})
         if target_spatial_res: props.update({'SpatialResolution[m]': target_spatial_res})
     
     # NOTE: This is starting as just one Stats object for ALL traces in the stream, this may have to change
@@ -488,7 +509,7 @@ if __name__ == '__main__':
     #             pickle.dump(file_info, file_info_path)
     #         props_bool = True
     
-    #     downsample_tdms(file_path, save_as='SEGY', out_dir=out_dir, target_sps=None, target_spatial_res=1)
+    #     downsample_tdms(file_path, save_as='SEGY', out_dir=out_dir, samp_freq=None, target_spatial_res=1)
 
     dir_path = '../../temp_data_store/FirstData/'
     

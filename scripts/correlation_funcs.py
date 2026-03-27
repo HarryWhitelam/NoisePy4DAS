@@ -22,48 +22,52 @@ from memory_profiler import profile
 
 # from dasstore.zarr import Client
 from TDMS_Read import TdmsReader
-from tdms_io import get_reader_array, get_data_from_array, get_dir_properties, get_subset_paths
-from concurrent.futures import ProcessPoolExecutor, as_completed
+from tdms_io import get_reader_array, get_filepath_array, get_data_from_array, get_dir_properties, get_subset_paths
 
 
-def set_prepro_parameters(dir_path, task_t0, freqmin=1.0, freqmax=49.9, target_spatial_res=5, cha1=4000, cha2=7999, n_minute=360):
+def set_prepro_parameters(dir_path, task_t0, freqmin=1.0, freqmax=49.9, target_spatial_res=5, cha1=4000, cha2=7999, n_minute=360, src_ch=None, rcv_ch=None, stack_method='linear'):
     properties = get_dir_properties(dir_path)
     
     cha_spacing = properties.get('SpatialResolution[m]') * properties.get('Fibre Length Multiplier')
     # start_dist, stop_dist = properties.get('Start Distance (m)'), properties.get('Stop Distance (m)')
 
-    sps                = properties.get('SamplingFrequency[Hz]')        # current sampling rate (Hz)
-    samp_freq          = 100                                            # target sampling rate (Hz)
+    sps             = properties.get('SamplingFrequency[Hz]')        # current sampling rate (Hz)
+    samp_freq       = 100                                            # target sampling rate (Hz)
     
-    spatial_res = properties.get('SpatialResolution[m]')
-    spatial_ratio      = int(target_spatial_res/spatial_res)		# both values in m
+    spatial_res     = properties.get('SpatialResolution[m]')
+    spatial_ratio   = int(target_spatial_res/spatial_res)		# both values in m
 
-    freq_norm          = 'rma'             # 'no' for no whitening, or 'rma' for running-mean average, 'phase_only' for sign-bit normalization in freq domain.
-    time_norm          = 'one_bit'             # 'no' for no normalization, or 'rma', 'one_bit' for normalization in time domain
-    cc_method          = 'xcorr'           # 'xcorr' for pure cross correlation, 'deconv' for deconvolution; FOR "COHERENCY" PLEASE set freq_norm to "rma", time_norm to "no" and cc_method to "xcorr"
+    time_norm       = 'one_bit'             # 'no' for no normalization, or 'rma', 'one_bit' for normalization in time domain
+    freq_norm       = 'rma'                 # 'no' for no whitening, or 'rma' for running-mean average, 'phase_only' for sign-bit normalization in freq domain.
+    cc_method       = 'xcorr'               # 'xcorr' for pure cross correlation, 'deconv' for deconvolution; FOR "COHERENCY" PLEASE set freq_norm to "rma", time_norm to "no" and cc_method to "xcorr"
+    stack_method    = stack_method          # 'pws' for phase-weighted stack, 'linear' for linear stack
     
-    smooth_N           = 100               # moving window length for time domain normalization if selected (points)
-    smoothspect_N      = 100               # moving window length to smooth spectrum amplitude (points)
-    maxlag             = 4                 # lags of cross-correlation to save (sec)
+    smooth_N        = int(0.5*samp_freq)    # moving window length for time domain normalization if selected (points)
+    smoothspect_N   = 100                   # moving window length to smooth spectrum amplitude (points)
+    maxlag          = 4                     # lags of cross-correlation to save (sec)
+    n_lag           = maxlag * samp_freq * 2 + 1
 
-    max_over_std       = 30                # threshold to remove window of bad signals: set it to 10*9 if prefer not to remove them
+    max_over_std    = 15                    # threshold to remove window of bad signals: set it to 10*9 if prefer not to remove them
 
-    cc_len             = 60                # correlate length in second
-    # step               = 60                # stepping length in second [not used]
+    cc_len          = 60                    # correlate length in second
+    # step            = 60                  # stepping length in second [not used]
 
-    effective_cha2     = floor(cha1 + (cha2 - cha1) / spatial_ratio)
-    cha_list           = np.array(range(cha1, effective_cha2 + 1))
-    nsta               = len(cha_list)
-    n_pair             = int((nsta+1)*nsta/2)
-    n_lag              = maxlag * samp_freq * 2 + 1
-    
-    src_ch = None
+    if not rcv_ch:
+        effective_cha2  = floor(cha1 + (cha2 - cha1) / spatial_ratio)
+        cha_list        = np.array(range(cha1, effective_cha2 + 1))
+        nsta            = len(cha_list)
+        n_pair          = int((nsta+1)*nsta/2) if src_ch == None else nsta
+    else:
+        effective_cha2  = 1
+        cha_list        = [cha1, cha2]
+        nsta            = 2
+        n_pair          = 1
     
     return {
         'freqmin':freqmin,
         'freqmax':freqmax,
         'sps':sps,
-        'npts_chunk':cc_len*sps,           # <-- I don't know why this is hard coded like this i should probably find out
+        'npts_chunk':cc_len*samp_freq,           # <-- I don't know why this is hard coded like this i should probably find out
         'nsta':nsta,
         'cha_list':cha_list,
         'samp_freq':samp_freq,
@@ -85,102 +89,176 @@ def set_prepro_parameters(dir_path, task_t0, freqmin=1.0, freqmax=49.9, target_s
         'n_minute':n_minute,
         'task_t0':task_t0,
         'src_ch':src_ch,
+        'rcv_ch':rcv_ch,
+        'stack_method': stack_method,   # 'linear' or 'pws'
+        'pws_exponent': 0.5,      # ν in |<e^{iφ}>|^ν
+        'pws_eps': 1e-12,
     }
-    
+
+
+try:
+    from scipy.signal import hilbert
+    def analytic_signal(x, axis=0):
+        return hilbert(x, axis=axis)
+except Exception:
+    def analytic_signal(x, axis=0):
+        # Numpy-only analytic signal along `axis`
+        x = np.asarray(x)
+        n = x.shape[axis]
+        X = np.fft.rfft(x, n=n, axis=axis)
+        # Build the RFFT "Hilbert" multiplier
+        H = np.zeros_like(X, dtype=np.float32)
+        if n % 2 == 0:
+            H[0] = 1.0
+            H[1:-1] = 2.0
+            H[-1] = 1.0  # Nyquist
+        else:
+            H[0] = 1.0
+            H[1:] = 2.0
+        Xh = X * H
+        z = np.fft.irfft(Xh, n=n, axis=axis)
+        return z + 1j * np.imag(z)
+
 
 def process_minute(args):
     (minute_t0, file_paths, prepro_para) = args
-    n_lag = prepro_para['n_lag']
-    n_pair = prepro_para['n_pair']
-    cha1 = prepro_para['cha1']
-    effective_cha2 = prepro_para['effective_cha2']
-    cha_list = prepro_para['cha_list']
-    src_ch = prepro_para['src_ch']
+    n_lag           = prepro_para.get('n_lag')
+    n_pair          = prepro_para.get('n_pair')
+    cha1            = prepro_para.get('cha1')
+    effective_cha2  = prepro_para.get('effective_cha2')
+    spatial_ratio   = prepro_para.get('spatial_ratio')
+    cha_list        = prepro_para.get('cha_list')
+    src_ch          = prepro_para.get('src_ch')
+    stack_method    = prepro_para.get('stack_method')
+    pws_nu          = prepro_para.get('pws_exponent')
+    pws_eps         = prepro_para.get('pws_eps')
     
-    # Return corr_full, stack_full for this minute
-    try:
-        file_array = [TdmsReader(path) for path in file_paths]
-        tdata = get_data_from_array(file_array, prepro_para, minute_t0, timestamps=None, duration=timedelta(seconds=60), skip_subset=True)
-        trace_stdS, dataS = DAS_module.preprocess_raw_make_stat(tdata, prepro_para)
-        white_spect = DAS_module.noise_processing(dataS, prepro_para)
-        Nfft = white_spect.shape[1]; Nfft2 = Nfft // 2
-        data = white_spect[:, :Nfft2]
-        del file_array, tdata, dataS, white_spect
-        gc.collect()
+    # file_array = [TdmsReader(path) for path in file_paths]
+    tdata = get_data_from_array(file_paths, prepro_para, minute_t0, duration=timedelta(seconds=60), filter=False)
+    trace_stdS, dataS = DAS_module.preprocess_raw_make_stat(tdata, prepro_para)
+    white_spect = DAS_module.noise_processing(dataS, prepro_para)
+    Nfft = white_spect.shape[1]; Nfft2 = Nfft // 2
+    data = white_spect[:, :Nfft2]
+    del file_paths, tdata, dataS, white_spect
+    gc.collect()
 
-        ind = np.where((trace_stdS < prepro_para['max_over_std']) &
-                       (trace_stdS > 0) &
-                       (np.isnan(trace_stdS) == 0))[0]
-        if not len(ind):
-            return np.zeros([n_lag, n_pair], dtype=np.float32), np.zeros([1, n_pair], dtype=np.int32)
-        sta = cha_list[ind]
-        white_spect = data[ind]
+    ind = np.where((trace_stdS < prepro_para['max_over_std']) &
+                   (trace_stdS > 0) &
+                   (np.isnan(trace_stdS) == 0))[0]
+    if not len(ind):
+        print(f'{minute_t0} had no valid indices :(')
+        corr_zero   = np.zeros((n_lag, n_pair), dtype=np.float32)
+        stack_zero  = np.zeros((1, n_pair),     dtype=np.int32)
 
-        corr_full = np.zeros([n_lag, n_pair], dtype=np.float32)
-        stack_full = np.zeros([1, n_pair], dtype=np.int32)
-
-        if src_ch:
-            sfft1 = DAS_module.smooth_source_spect(white_spect[src_ch - cha1], prepro_para)
-            corr, tindx = DAS_module.correlate(sfft1, white_spect, prepro_para, Nfft)
-            corr_full[:, :] += corr.T
-            stack_full[:, :] += 1
+        if stack_method == 'pws':
+            phasor_zero = np.zeros((n_lag, n_pair), dtype=np.complex64)
+            phcount_zero = np.zeros((1, n_pair), dtype=np.int32)
+            return corr_zero, stack_zero, phasor_zero, phcount_zero
         else:
-            for iiS in range(len(sta)):
-                sfft1 = DAS_module.smooth_source_spect(white_spect[iiS], prepro_para)
-                corr, tindx = DAS_module.correlate(sfft1, white_spect[iiS:], prepro_para, Nfft)
-                tsta = sta[iiS:]
-                receiver_lst = tsta[tindx]
-                iS = int((effective_cha2*2 - cha1 - sta[iiS] + 1) * (sta[iiS] - cha1) / 2)
-                corr_full[:, iS + receiver_lst - sta[iiS]] += corr.T
-                stack_full[:, iS + receiver_lst - sta[iiS]] += 1
+            return corr_zero, stack_zero
+
+    sta = cha_list[ind]
+    white_spect = data[ind]
+
+    corr_full = np.zeros([n_lag, n_pair], dtype=np.float32)
+    stack_full = np.zeros([1, n_pair], dtype=np.int32)
+    if stack_method == 'pws':
+        phasor_full = np.zeros((n_lag, n_pair), dtype=np.complex64)
+        phasor_count_full = np.zeros((1, n_pair), dtype=np.int32)
+
+    if src_ch:
+        sfft1 = DAS_module.smooth_source_spect(data[int((src_ch - cha1)/spatial_ratio)], prepro_para)
+        corr, tindx = DAS_module.correlate(sfft1, data, prepro_para, Nfft)
+        corr = corr.T
+        corr_full[:, :] += corr
+        stack_full[:, :] += 1
+        if stack_method == 'pws':
+            z = analytic_signal(corr, axis=0)
+            amp = np.abs(z)
+            ph = np.where(amp > pws_eps, z/amp, 0.0j)
+            phasor_full[:, :] += ph
+            phasor_count_full[:, :] += 1
+    else:
+        for iiS in range(len(sta)):
+            sfft1 = DAS_module.smooth_source_spect(white_spect[iiS], prepro_para)
+            corr, tindx = DAS_module.correlate(sfft1, white_spect[iiS:], prepro_para, Nfft)
+            corr = corr.T
+            tsta = sta[iiS:]
+            receiver_lst = tsta[tindx]
+            iS = int((effective_cha2*2 - cha1 - sta[iiS] + 1) * (sta[iiS] - cha1) / 2)
+            sl = iS + receiver_lst - sta[iiS]
+            corr_full[:, sl] += corr
+            stack_full[:, sl] += 1
+            if stack_method == 'pws':
+                z  = analytic_signal(corr, axis=0)
+                amp = np.abs(z)
+                ph = np.where(amp > pws_eps, z/amp, 0.0j)
+                phasor_full[:, sl] += ph
+                phasor_count_full[:, sl] += 1
+
+    if stack_method == 'pws':
+        return corr_full, stack_full, phasor_full, phasor_count_full
+    else:
         return corr_full, stack_full
-    except Exception as e:
-        print(f"Error in minute {minute_t0}: {e}")
-        return np.zeros([n_lag, n_pair], dtype=np.float32), np.zeros([1, n_pair], dtype=np.int32)
+
 
 def parallel_xcorr(dir_path, prepro_para, corr_path=None, allowed_times=None):
-    n_lag = prepro_para['n_lag']
-    n_pair = prepro_para['n_pair']
-    n_minute = prepro_para['n_minute']
-    task_t0 = prepro_para['task_t0']
+    n_lag        = prepro_para['n_lag']
+    n_pair       = prepro_para['n_pair']
+    n_minute     = prepro_para['n_minute']
+    task_t0      = prepro_para['task_t0']
+    stack_method = prepro_para['stack_method']
+    pws_exponent = prepro_para['pws_exponent']
 
-    _, timestamps = get_reader_array(dir_path, allowed_times)
+    file_paths, timestamps = get_filepath_array(dir_path, task_t0, task_t0+timedelta(minutes=n_minute))
+    task_t0 = timestamps[0].replace(microsecond=0)
 
     # Prepare argument list for each minute
     args_list = []
-    dir_list = sorted([filename for filename in os.listdir(dir_path) if filename.endswith(('.tdms', '.segy'))])
     pbar = tqdm(range(n_minute))
     for imin in pbar:
         pbar.set_description(f"Processing {imin}")
         minute_t0 = task_t0 + timedelta(minutes=imin)
-        paths_subset, _ = get_subset_paths(minute_t0, dir_path, dir_list, timestamps)
+        paths_subset, _ = get_subset_paths(minute_t0, file_paths, timestamps)
         args_list.append((minute_t0, paths_subset, prepro_para))
 
     # Use process_map for parallel processing with progress bar
     print("Starting multiprocessing")
     corr_full = np.zeros([n_lag, n_pair], dtype=np.float32)
     stack_full = np.zeros([1, n_pair], dtype=np.int32)
-
-    # with ProcessPoolExecutor(max_workers=multiprocessing.cpu_count()) as executor:
-    # with ProcessPoolExecutor(max_workers=2) as executor:
-    #     futures = [executor.submit(process_minute, args) for args in args_list]
-    #     for future in tqdm(as_completed(futures), total=len(futures), desc="Parallel xcorr"):
-    #         corr, stack = future.result()
-    #         corr_full += corr
-    #         stack_full += stack
-    #         del corr, stack
-    #         gc.collect()
+    if stack_method == 'pws':
+        phasor_full = np.zeros([n_lag, n_pair], dtype=np.complex64)
+        phasor_count_full = np.zeros([1, n_pair], dtype=np.int32)
     
-    # p = multiprocessing.Pool(multiprocessing.cpu_count())
-    p = multiprocessing.Pool(8)
-    with tqdm(total=len(args_list), desc="Parallel xcorr", position=0) as pbar:
-        for corr, stack in p.imap(process_minute, args_list, chunksize=1):
-            corr_full += corr
-            stack_full += stack
-            pbar.update(1)
-    p.close()
+    with multiprocessing.Pool(multiprocessing.cpu_count()) as pool:
+        with tqdm(total=len(args_list), desc="Parallel xcorr", position=0) as pbar:
+            for result in pool.imap_unordered(process_minute, args_list, chunksize=1):
+                if stack_method == 'pws': 
+                    corr, stack, phasor, phcount = result
+                    corr_full += corr
+                    stack_full += stack
+                    phasor_full += phasor
+                    phasor_count_full += phcount
+                    del phasor, phcount
+                else:
+                    corr, stack = result
+                    corr_full  += corr
+                    stack_full += stack
+                del corr, stack
+                gc.collect()
+                pbar.update(1)
     
-    corr_full /= stack_full
+    with np.errstate(invalid='ignore', divide='ignore'):
+        corr_linear = corr_full / np.maximum(stack_full, 1)    
+    if stack_method == 'pws':
+        coherency = np.abs(phasor_full / np.maximum(phasor_count_full, 1))
+        corr_full = corr_linear * coherency**pws_exponent
+    else:
+        corr_full = corr_linear
+    
+    # center = int(prepro_para['maxlag'] * prepro_para['samp_freq'])
+    # mute = 3
+    # corr_full[:, center-mute:center+mute+1] = 0.0
     print(f'corr_full max: {np.nanmax(corr_full)}; min: {np.nanmin(corr_full)}')
 
     if corr_path:
@@ -252,7 +330,6 @@ def correlation(dir_path, prepro_para, corr_path=None, allowed_times=None):
             # stacking one minute
             corr_full[:, :] += corr.T
             stack_full[:, :] += 1
-        
         else:
             for iiS in range(len(sta)):
                 # smooth the source spectrum
@@ -274,15 +351,7 @@ def correlation(dir_path, prepro_para, corr_path=None, allowed_times=None):
         t_compute += time.time() - t1
     corr_full /= stack_full
     print(f'corr_full max: {np.nanmax(corr_full)}; min: {np.nanmin(corr_full)}')
-    print(f"{round(t_query, 2)} seconds in data query, {round(t_compute, 2)} seconds in xcorr computing")
-    
-    if corr_path:
-        saved_corr = np.loadtxt(corr_path, delimiter=',')
-        if saved_corr.shape == corr_full.shape:
-            corr_full += saved_corr
-        else: 
-            warn(f'Shape mismatch between current correlation matrix and saved correlation matrix: {corr_full.shape} (current) against {saved_corr.shape} (saved)')
-    
+    print(f"{round(t_query, 2)} seconds in data query, {round(t_compute, 2)} seconds in xcorr computing")    
     return corr_full
 
 
@@ -308,41 +377,58 @@ def plot_das_data(data, prepro_para):
     plt.colorbar(pad = 0.1)
 
 
-def plot_correlation(corr, prepro_para, cmap_param='bwr', save_corr=False, allowed_times=None):
-    cha1, cha2, effective_cha2, spatial_ratio, cha_spacing, target_spatial_res, samp_freq, freqmin, freqmax, maxlag, n_minute, task_t0 = prepro_para.get('cha1'), prepro_para.get('cha2'), prepro_para.get('effective_cha2'), prepro_para.get('spatial_ratio'), prepro_para.get('cha_spacing'), prepro_para.get('target_spatial_res'), prepro_para.get('samp_freq'), prepro_para.get('freqmin'), prepro_para.get('freqmax'), prepro_para.get('maxlag'), prepro_para.get('n_minute'), prepro_para.get('task_t0')
+def plot_correlation(corr, prepro_para, cmap_param='bwr', save_corr=False, normalise=True, allowed_times=None, velocities=[600]):
+    cha1, cha2, effective_cha2, spatial_ratio, cha_spacing, target_spatial_res, samp_freq, freqmin, freqmax, maxlag, n_minute, task_t0, src_ch, stack_method = prepro_para.get('cha1'), prepro_para.get('cha2'), prepro_para.get('effective_cha2'), prepro_para.get('spatial_ratio'), prepro_para.get('cha_spacing'), prepro_para.get('target_spatial_res'), prepro_para.get('samp_freq'), prepro_para.get('freqmin'), prepro_para.get('freqmax'), prepro_para.get('maxlag'), prepro_para.get('n_minute'), prepro_para.get('task_t0'), prepro_para['src_ch'], prepro_para.get('stack_method')
 
-    plt.figure(figsize = (12, 5), dpi = 150)
-    plt.imshow(corr[:, :(effective_cha2 - cha1)].T, aspect = 'auto', cmap = cmap_param, 
-            vmax = 2e-2, vmin = -2e-2, origin = 'lower', interpolation=None)
-
-    _ =plt.yticks((np.linspace(cha1, cha2, 4) - cha1)/spatial_ratio, 
-                [int(i) for i in np.linspace(cha1, cha2, 4)], fontsize = 12)
-    plt.ylabel("Channel number", fontsize = 12)
-    # _ = plt.xticks(np.arange(0, 1601, 200), (np.arange(0, 801, 100) - 400)/50, fontsize = 12)
-    _ = plt.xticks(np.arange(0, maxlag*samp_freq*2+1, 200), np.arange(-maxlag, maxlag+1, 2), fontsize=12)
-    plt.xlabel("Time lag (sec)", fontsize = 12)
-    # bar = plt.colorbar(pad = 0.1, format = lambda x, pos: '{:.1f}'.format(x*100))
-    # bar.set_label('Cross-correlation Coefficient', fontsize = 15)
-
-    twiny = plt.gca().twinx()
-    twiny.set_yticks(np.linspace(0, cha2 - cha1, 4), 
-                                [int(i* cha_spacing) for i in np.linspace(cha1, cha2, 4)])
-    twiny.set_ylabel("Distance along cable (m)", fontsize = 12)
-    
-    # follow convention of: {timestamp}_{t length}_{channels}.png
-    # t_start = task_t0 - timedelta(minutes=n_minute)
-    plt.tight_layout()
-    
     out_dir = f'./results/figures/{task_t0}_{n_minute}mins_{cha1}:{cha2}/'
-    if not os.path.exists(out_dir):
-        os.makedirs(out_dir)
-    out_name = f'{task_t0}_{n_minute}mins_{samp_freq}f{freqmin}:{freqmax}__{cha1}:{cha2}_{target_spatial_res}m'
+    out_name = f'{task_t0}_{n_minute}mins_{samp_freq}f{freqmin}:{freqmax}_{cha1}:{cha2}_{target_spatial_res}m'
     if allowed_times:
         for t1, t2 in allowed_times.items():
             out_name += f'_{t1}:{t2}'
-    plt.savefig(f'{out_dir}{out_name}.png')
+    if src_ch:
+        out_name += f'_{src_ch}src'
+    if stack_method == 'pws':
+        out_name += '_pws'
     if save_corr:
-        np.savetxt(f'./results/saved_corrs/{out_name}.txt', corr[:, :(effective_cha2 - cha1)], delimiter=",")
+        np.savetxt(f'/data/localraid/saved_corrs/{out_name}.txt', corr[:, :(effective_cha2 - cha1)], delimiter=",")
+
+    plt.figure(figsize = (12, 5), dpi = 150)
+    if normalise:
+        corr /= np.nanpercentile(np.abs(corr), 99.9)
+        plt.imshow(corr[:, :(effective_cha2 - cha1)].T, aspect = 'auto', cmap = cmap_param,
+                   vmax=1.0, vmin=-1.0, origin = 'lower', interpolation=None)
+    else:
+        plt.imshow(corr.T, aspect = 'auto', cmap = cmap_param, 
+                   vmax = 2e-2, vmin = -2e-2, origin = 'lower', interpolation=None)
+    
+    if velocities:
+        x = np.linspace(int(corr.shape[0]/2),corr.shape[0]-1,maxlag+1)
+        for velocity in velocities:
+            y = [(velocity*(xi/samp_freq-maxlag)) for xi in x]
+            if src_ch:
+                y = [yi+(src_ch - cha1) for yi in y]
+            y = [yi/spatial_ratio for yi in y]
+            plt.plot(x, y, linestyle='--', color='k', alpha=0.6)
+        plt.xlim(0, corr.shape[0]-1)
+        plt.ylim(0, corr.shape[1]-spatial_ratio)
+    
+    if src_ch:
+        plt.scatter(int(corr.shape[0]/2), int((src_ch - cha1)/spatial_ratio), marker='*', s=50, color='k')
+    _ =plt.yticks((np.linspace(cha1, cha2, 6) - cha1)/spatial_ratio, [int(i) for i in np.linspace(cha1, cha2, 6)], fontsize = 12)
+    plt.ylabel("Channel number", fontsize = 12)
+    _ = plt.xticks(np.arange(0, maxlag*samp_freq*2+1, samp_freq), np.arange(-maxlag, maxlag+1, 1), fontsize=12)
+    plt.xlabel("Time lag (sec)", fontsize = 12)
+    # bar = plt.colorbar(pad = 0.1, format = lambda x, pos: '{:.1f}'.format(x*100))
+    # bar.set_label('Cross-correlation Coefficient', fontsize = 15)
+    
+    twiny = plt.gca().twinx()
+    twiny.set_yticks((np.linspace(cha1, cha2, 6) - cha1)/spatial_ratio, [int(i* cha_spacing) for i in np.linspace(cha1, cha2, 6)], fontsize = 12)
+    twiny.set_ylabel("Distance along cable (m)", fontsize = 12)
+    
+    plt.tight_layout()
+    if not os.path.exists(out_dir):
+        os.makedirs(out_dir)
+    plt.savefig(f'{out_dir}{out_name}.png')
 
 
 def plot_multiple_correlations(corrs:list, prepro_para:dict, vars, experiment_var:str, cmap_param:str='bwr', save_corr:bool=False):

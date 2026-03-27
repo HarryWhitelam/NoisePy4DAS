@@ -1,24 +1,29 @@
 import os
 import gc
 import numpy as np
-import psutil
 import pandas as pd
 import geopandas as gpd
+import cupy as cp
 from scipy.signal import welch, ShortTimeFFT, convolve2d, savgol_filter
 from scipy.signal.windows import hamming
-from scipy.fft import rfft, rfftfreq
+from scipy.interpolate import interp1d
 from obspy.signal.spectral_estimation import get_nlnm, get_nhnm
 from datetime import datetime, timedelta
 from dateutil.relativedelta import relativedelta
+import matplotlib
+matplotlib.use('Agg')
 import matplotlib.pyplot as plt
-from matplotlib.animation import FuncAnimation
 import matplotlib.dates as mdates
+import matplotlib.patches as patches
+from mpl_toolkits.axes_grid1 import host_subplot
+import mpl_toolkits.axisartist as AA
+from matplotlib.cm import ScalarMappable
+from matplotlib.colors import Normalize
 from skimage.util import compare_images
 import contextily as cx
-from math import ceil, sin, cos, atan2, degrees, radians
+from math import sin, cos, atan2, degrees, radians
 import multiprocessing
 from tqdm import tqdm
-import bisect
 
 from tdms_io import get_reader_array, get_filepath_array, get_data_from_array, get_dir_properties, load_xcorr
 from weather import plot_waverider_csv, plot_met_csv, plot_era5_csv
@@ -64,57 +69,6 @@ def image_comparison(data_dict, comp_ids, method='all', ncols=2, cmap='gray'):
     
     fig.tight_layout()
     plt.show()
-
-
-# def octave_smooth(psd, freqs, width_octaves=0.5, axis=0, eps=1e-12):
-#     """
-#     Smooth PSD similar to ObsPy's period smoothing around each octave.
-#     - psd: array of shape (N_freq, ...) or any shape where `axis` indexes frequency.
-#            If psd is in dB (10*log10), this function converts to linear, smooths, then
-#            converts back to dB and returns the smoothed result in the same units/shape.
-#     - freqs: 1D array of frequencies (Hz), length N_freq
-#     - width_octaves: smoothing window width in octaves (factor-of-two units). Default 0.5.
-#     - axis: axis in `psd` that corresponds to frequency (default 0).
-#     - eps: small floor added to linear PSD to avoid log of zero.
-#     Returns: smoothed PSD array with the same shape as `psd`.
-#     """
-#     freqs = np.asarray(freqs)
-#     if freqs[0] == 0.0:
-#         freqs[0] = freqs[1] * 1e-6  # avoid 0 Hz clipping
-#     periods = 1.0 / freqs
-#     logp = np.log10(periods)
-
-#     width_decades = width_octaves * np.log10(2.0)
-#     half_width = width_decades / 2.0
-
-#     psd_arr = np.asarray(psd)
-#     moved = np.moveaxis(psd_arr, axis, 0)
-#     n_freq = moved.shape[0]
-#     rest_shape = moved.shape[1:]
-#     n_cols = int(np.prod(rest_shape)) if rest_shape != () else 1
-#     flat = moved.reshape(n_freq, n_cols)
-
-#     linear = 10.0 ** (flat / 10.0)
-#     order = np.argsort(logp)
-#     logp_sorted = logp[order]
-
-#     smoothed_linear = np.empty_like(linear)
-#     for i in range(n_freq):
-#         center = logp[i]
-#         left = center - half_width
-#         right = center + half_width
-#         i0 = bisect.bisect_left(logp_sorted, left)
-#         i1 = bisect.bisect_right(logp_sorted, right)
-#         sel = order[i0:i1]
-#         if sel.size == 0:
-#             smoothed_linear[i, :] = linear[i, :]
-#         else:
-#             smoothed_linear[i, :] = np.mean(linear[sel, :], axis=0)
-
-#     smoothed_db_flat = 10.0 * np.log10(smoothed_linear + eps)
-#     smoothed = smoothed_db_flat.reshape((n_freq,) + rest_shape)
-#     smoothed = np.moveaxis(smoothed, 0, axis)
-#     return smoothed
 
 
 def octave_smooth(psd, freqs, width_octaves=0.5, axis=0, eps=1e-12):
@@ -198,56 +152,170 @@ def octave_smooth(psd, freqs, width_octaves=0.5, axis=0, eps=1e-12):
     return smoothed
 
 
+def octave_smooth_gpu(psd, freqs, width_octaves=0.5, axis=0, eps=1e-12, chunk_size_cols=512):
+    """
+    GPU-accelerated octave smoothing in column blocks to limit GPU memory.
+    - psd: PSD in dB (numpy or cupy array)
+    - freqs: 1D frequency vector (Hz)
+    - chunk_size_cols: number of time/column slices to process per GPU transfer
+    """
+    # prepare frequency arrays on GPU
+    freqs_cp = cp.asarray(freqs, dtype=cp.float64)
+    if freqs_cp.size > 1 and freqs_cp[0] == 0.0:
+        freqs_cp[0] = freqs_cp[1] * 1e-6
+    periods = 1.0 / freqs_cp
+    logp = cp.log10(periods)
+    width_decades = width_octaves * cp.log10(2.0)
+    half_width = width_decades / 2.0
+
+    # prepare indexing/sorting arrays on GPU (small)
+    order = cp.argsort(logp)
+    logp_sorted = logp[order]
+    periods_sorted = periods[order]
+
+    # compute widths (period-bin widths) on GPU
+    widths = cp.empty_like(periods_sorted)
+    if periods_sorted.size > 1:
+        widths[0] = periods_sorted[1] - periods_sorted[0]
+        widths[-1] = periods_sorted[-1] - periods_sorted[-2]
+        if periods_sorted.size > 2:
+            widths[1:-1] = 0.5 * (periods_sorted[2:] - periods_sorted[:-2])
+    else:
+        widths[:] = 1.0
+    # cumsum of widths (on GPU) - used later, length n_freq+1 with leading zero
+    csum_w = cp.concatenate((cp.array([0.0], dtype=widths.dtype), cp.cumsum(widths)))
+
+    # move frequency axis to axis 0 and compute shapes WITHOUT copying whole array to GPU
+    is_cupy_input = isinstance(psd, cp.ndarray)
+    if is_cupy_input:
+        moved = cp.moveaxis(psd, axis, 0)
+        n_freq = moved.shape[0]
+        rest_shape = moved.shape[1:]
+        n_cols = int(cp.prod(cp.asarray(rest_shape)).item()) if rest_shape != () else 1
+    else:
+        psd_arr = np.asarray(psd)
+        moved = np.moveaxis(psd_arr, axis, 0)   # still CPU
+        n_freq = moved.shape[0]
+        rest_shape = moved.shape[1:]
+        n_cols = int(np.prod(rest_shape)) if rest_shape != () else 1
+
+    # prepare result flat array (host or device)
+    result_flat = np.empty((n_freq, n_cols), dtype=np.float64)
+
+    # prepare repeated index arrays on GPU (i0,i1) computed from logp_sorted
+    lefts = logp - half_width
+    rights = logp + half_width
+    i0 = cp.searchsorted(logp_sorted, lefts, side='left')   # (n_freq,)
+    i1 = cp.searchsorted(logp_sorted, rights, side='right')  # (n_freq,)
+
+    # helper small GPU arrays that don't change per block
+    order_cp = order
+    widths_cp = widths
+    csum_w_cp = csum_w
+    # zeros row creation for cumsum per block done later (block dependent)
+
+    # iterate column blocks
+    for c0 in range(0, n_cols, chunk_size_cols):
+        c1 = min(n_cols, c0 + chunk_size_cols)
+        block_cols = c1 - c0
+
+        # get block flat on GPU
+        if is_cupy_input:
+            flat_block = moved[:, c0:c1]            # cupy slice, no extra copy if already on device
+            flat_block_cp = flat_block.astype(cp.float64, copy=False)
+        else:
+            flat_block = moved[:, c0:c1]            # numpy slice
+            flat_block_cp = cp.asarray(flat_block, dtype=cp.float64)
+
+        # linear power and sorted weighted cumsum (GPU)
+        linear_block = 10.0 ** (flat_block_cp / 10.0)       # (n_freq, block_cols)
+        linear_sorted = linear_block[order_cp, :]           # (n_freq, block_cols)
+        w = widths_cp[:, None]                              # (n_freq, 1)
+        weighted_vals = linear_sorted * w                   # (n_freq, block_cols)
+
+        # prefix cumsum with zero-row (pad) - shapes (n_freq+1, block_cols)
+        zero_row = cp.zeros((1, block_cols), dtype=weighted_vals.dtype)
+        csum_vals = cp.concatenate((zero_row, cp.cumsum(weighted_vals, axis=0)), axis=0)
+
+        # interval sums via indexing with i0,i1 (both length n_freq)
+        # csum_vals has shape (n_freq+1, block_cols) and supports fancy indexing
+        num = csum_vals[i1] - csum_vals[i0]   # (n_freq, block_cols)
+        den = (csum_w_cp[i1] - csum_w_cp[i0])  # (n_freq,)
+
+        # compute smoothed linear for this block
+        smoothed_linear_block = cp.empty_like(flat_block_cp)
+        mask_nonzero = den > 0.0
+        if mask_nonzero.any():
+            smoothed_linear_block[mask_nonzero, :] = num[mask_nonzero, :] / den[mask_nonzero, None]
+        if (~mask_nonzero).any():
+            smoothed_linear_block[~mask_nonzero, :] = linear_block[~mask_nonzero, :]
+
+        # back to dB
+        smoothed_db_block = 10.0 * cp.log10(smoothed_linear_block + eps)
+
+        # write block to host
+        result_flat[:, c0:c1] = cp.asnumpy(smoothed_db_block)
+
+        # free block GPU memory promptly
+        del flat_block_cp, linear_block, linear_sorted, weighted_vals, csum_vals, num, smoothed_linear_block, smoothed_db_block
+        cp._default_memory_pool.free_all_blocks()
+
+    # reshape back to original shape and move axis back to original
+    reshaped = result_flat.reshape((n_freq,) + rest_shape)
+    smoothed = np.moveaxis(reshaped, 0, axis)
+    return smoothed
+
+
 def parallel_spectral_analysis():
     dir_list = ['/data/QNAP1_Data/Data/']
-    # for y, ms in [[2024, [4,5,6,7,8,9,10,11,12]], [2025, [1,2,3,4,5,6,7]]]:
-    for m in [2]:
-        t_start = datetime(year=2025, month=m, day=1)
-        # t_end = t_start + relativedelta(months=1)
-        t_end = t_start + relativedelta(days=2)
-        n_minutes = (t_end - t_start).total_seconds() // 60
-        
-        channels = [750, 788, 875, 1475]
-        for dir_path in dir_list:
-            args_list = []
-            prepro_para = {
-                'target_sps': 100,
-                'target_spatial_res': 1,
-                'n_minute': n_minutes,
-                'freqmin': 0.01,
-                'freqmax': 49.9,
-            }
+    for y, ms in [[2024, [4,5,6,7,8,9,10,11,12]], [2025, [1,2,3,4,5,6,7]]]:
+        for m in ms:
+            t_start = datetime(year=y, month=m, day=1)
+            t_end = t_start + relativedelta(months=1)
+            # t_end = t_start + relativedelta(days=3)
+            n_minutes = (t_end - t_start).total_seconds() // 60
             
-            filepath_array, timestamps = get_filepath_array(dir_path, t_start, t_end)
-            t_start = timestamps[0].replace(microsecond=0)
-            print(f'Data running from {t_start} to {timestamps[-1].replace(microsecond=0)}')
-            data = get_data_from_array(filepath_array, prepro_para, t_start, timestamps, duration=timedelta(minutes=n_minutes), channels=channels)
-        
-            for i, channel in enumerate(channels):
-                run_prepro_para = prepro_para.copy()
-                run_prepro_para.update({'cha1':channel,
-                                        'cha2':channel+1})
-                channel_data = data[:,i]
-                #                 dir_path, prepro_para, t_start, save_spec, data, window_length, plot_tides
-                #                 dir_path, prepro_para, t_start, save_ppsd, data, window_length
-                args_list.append((dir_path, run_prepro_para, t_start, True, channel_data))
-        
-            # p = multiprocessing.Pool(multiprocessing.cpu_count())
-            # with tqdm(total=len(args_list), desc=f"{dir_path} spectrograms", position=0) as pbar:
-            #     for _ in p.starmap(ts_spectrogram, args_list, chunksize=1):
-            #         pbar.update(1)
-            # p.close()
+            channels = [750, 788, 875, 1475]
+            for dir_path in dir_list:
+                args_list = []
+                prepro_para = {
+                    'samp_freq': 100,
+                    'target_spatial_res': 1,
+                    'n_minute': n_minutes,
+                    'freqmin': 0.01,
+                    'freqmax': 49.9,
+                }
+                
+                filepath_array, timestamps = get_filepath_array(dir_path, t_start, t_end)
+                t_start = timestamps[0].replace(microsecond=0)
+                print(f'Data running from {t_start} to {timestamps[-1].replace(microsecond=0)}')
+                data = get_data_from_array(filepath_array, prepro_para, t_start, timestamps, duration=timedelta(minutes=n_minutes), channels=channels)
             
-            p = multiprocessing.Pool(multiprocessing.cpu_count())
-            with tqdm(total=len(args_list), desc=f"{dir_path} PPSDs", position=0) as pbar:
-                for _ in p.starmap(ppsd, args_list, chunksize=1):
-                    pbar.update(1)
-            p.close()
+                for i, channel in enumerate(channels):
+                    run_prepro_para = prepro_para.copy()
+                    run_prepro_para.update({'cha1':channel,
+                                            'cha2':channel+1})
+                    channel_data = data[:,i]
+                    #                 dir_path, prepro_para, t_start, save_spec, data, window_length, plot_tides
+                    #                 dir_path, prepro_para, t_start, save_ppsd, data, window_length
+                    args_list.append((dir_path, run_prepro_para, t_start, False, channel_data))
+            
+                p = multiprocessing.Pool(multiprocessing.cpu_count())
+                with tqdm(total=len(args_list), desc=f"{dir_path} spectrograms", position=0) as pbar:
+                    for _ in p.starmap(ts_spectrogram, args_list, chunksize=1):
+                        pbar.update(1)
+                p.close()
+                
+                p = multiprocessing.Pool(multiprocessing.cpu_count())
+                with tqdm(total=len(args_list), desc=f"{dir_path} PPSDs", position=0) as pbar:
+                    for _ in p.starmap(ppsd, args_list, chunksize=1):
+                        pbar.update(1)
+                p.close()
 
 def ts_spectrogram(dir_path:str, prepro_para:dict, t_start:datetime, save_spec=False, data=None, window_length=600, plot_tides=None):
-    cha1, sps, freqmin, freqmax, n_minute = prepro_para.get('cha1'), prepro_para.get('target_sps'), prepro_para.get('freqmin'), prepro_para.get('freqmax'), prepro_para.get('n_minute')
-    
-    out_dir = f"./results/figures/PSD_Experiments/{window_length}s_window/"
+    cha1, sps, freqmin, freqmax, n_minute = prepro_para.get('cha1'), prepro_para.get('samp_freq'), prepro_para.get('freqmin'), prepro_para.get('freqmax'), prepro_para.get('n_minute')
+    # out_dir = f"./results/figures/PSD_Experiments/{window_length}s_window/"
+    out_dir = f"./results/figures/PSD_Experiments/smoothing_check/"
     
     if type(data)==type(None):
         reader_array, timestamps = get_reader_array(dir_path)
@@ -324,8 +392,9 @@ def ts_spectrogram(dir_path:str, prepro_para:dict, t_start:datetime, save_spec=F
 
 
 def ppsd(dir_path:str, prepro_para:dict, t_start:datetime, save_ppsd=False, data=None, window_length=3600):
-    cha1, sps, f1, f2, n_minute = prepro_para.get('cha1'), prepro_para.get('target_sps'), prepro_para.get('freqmin'), prepro_para.get('freqmax'), prepro_para.get('n_minute')
-    out_dir = f"./results/figures/PSD_Experiments/{window_length}s_window/ppsds/"
+    cha1, sps, f1, f2, n_minute = prepro_para.get('cha1'), prepro_para.get('samp_freq'), prepro_para.get('freqmin'), prepro_para.get('freqmax'), prepro_para.get('n_minute')
+    # out_dir = f"./results/figures/PSD_Experiments/{window_length}s_window/ppsds/"
+    out_dir = f"./results/figures/PSD_Experiments/smoothing_check/ppsds/"
     
     if type(data)==type(None):
         reader_array, timestamps = get_reader_array(dir_path)
@@ -437,7 +506,7 @@ def get_spec_files(dir:str, t0:datetime, t1:datetime, target_cha:int):
 
 
 def spectral_power_ts(f_ranges:list, window_length:timedelta, target_cha=None, t0=None, t1=None):
-    files = get_spec_files('/data/localraid/saved_specs/dense_f/', t0, t1, target_cha)
+    files = get_spec_files('/data/localraid/saved_specs/600s_window/', t0, t1, target_cha)
     
     mean_df = pd.DataFrame(columns=['timestamp', *[f'{f_range[0]}_{f_range[1]}' for f_range in f_ranges]]).set_index('timestamp')
     t_size = np.loadtxt(files[0][0], delimiter=',').shape[1]
@@ -448,7 +517,6 @@ def spectral_power_ts(f_ranges:list, window_length:timedelta, target_cha=None, t
         spec = np.loadtxt(file_path, delimiter=',')
         f_size, t_size = spec.shape
         f_bins = np.linspace(0.0, 50.016666666666666, f_size)
-        
         for f_min, f_max in f_ranges:
             f_idxs = [i for i, f in enumerate(f_bins) if f_min <= f <= f_max]
             freq_mean = spec[f_idxs, :].mean(axis=0)
@@ -459,18 +527,29 @@ def spectral_power_ts(f_ranges:list, window_length:timedelta, target_cha=None, t
     
     # mean_df = pd.DataFrame(mean_fs)
     mean_df.sort_index(inplace=True)
-    mean_df.plot(figsize=(10,3))
+    ax = mean_df.plot(figsize=(10,3))
+    
+    # storms_data = pd.read_csv('./results/checkpoints/storms.csv', sep=',', index_col=0, comment='#', parse_dates=True)
+    # for storm in storms_data.index:
+    #     dates = storms_data.loc[storm, ['start_date', 'end_date']]
+    #     ax.axvspan(np.datetime64(dates['start_date']), np.datetime64(dates['end_date'])+1, label=storm, facecolor='r', alpha=0.3)
+    
+    ax.set_ylabel('Nano strainrate PSD (dB)')
+    ax.xaxis.set_major_locator(mdates.MonthLocator())
+    ax.set_xlim(t0, t1)
+    ax.grid(axis='x')
     plt.tight_layout()
-    plt.savefig(f'./results/figures/ts_spec_lines/low_f_{t0}_{t1}_{window_length.total_seconds()/60}min_avg.png', bbox_inches='tight')
+    f_label = 'high' if f_ranges[0][0] > 1 else 'low'
+    plt.savefig(f'./results/figures/ts_spec_lines/{t0}_{t1}_{target_cha}_{f_label}_{window_length.total_seconds()/60}min_avg.png', bbox_inches='tight')
     # plt.show()
 
 
-def plot_spectrogram(target_cha, t0, t1, norm=False, tides=False, markers=None, weather=[], c_range=None, octave_smoothing=True):
+def plot_spectrogram(target_cha, t0, t1, window_len=3600, norm=False, tides=False, markers=None, weather=[], c_range=None, octave_smoothing=True):
     delta = (t1 - t0).total_seconds()
-    files = get_spec_files('/data/localraid/saved_specs/', t0, t1, target_cha)
+    files = get_spec_files(f'/data/localraid/saved_specs/{window_len}s_window/', t0, t1, target_cha)
     
     if norm:
-        means_df = pd.read_csv(f'./results/checkpoints/dense_monthly_means_{target_cha}.csv', index_col=0, header=0)
+        means_df = pd.read_csv(f'./results/checkpoints/{window_len}s_monthly_means_{target_cha}.csv', index_col=0, header=0)
         if delta <= 2419200: means_df = means_df[pd.date_range(t0, t1, freq='MS').strftime("%Y-%m-%d").to_list()]
         else:                means_df = means_df[pd.date_range(t0, t1, freq='MS')[:-1].strftime("%Y-%m-%d").to_list()]
         means = np.asarray(means_df.mean(axis=1))
@@ -484,7 +563,7 @@ def plot_spectrogram(target_cha, t0, t1, norm=False, tides=False, markers=None, 
         df_era5 = plot_era5_csv('./results/checkpoints/combined_weather.csv', plot_daily, get_df=True)
         weather_df = pd.concat([df_wave, df_met, df_era5], axis=1)[t0.date():t1.date()]
     height_ratios = [2] + [1] * max(0, len(weather))
-    if delta <= 2419200:    fig, axs = plt.subplots(nrows, 1, figsize=(12, 4*nrows), sharex=True, gridspec_kw={'height_ratios': height_ratios})
+    if    delta <= 2419200: fig, axs = plt.subplots(nrows, 1, figsize=(12, 4*nrows), sharex=True, gridspec_kw={'height_ratios': height_ratios})
     elif len(weather) == 0: fig, axs = plt.subplots(nrows, 1, figsize=(ncols, 8), sharex=True)
     else:                   fig, axs = plt.subplots(nrows, 1, figsize=(ncols, 4*nrows), sharex=True, gridspec_kw={'height_ratios': height_ratios})
     
@@ -495,35 +574,36 @@ def plot_spectrogram(target_cha, t0, t1, norm=False, tides=False, markers=None, 
         if norm: spec -= means[:,np.newaxis]
         spec_min = min(np.nanmin(np.nanpercentile(spec, 1)), spec_min)
         spec_max = max(np.nanmax(np.nanpercentile(spec,99)), spec_max)
-        del spec
-        gc.collect()
+        del spec; gc.collect()
     if c_range:
-        if spec_min < c_range[0] or spec_max > c_range[1]:
-            print(f'spec exceeds given c_range! c_range: {c_range} || spec_min: {spec_min}; spec_max: {spec_max}')
+        # if spec_min < c_range[0] or spec_max > c_range[1]:
+        #     print(f'spec exceeds given c_range! c_range: {c_range} || spec_min: {spec_min}; spec_max: {spec_max}')        # 15/01/26: commented out while doing normalised plot
         spec_min, spec_max = c_range
     cumulative_offsets = np.cumsum([0] + time_bin_counts[:-1])
     with tqdm(total=len(files), desc=f'Loading and plotting spectrogram files') as pbar:
-        for i, (file_path, t_start) in enumerate(files):
+        for i, (file_path, t_start) in enumerate(files): 
             ax = axs if len(weather) == 0 else axs[0]
             spec = np.loadtxt(file_path, delimiter=',')
             if norm: spec -= means[:,np.newaxis]
             
             f_size, t_size = spec.shape
             f_bins = np.linspace(0.01, 50.016666666666666, f_size)
-            if octave_smoothing: spec = octave_smooth(spec, f_bins)
+            # if octave_smoothing: spec = octave_smooth(spec, f_bins)
+            if octave_smoothing: spec = octave_smooth_gpu(spec, f_bins)
             t_bin_length = (datetime.strptime(file_path.split('/')[-1].split('_')[2], '%Y-%m-%d %H:%M:%S') - t_start).total_seconds() / t_size
             time_axis = [t_start + timedelta(seconds=t_bin_length * j) for j in range(t_size)]
             col_offset = cumulative_offsets[i]
             y_edges = np.linspace(f_bins[0], f_bins[-1], f_size+1)
             x_edges = np.arange(col_offset, col_offset + t_size + 1)
-            im = ax.pcolormesh(x_edges, y_edges, spec, cmap='bwr' if norm else 'jet',
-                        vmin=spec_min, vmax=spec_max, shading='auto')
+            ax.pcolormesh(x_edges, y_edges, spec, cmap='bwr' if norm else 'jet',
+                        vmin=spec_min, vmax=spec_max, shading='auto', rasterized=True)
             ax.set_yscale('log')
             if not hasattr(ax, 'all_time_axes'):
                 ax.all_time_axes = []
             ax.all_time_axes.append((col_offset, time_axis))
+            del spec; gc.collect()
             pbar.update(1)
-        
+    
     if tides or len(weather) > 0:
         spec_times = []
         spec_positions = []
@@ -610,7 +690,13 @@ def plot_spectrogram(target_cha, t0, t1, norm=False, tides=False, markers=None, 
         ax.set_xticks(major_tick_positions)
         ax.set_xticklabels(major_tick_labels, rotation=30)
     
-    fig.colorbar(im, ax=axs[-1] if len(weather) > 0 else ax, label='Nano strainrate PSD (dB)', pad=0.40 if len(weather) > 0 else 0.2, aspect=40, orientation="horizontal")
+    # fig.colorbar(im, ax=axs[-1] if len(weather) > 0 else ax, label='Nano strainrate PSD (dB)', pad=0.40 if len(weather) > 0 else 0.2, aspect=40, orientation="horizontal")
+    sm = ScalarMappable(norm=Normalize(vmin=spec_min, vmax=spec_max),
+                        cmap=('bwr' if octave_smoothing and norm else ('bwr' if norm else 'jet')))
+    sm.set_array([])
+    fig.colorbar(sm, ax=axs[-1] if len(weather) > 0 else ax,
+                 label='Nano strainrate PSD (dB)', pad=0.40 if len(weather) > 0 else 0.2,
+                 aspect=40, orientation="horizontal")
     ax.set_title(rf"{t0.date()} to {t1.date()} at channel {target_cha}")
     plt.grid(ax, which='both' if delta <= 2419200 else 'major', linewidth=0.1, alpha=0.5)
     plt.subplots_adjust(hspace=0)
@@ -620,24 +706,178 @@ def plot_spectrogram(target_cha, t0, t1, norm=False, tides=False, markers=None, 
         axs[2].grid(which='major')
         plt.sca(axs[-1])
         plt.xticks(rotation=90)
-    else: 
-        plt.tight_layout()
-    f_name = f'./results/figures/adapted_specs/spec_{t0}_{t1}_{target_cha}{"_tides" if tides else ""}{"_norm" if norm else ""}{"_smooth" if octave_smoothing else ""}.png'
-    plt.savefig(f_name, bbox_inches='tight')
-    plt.close()
-    del day_starts
-    gc.collect()
+    # else: 
+    #     plt.tight_layout()
+    del day_starts, months, month_days; gc.collect()
+    f_name = f'./results/figures/adapted_specs/spec_{t0}_{t1}_{target_cha}_{window_len}s_{"_tides" if tides else ""}{"_norm" if norm else ""}{"_smooth" if octave_smoothing else ""}.png'
+    plt.savefig(f_name, bbox_inches='tight', dpi=80)        # 16/01/25: reduced dpi from 120
+    plt.close(fig); gc.collect()
 
 
-def get_spectral_mean(target_cha=None, t0=None, t1=None):
-    files = get_spec_files('/data/localraid/saved_specs/sparse_f/', t0, t1, target_cha)
+def plot_weather_spec(target_cha, t0, t1, window_len=3600, c_range=None, octave_smoothing=True):
+    delta = (t1 - t0).total_seconds()
+    files = get_spec_files(f'/data/localraid/saved_specs/{window_len}s_window/', t0, t1, target_cha)
     
+    means_df = pd.read_csv(f'./results/checkpoints/{window_len}s_monthly_means_{target_cha}.csv', index_col=0, header=0)
+    if delta <= 2419200: means_df = means_df[pd.date_range(t0, t1, freq='MS').strftime("%Y-%m-%d").to_list()]
+    else:                means_df = means_df[pd.date_range(t0, t1, freq='MS')[:-1].strftime("%Y-%m-%d").to_list()]
+    means = np.asarray(means_df.mean(axis=1))
+    
+    plot_daily = False # if delta <= 2419200 else True
+    df_wave = plot_waverider_csv('./results/checkpoints/hpg_wave.csv', plot_daily, get_df=True)
+    df_met = plot_met_csv('./results/checkpoints/hpg_met.csv', plot_daily, get_df=True)
+    df_era5 = plot_era5_csv('./results/checkpoints/combined_weather.csv', plot_daily, get_df=True)
+    weather_df = pd.concat([df_wave, df_met, df_era5], axis=1)[t0.date():t1.date()]
+    weather_df = weather_df.resample(timedelta(hours=1)).mean()
+    
+    
+    fig, ax = plt.subplots(1,1, figsize=(12,4))
+    
+    time_bin_counts = []; spec_min = 0; spec_max = 0
+    for f in files:     # there has to be a more efficient way to do this
+        spec = np.loadtxt(f[0], delimiter=',')
+        time_bin_counts.append(spec.shape[1])
+        spec -= means[:,np.newaxis]
+        spec_min = min(np.nanmin(np.nanpercentile(spec, 1)), spec_min)
+        spec_max = max(np.nanmax(np.nanpercentile(spec,99)), spec_max)
+        del spec; gc.collect()
+    if c_range:
+        # if spec_min < c_range[0] or spec_max > c_range[1]:
+        #     print(f'spec exceeds given c_range! c_range: {c_range} || spec_min: {spec_min}; spec_max: {spec_max}')        # 15/01/26: commented out while doing normalised plot
+        spec_min, spec_max = c_range
+    cumulative_offsets = np.cumsum([0] + time_bin_counts[:-1])
+    with tqdm(total=len(files), desc=f'Loading and plotting spectrogram files') as pbar:
+        for i, (file_path, t_start) in enumerate(files): 
+            spec = np.loadtxt(file_path, delimiter=',')
+            spec -= means[:,np.newaxis]
+            
+            f_size, t_size = spec.shape
+            f_bins = np.linspace(0.01, 50.016666666666666, f_size)
+            # if octave_smoothing: spec = octave_smooth(spec, f_bins)
+            if octave_smoothing: spec = octave_smooth_gpu(spec, f_bins)
+            t_bin_length = (datetime.strptime(file_path.split('/')[-1].split('_')[2], '%Y-%m-%d %H:%M:%S') - t_start).total_seconds() / t_size
+            time_axis = [t_start + timedelta(seconds=t_bin_length * j) for j in range(t_size)]
+            col_offset = cumulative_offsets[i]
+            y_edges = np.linspace(f_bins[0], f_bins[-1], f_size+1)
+            x_edges = np.arange(col_offset, col_offset + t_size + 1)
+            ax.pcolormesh(x_edges, y_edges, spec, cmap='bwr',
+                        vmin=spec_min, vmax=spec_max, shading='auto', rasterized=True)
+            ax.set_yscale('log')
+            if not hasattr(ax, 'all_time_axes'):
+                ax.all_time_axes = []
+            ax.all_time_axes.append((col_offset, time_axis))
+            del spec; gc.collect()
+            pbar.update(1)
+    
+    spec_times = []
+    spec_positions = []
+    for col_offset, time_axis in ax.all_time_axes:
+        for idx, t in enumerate(time_axis):
+            spec_times.append(pd.Timestamp(t))
+            spec_positions.append(col_offset + idx)
+
+    spec_times = pd.Series(spec_positions, index=spec_times)
+    weather_x = []
+    for ts in weather_df.index:
+        ts = pd.Timestamp(ts)
+        diffs = np.abs(spec_times.index - ts)
+        if len(diffs) == 0:
+            weather_x.append(np.nan)
+        else:
+            nearest_idx = diffs.argmin()
+            weather_x.append(spec_times.iloc[nearest_idx])
+
+    for col, label, f_low, f_high in [["Wind(m/s)", 'Wind speed (m/s)', 0.2, 0.5], ['Hs(Hm0)(m)', 'Sig. Wave height (m)', 10.0, 20.0]]:
+        weather_x = np.array(weather_x)
+        valid = ~np.isnan(weather_x)
+        w = weather_df[col].astype(float).to_numpy()
+        w_min, w_max = np.nanmin(w), np.nanmax(w)
+
+        def w_to_freq(ws, f0, f1):
+            return f_low + (np.clip(ws, w_min, w_max)-w_min)/(w_max-w_min+1e-12)*(f1 - f0)
+        
+        w_freq = w_to_freq(w, f_low, f_high)
+        ax.plot(weather_x[valid], w_freq[valid], color='k',
+                lw=1.2, alpha=0.5, zorder=10)
+
+        from mpl_toolkits.axes_grid1.inset_locator import inset_axes
+        y0_ax = ax.transAxes.inverted().transform(ax.transData.transform((0, f_low)))[1]
+        y1_ax = ax.transAxes.inverted().transform(ax.transData.transform((0, f_high)))[1]
+        band_h = y1_ax - y0_ax
+
+        ax_w = inset_axes(
+            ax,
+            width="8%",
+            height="100%",
+            loc="upper right",
+            bbox_to_anchor=(0.0, y0_ax, 1.0, band_h),
+            bbox_transform=ax.transAxes,
+            borderpad=0.0
+        )
+        ax_w.patch.set_alpha(0)
+        ax_w.set_ylim(min(0, w_min), w_max)
+
+        ax_w.yaxis.set_label_position("right")
+        ax_w.yaxis.tick_right()
+        ax_w.set_ylabel(label, size=8)
+        ax_w.spines['top'].set_visible(False)
+        ax_w.spines['bottom'].set_visible(False)
+        ax_w.spines['left'].set_visible(False)
+        ax_w.set_xticks([])    
+    
+    day_starts = []
+    for col_offset, time_axis in getattr(ax, 'all_time_axes', []):
+        day_starts.extend([(col_offset + idx, t) for idx, t in enumerate(time_axis)])
+    positions, times = zip(*day_starts)
+    times = pd.Series(times, index=positions)
+    day_starts = times[times.dt.hour == 0]
+    minor_tick_positions = day_starts.index
+    months = pd.Series(times.dt.to_period('M').unique())
+    major_tick_positions = []
+    major_tick_labels = []
+    for month in months:
+        month_days = day_starts[day_starts.dt.to_period('M') == month]
+        if len(month_days) > 0:
+            idxs = np.linspace(0, len(month_days)-1, 6, dtype=int)[:-1]
+            for i in idxs:
+                major_tick_positions.append(month_days.index[i])
+                major_tick_labels.append(month_days.iloc[i].strftime('%Y-%m-%d'))
+    
+    sm = ScalarMappable(norm=Normalize(vmin=spec_min, vmax=spec_max),
+                        cmap='bwr')
+    sm.set_array([])
+    # use a small fraction + pad so horizontal colorbar is placed outside axes without overlapping
+    cbar = fig.colorbar(sm, ax=ax, label='Nano strainrate PSD (dB)', pad=0.07)
+                        # pad=0.02, fraction=0.035, aspect=40)
+    # fig.subplots_adjust(right=0.2)
+    ax.set_title(rf"{t0.date()} to {t1.date()} at channel {target_cha}")
+    ax.set_xticks(major_tick_positions, major_tick_labels)
+    ax.set_xticks(minor_tick_positions, minor=True)
+    ax.tick_params(axis='x', which='minor', length=2, labelsize=0)
+    
+    ax.tick_params(axis='x', which='both',
+                bottom=True, top=False, labelbottom=True,
+                labelrotation=90)  # rotate x tick labels
+    ax.tick_params(axis='y', which='both',
+                left=True, right=False, labelleft=True, labelright=False)
+    ax.set_ylabel('Frequency (Hz)')
+    # plt.setp(ax.get_xticklabels(), rotation=90)
+    # plt.xticks(rotation=90)
+    # plt.grid(ax, which='both' if delta <= 2419200 else 'major', linewidth=0.1, alpha=0.5)
+    del day_starts, months, month_days; gc.collect()
+    f_name = f'./results/figures/adapted_specs/months_norm/spec_{t0}_{t1}_{target_cha}_{window_len}s_{"_smooth" if octave_smoothing else ""}.png'
+    plt.savefig(f_name, bbox_inches='tight')
+    plt.close(fig); gc.collect()
+
+
+def get_spectral_mean(target_cha=None, t0=None, t1=None, window_len=3600):
+    files = get_spec_files(f'/data/localraid/saved_specs/{window_len}s_window/', t0, t1, target_cha)
     mean_df = pd.DataFrame()
-    for i, (file_path, t_start) in enumerate(files):
+    for file_path, t_start in files:
         spec = np.loadtxt(file_path, delimiter=',')
         means = np.nanmean(spec, axis=1)
         mean_df = pd.concat([mean_df, pd.Series([t_start.date(), *means])], axis=1)
-    mean_df.to_csv(f'./results/checkpoints/sparse_monthly_means_{target_cha}.csv', header=False)
+    mean_df.to_csv(f'./results/checkpoints/{window_len}s_monthly_means_{target_cha}.csv', header=False)
 
 
 def calc_angle_between_points(lat1, lon1, lat2, lon2):
@@ -688,7 +928,7 @@ def sensitivity_analysis(gps_track:pd.DataFrame, target_ch, plot=True):
 
 
 if __name__ == '__main__':
-    parallel_spectral_analysis()
+    # parallel_spectral_analysis()
     
     markers_arr = [
         # datetime(2024, 5, 30),
@@ -711,7 +951,6 @@ if __name__ == '__main__':
     #     get_spectral_mean(cha, t0, t1)
     
     weather_arr = [['Wind(m/s)','Wind speed (m/s)'],['Hs(Hm0)(m)','Wave height (m)']]
-    # f_ranges = [[0.01, 0.05], [0.1, 0.6], [0.7, 1.1]]       # [0.01, 0.05], [0.1, 0.6], [0.7, 1.1], [1.2, 5], [8, 11], [12, 25]
     # avg_time = timedelta(days=5)
     c_range_arr = [-30.128117506053417, 38.67278348993597]              # for all non-norm specs 2024-04 to 2025-07
     c_range_norm_arr = [-27.121361009693757, 26.618877627443347]        # for norm specs
@@ -719,17 +958,33 @@ if __name__ == '__main__':
     c_range_nodes_arr = [-32.7434695431312, 33.040064418459345]
     c_range_norm_nodes_arr = [-23.176340627918208, 24.762160092331]
     
-    t0 = datetime(year=2024, month=12, day=8); t1 = datetime(year=2025, month=12, day=11)
-    # spectral_power_ts(f_ranges, avg_time, target_cha=788, t0=t0, t1=t1)
-    # for cha in [750, 788, 875, 1475]:
-        # plot_spectrogram(target_cha=cha, t0=t0, t1=t1)
-    #     plot_spectrogram(target_cha=cha, t0=t0, t1=t1, norm=True, markers=markers_arr, weather=weather_arr, c_range=c_range_norm_arr)
+    t0 = datetime(year=2024, month=4, day=1); t1 = datetime(year=2025, month=4, day=1)
+    window_len = 3600
+    # with tqdm(total=8, desc=f"Spectrograms - Aprils", position=0) as pbar:
+    #     for cha in [750, 788, 875, 1475]:
+    #         plot_spectrogram(target_cha=cha, t0=t0, t1=t1, window_len=window_len); pbar.update(1)
+    #         plot_spectrogram(target_cha=cha, t0=t0, t1=t1, window_len=window_len, norm=True, markers=markers_arr, weather=weather_arr, c_range=c_range_norm_arr); pbar.update(1)
     
-    # t0 = datetime(year=2025, month=4, day=1); t1 = datetime(year=2025, month=4, day=10)
-    # # spectral_power_ts(f_ranges, avg_time, target_cha=788, t0=t0, t1=t1)
-    # for cha in [750, 788, 875, 1475]:
-    #     plot_spectrogram(target_cha=cha, t0=t0, t1=t1, c_range=c_range_nodes_arr)
-        # plot_spectrogram(target_cha=cha, t0=t0, t1=t1, norm=True, markers=markers_arr, weather=weather_arr, c_range=c_range_norm_nodes_arr)
+    t0 = datetime(year=2024, month=7, day=1); t1 = datetime(year=2025, month=7, day=1)
+    # with tqdm(total=8, desc=f"Spectrograms - Julys", position=0) as pbar:
+    #     for cha in [750, 788, 875, 1475]:
+    #         plot_spectrogram(target_cha=cha, t0=t0, t1=t1, window_len=window_len); pbar.update(1)
+    #         plot_spectrogram(target_cha=cha, t0=t0, t1=t1, window_len=window_len, norm=True, markers=markers_arr, weather=weather_arr, c_range=c_range_norm_arr); pbar.update(1)
+    
+    for y, ms in [[2024, [4,5,6,7,8,9,10,11,12]], [2025, [1,2,3,4,5,6,7]]]:
+        for m in ms:
+            t0 = datetime(year=y, month=m, day=1)
+            t1 = t0 + relativedelta(months=1)
+            with tqdm(total=4, desc=f"Spectrograms - {y}/{m}", position=0) as pbar:
+                for cha in [750, 788, 875, 1475]:
+                    plot_weather_spec(cha, t0, t1, window_len=600, c_range=c_range_nodes_arr); pbar.update(1)
+            
+    # with tqdm(total=8, desc="Spec time series", position=0) as pbar_outer:
+    #     f_ranges_low = [[0.01, 0.05], [0.1, 0.6], [0.7, 1.1]]
+    #     f_ranges_high = [[1.2, 5], [7, 11], [12, 25]]
+    #     for cha in [750, 788, 875, 1475]:
+    #         spectral_power_ts(f_ranges_low, timedelta(days=5), target_cha=cha, t0=t0, t1=t1); pbar_outer.update(1)
+    #         spectral_power_ts(f_ranges_high, timedelta(days=2), target_cha=cha, t0=t0, t1=t1); pbar_outer.update(1)
     
     ### tidal plots
     # t0 = datetime(year=2025, month=1, day=1); t1 = datetime(year=2025, month=2, day=1)

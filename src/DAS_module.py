@@ -110,18 +110,18 @@ def preprocess_raw_make_stat(tdata,prepro_para):
                                 zerophase=True))
 
     # make downsampling if needed
-    if abs(samp_freq-sps) > 1E-4:
-        decimation_factor = int(np.round(sps/samp_freq))
-        if decimation_factor > 10:
-            raise ValueError('more than one downsampling step is required')
+    # if abs(samp_freq-sps) > 1E-4:
+    #     decimation_factor = int(np.round(sps/samp_freq))
+    #     if decimation_factor > 10:
+    #         raise ValueError('more than one downsampling step is required')
         
-        # need to test some parameters of the decimate function
-        tdata = scipy.signal.decimate(tdata,
-                                      decimation_factor,
-                                      n=2,
-                                      ftype='iir',
-                                      axis=1,
-                                      zero_phase=True)  
+    #     # need to test some parameters of the decimate function
+    #     tdata = scipy.signal.decimate(tdata,
+    #                                   decimation_factor,
+    #                                   n=2,
+    #                                   ftype='iir',
+    #                                   axis=1,
+    #                                   zero_phase=True)  
 
     # statistic to detect segments that may be associated with earthquakes
     trace_madS = np.zeros(nsta,dtype=np.float32)
@@ -184,8 +184,8 @@ def smooth_source_spect(fft1,cc_para):
     this function smoothes amplitude spectrum of the 2D spectral matrix. (used in S1)
     PARAMETERS:
     ---------------------
-    cc_para: dictionary containing useful cc parameters
     fft1:    source spectrum matrix
+    cc_para: dictionary containing useful cc parameters
 
     RETURNS:
     ---------------------
@@ -214,7 +214,7 @@ def smooth_source_spect(fft1,cc_para):
         sfft1 = np.conj(fft1)
 
     else:
-        raise ValueError('no correction correlation method is selected at L59')
+        raise ValueError('no correction correlation method is selected')
 
     return sfft1
 
@@ -281,7 +281,7 @@ def correlate(fft1_smoothed_abs,fft2,D,Nfft):
 
     # remove abnormal trace
     ampmax = np.max(s_corr,axis=1)
-    tindx  = np.where( (ampmax<20*np.median(ampmax)) & (ampmax>0))[0]
+    tindx  = np.where((ampmax<20*np.median(ampmax)) & (ampmax>0))[0]
     s_corr = s_corr[tindx,:]
 
     # #####################################

@@ -22,7 +22,7 @@ def load_xcorr(file_path, normalise=False, chas=None):
         xdata = xdata/np.sqrt(np.sum(xdata**2))
     stats = Stats()
     stats.delta = 1/100
-    stats.npts = 801
+    stats.npts = xdata.shape[0]
     if chas is not None: 
         for cha in chas:
             stream.append(Trace(xdata[:, cha], stats))
@@ -60,48 +60,51 @@ def get_dispersion(traces, dx, cmin, cmax, dc, fmin, fmax, f_norm=False, normali
     """
     nr = len(traces) 
     dt = traces[0].stats.delta
-    print('dt: ', dt)
     nt = traces[0].stats.npts
-    print('nt: ', nt)
-    t = np.linspace(0.0, nt*dt, nt)
-    traces.detrend()
-    traces.taper(0.05,type='hann')
-    U, f = get_fft(traces, dt, nt)
-    f = f[f >= (0 or fmin)]; f = f[f <= fmax]
-    #dc = 10.0      # phase velocity increment
+    # t = np.linspace(0.0, nt*dt, nt)
+    # traces.detrend()
+    # traces.taper(0.05,type='hann')
+    # U, f = get_fft(traces, dt, nt)
+    # f = f[f >= (0 or fmin)]; f = f[f <= fmax]
+    t = np.arange(nt) * dt
+    traces.detrend(type='linear')
+    traces.taper(max_percentage=0.05, type='hann')
+    traces_array = np.vstack([tr.data if hasattr(tr, 'data') else np.asarray(tr) for tr in traces])
+    U_all, f_all = get_fft(traces_array, dt, nt)
+    freq_mask = (f_all >= fmin) & (f_all <= fmax)
+    f = f_all[freq_mask]
+    U = U_all[:, freq_mask]
+    if U.shape[1] == 0:
+        raise RuntimeError(f"No frequency bins in [{fmin},{fmax}] Hz (f_all range: {f_all.min()}-{f_all.max()})")
+    
     c = np.arange(cmin,cmax,dc) # set phase velocity range
-    df = f[1] - f[0]
-    print(f'df: {df}')
-    # fmax_idx = int((fmax-fmin)//df)         # This is stupid why have you called it fmax_idx if it's not the index it's the element count why have you done this fix this TODO: fix this please
     print('Frequency resolution up to %5.2f Hz: %i bins' % (fmax, len(f)))
     print('Phase velocity resolution up to %5.2f m/s: %i bins' % (cmax, len(c)))
-    # print(f'c: {c}')
-    # print(f'f: {f}')
     img = np.zeros((len(c),len(f)))
     x = np.linspace(0.0, (nr-1)*dx, nr)
-    # if fmax_idx > len(f):
-    #     print(f'WARNING: maximum frequency too high. fmax_idx: {fmax_idx}; len(f): {len(f)}. Setting fmax_idx to {len(f)}')
-    #     fmax_idx = len(f)
-    epsilon = 1e-10
-    for fi in range(len(f)): # loop over frequency range
-        for ci in range(len(c)): # loop over phase velocity range
-            k = 2.0*np.pi*f[fi]/(c[ci])
-            if np.any(np.isnan(U[:, fi])) or np.any(np.isinf(U[:, fi])):
-                print(f"Warning: NaN or inf in U[:, {fi}]")
-            if np.any(np.isnan(x)) or np.any(np.isinf(x)) or np.any(dx == 0):
-                print("Warning: Invalid values in x or dx")
-            if np.any(np.isnan(k * x)) or np.any(np.isinf(k * x)):
-                print(f"Warning: Invalid values in k*x at frequency index {fi}")
-            # if np.any(np.abs(U[:, fi]) < epsilon):
-            #     print(f"Warning: Small or zero values in U[:, {fi}]")
-            img[ci,fi] = 1/nr * np.abs(np.dot(np.exp(1.0j*k*x), U[:,fi]/np.abs(U[:,fi])))
-
+    
+    # epsilon = 1e-10
+    # for fi in range(len(f)): # loop over frequency range
+    #     for ci in range(len(c)): # loop over phase velocity range
+    #         k = 2.0*np.pi*f[fi]/(c[ci])
+    #         img[ci,fi] = 1/nr * np.abs(np.dot(np.exp(1.0j*k*x), U[:,fi]/np.abs(U[:,fi])))
+    eps = 1e-12
+    for fi in range(U.shape[1]):  # loop over selected frequency bins
+        Uf = U[:, fi]
+        # protect against zero amplitude
+        amp = np.abs(Uf)
+        amp[amp < eps] = eps
+        phasor = Uf / amp
+        for ci in range(len(c)):  # loop over phase velocity range
+            k = 2.0 * np.pi * f[fi] / (c[ci])
+            # phase steering vector
+            steering = np.exp(1.0j * k * x)
+            img[ci, fi] = (1.0 / nr) * np.abs(np.dot(steering, phasor))
         if f_norm:
             img[:, fi] /= np.max(img[:, fi])
         if normalise:
             img = img/np.sqrt(np.sum(img**2))
    
-    
     return f,c,img,U,t
 
 
@@ -126,14 +129,9 @@ def get_max_cs(img, c, f, fmin, fmax, f_freq=1):
 
 
 if __name__ == '__main__':
-    # corr_path = './results/saved_corrs/2024-02-05 12:01:00_4320mins_f0.01:49.9__3850:5750_1m.txt'
-    # corr_path = './results/saved_corrs/2024-02-05 12:01:00_4320mins_f0.01:49.9__3300:3750_1m.txt'
-    # corr_path = './results/saved_corrs/2024-02-05 12:01:00_4320mins_f0.01:49.9__3850:8050_1m.txt'
-    # corr_path = './results/saved_corrs/2024-02-05 12:01:00_4320mins_f0.01:49.9__2000:3999_1m.txt'
-    # corr_path = './results/saved_corrs/2024-02-05 12:01:00_4320mins_100f0.01:50.0__4168:4568_1m.txt'
-    # corr_path = './results/saved_corrs/2024-02-05 12:01:00_1440mins_100f0.01:50.0__3850:5750_1m.txt'
-    # corr_path = './results/saved_corrs/2024-02-05 12:01:00_4320mins_20:00:00:02:00:00_12:00:00:18:00:00_100f0.01:50.0__3850:5750_1m.txt'
-    # corr_path = './results/saved_corrs/SeaDAS_CCF.txt'
+    # corr_path = '/data/localraid/saved_corrs/2025-02-16 00:00:00_4320mins_100f0.01:25.0__850:1650_10m.txt'
+    corr_path = '/data/localraid/saved_corrs/2025-02-16 00:00:00_4320mins_100f0.01:25.0_800:1600_10m_pws.txt'
+    # corr_path = '/data/localraid/saved_corrs/2024-11-04 00:00:00_1440mins_100f0.01:25.0__750:1750_10m.txt'
     
     stream = load_xcorr(corr_path)
     # stream.trim(UTCDateTime("19700101T00:00:08"))
@@ -145,17 +143,17 @@ if __name__ == '__main__':
         out_name = corr_name + '_dispersion'
         dx = 5.0
     else:    
-        corr_name = corr_path.split('/')[3][:-4]
-        name_splits = corr_name.rsplit('_', 4)
-        out_dir = f'./results/figures/{name_splits[0]}_{name_splits[3]}/'
+        corr_name = corr_path.split('/')[-1][:-4]
+        name_splits = corr_name.split('_')
+        out_dir = f'./results/figures/{name_splits[0]}_{name_splits[1]}_{name_splits[3]}/'
         out_name = corr_name + '_dispersion'
-        dx = float(corr_name.split('_')[-1].strip('m'))      # 06/12 made modular on corr_path
+        dx = float(corr_name.split('_')[4].strip('m'))      # 06/12 made modular on corr_path
     if not os.path.exists(out_dir):
         os.makedirs(out_dir)
 
-    cmin = 50.0
-    cmax = 1500.0   # 27/11 dropped from 4000.0 to 1500.0
-    dc = 10.0       # 27/11 changed from 10.0 to 5.0
+    cmin = 150.0
+    cmax = 2000.0
+    dc = 10.0
     fmin = 0.01
     fmax = 25.0     # down from 100 for fmax testing
     
@@ -168,6 +166,9 @@ if __name__ == '__main__':
     bar = fig.colorbar(im, ax=ax, pad = 0.1) # if bad add in "format = lambda x, pos: '{:.1f}'.format(x*100)"
     fs, max_cs = get_max_cs(img, c, f, fmin, fmax)
     ax.scatter(fs, max_cs, facecolors='none', edgecolors='k')
+    xs = [ci/10.0 for ci in c]
+    ax.plot(xs, c, color='white', linestyle='dashed')
+    ax.set_xlim(fmin, fmax)
     plt.tight_layout()
     plt.show()
     fig.savefig(f'{out_dir}{out_name}.png')

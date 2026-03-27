@@ -3,8 +3,10 @@ import pandas as pd
 from datetime import datetime, timedelta
 import matplotlib.pyplot as plt
 import matplotlib.dates as mdates
+from windrose import WindroseAxes
 import xarray as xr
 from math import pi
+from collections import Counter
 
 
 
@@ -370,6 +372,197 @@ def plot_combined_weather(plot_daily=False, plot_storms=False, t_start=None, t_e
     plt.show()
 
 
+def plot_waverider_direction(daily=False, arrow_every_days=48, arrow_len_deg=20):
+    """
+    Plot wave direction ('Dirp(degrees)') time series from the waverider csv.
+    - arrow_every: place an oriented arrow every N samples (int)
+    - arrow_len_deg: visual arrow length in degrees (affects arrow length on the y axis)
+    Returns (fig, ax) unless get_df=True (then returns the cleaned dataframe).
+    """
+    # df_wave = plot_waverider_csv('./results/checkpoints/hpg_wave.csv', plot_daily=plot_daily, get_df=True)
+    df_met = plot_met_csv('./results/checkpoints/hpg_met.csv', plot_daily=daily, get_df=True)
+
+    times = df_met.index
+    wind_dir = df_met['WindDir(deg)'].astype(float).values
+    wind_speed = df_met['Wind(m/s)'].astype(float).values
+    df_met['WindDir(deg)'].plot(kind='hist')
+
+    fig, ax = plt.subplots(figsize=(12, 3))
+    ax.plot(times, wind_dir, color='tab:blue', lw=0.9)
+    ax.set_ylabel('Wave direction (deg)')
+    ax.set_ylim(0, 360)
+    ax.set_yticks(np.arange(0, 361, 45))
+    ax.grid(axis='y', linestyle=':', alpha=0.6)
+
+    x = mdates.date2num(times)
+
+    if not daily:
+        arrow_every_days *= 24
+    if arrow_every_days <= 0:
+        arrow_every_days = max(1, len(x)//20)
+    idx = np.arange(0, len(x), arrow_every_days)
+    theta = np.deg2rad(90.0 - wind_dir[idx])
+    u = arrow_len_deg * np.cos(theta)
+    v = arrow_len_deg * np.sin(theta)
+
+    span_days = (x[-1] - x[0]) if len(x) > 1 else 1.0
+    x_scale_days = span_days * 0.01
+    u_days = u * (x_scale_days / max(arrow_len_deg, 1.0))
+    ax.quiver(x[idx], wind_dir[idx], u_days, v, angles='xy', scale_units='xy', scale=1.0,
+              color='k', zorder=5)  # width=0.006, headwidth=4, headlength=6
+
+    compass8 = ['N','NE','E','SE','S','SW','W','NW']
+    boundaries = np.arange(-22.5, 360+22.5, 45.0)
+    def deg_to_compass(d):
+        d = d % 360
+        idxc = int(((d + 22.5) % 360) // 45)
+        return compass8[idxc]
+    for i in idx:
+        lbl = deg_to_compass(wind_dir[i])
+        card_angle = {'N':0,'NE':45,'E':90,'SE':135,'S':180,'SW':225,'W':270,'NW':315}[lbl]
+        if abs(((wind_dir[i] - card_angle + 180) % 360) - 180) <= 15:
+            ax.text(times[i], wind_dir[i] + 8, lbl, ha='center', va='bottom', fontsize=8, color='darkred', zorder=6)
+
+    fig.autofmt_xdate()
+    ax.xaxis.set_major_formatter(mdates.DateFormatter('%d/%m\n%Y'))
+    plt.tight_layout()
+    
+    new_labels = ["E", "NE", "N", "NW", "W", "SW", "S", "SE"]
+    rose_ax = WindroseAxes.from_ax(theta_labels=new_labels)
+    rose_ax.bar(wind_dir, wind_speed, normed=True, bins=np.arange(0, 18, 2))
+    rose_ax.set_legend(title = 'Wind Speed in m/s', loc='center right', bbox_to_anchor=(1.25,0.5))
+    
+    plt.show()
+
+
+def get_good_wind_periods(daily=False):
+    df_met = plot_met_csv('./results/checkpoints/hpg_met.csv', plot_daily=daily, get_df=True)
+    
+    nw_wind = df_met[df_met['WindDir(deg)'].between(285, 330)]    
+    se_wind = df_met[df_met['WindDir(deg)'].between(105, 150)]   
+    good_wind = pd.concat([nw_wind, se_wind]).sort_index()
+    print(f'{good_wind.shape[0]} of {df_met.shape[0]} || {good_wind.shape[0]/df_met.shape[0]*100}%')
+    
+    # bad_times = df_met.index.difference(good_wind.index)
+    # ax = good_wind['Wind(m/s)'].plot()
+    # for t in bad_times:
+    #     ax.axvline(t, color='red', alpha=0.3, linewidth=0.8, zorder=2)
+    
+    deltas = []
+    index = good_wind.index.tolist()
+    idx = pd.DatetimeIndex(index).sort_values()
+    nominal_gap = pd.Timedelta(minutes=10)    # expected regular spacing
+    tolerance = pd.Timedelta(minutes=30)      # gaps <= tolerance are treated as continuous
+
+    diffs = idx.to_series().diff().fillna(pd.Timedelta(seconds=0))
+    breaks = diffs > tolerance
+    group_id = breaks.cumsum()
+
+    windows = []
+    singletons = []
+    for gid, group in idx.to_series().groupby(group_id):
+        times = group.index
+        if len(times) == 1:
+            singletons.append(times[0])
+            continue
+
+        diffs_group = times.to_series().diff().iloc[1:]
+        tolerated_mask = (diffs_group > nominal_gap) & (diffs_group <= tolerance)
+        n_tolerated = int(tolerated_mask.sum())
+        tolerated_total = ( (diffs_group - nominal_gap).where(tolerated_mask, pd.Timedelta(0)) ).sum()
+
+        start = times[0]
+        end = times[-1]
+        duration = end - start
+        windows.append([start, end, duration, n_tolerated, tolerated_total])
+    
+    windows_df = pd.DataFrame(windows, columns=['start', 'end', 'duration', 'n_tolerated', 'tolerated_total'])
+    windows_df.to_csv('./results/checkpoints/wind_windows.csv', index=False)
+    
+    fig, ax = plt.subplots(figsize=(12, 3))
+    if 'Wind(m/s)' in df_met.columns:
+        ax.plot(df_met.index, df_met['Wind(m/s)'], color='0.8', lw=0.9, label='Wind (m/s)')
+    for w in windows:
+        s, e = w[0], w[1]
+        ax.axvspan(pd.to_datetime(s), pd.to_datetime(e), color='tab:green', alpha=0.25, zorder=2)
+    if singletons:
+        ylim = ax.get_ylim()
+        marker_y = ylim[1] - 0.03 * (ylim[1] - ylim[0])
+        ax.plot(singletons, [marker_y]*len(singletons), '|', color='red', markersize=8, label='Singletons')
+    ax.set_ylabel('Wind (m/s)')
+    ax.set_title('Good-wind windows (highlighted)')
+    ax.xaxis.set_major_locator(mdates.AutoDateLocator())
+    ax.xaxis.set_major_formatter(mdates.DateFormatter('%Y-%m-%d'))
+    fig.autofmt_xdate()
+    ax.legend(loc='upper right')
+    plt.tight_layout()
+    # plt.savefig('./results/checkpoints/wind_windows_timeline.png', bbox_inches='tight', dpi=120)
+    plt.show()
+    
+
+def rolling_good_wind_coverage(window_days: int = 3,
+                               step_days: int = 1,
+                               freq_minutes: int = 10,
+                               plot: bool = False):
+    """
+    Slide a window of `window_days` forward by `step_days` and compute:
+      - good_count: number of expected freq_minutes timestamps in the window that meet good-wind
+      - observed_slots: number of df_met timestamps inside the window
+      - observed_pct: good_count / observed_slots * 100 (NaN if observed_slots==0)
+
+    Returns a pandas.DataFrame indexed by window start (datetime) with the columns above.
+    """
+    # load full-resolution met (10-min) data
+    df_met = plot_met_csv('./results/checkpoints/hpg_met.csv', plot_daily=False, get_df=True)
+    if df_met is None or df_met.empty:
+        raise RuntimeError("No met data available")
+
+    start = df_met.index.min()
+    end = df_met.index.max()
+    window_delta = pd.Timedelta(days=window_days)
+    step_delta = pd.Timedelta(days=step_days)
+
+    results = []
+    current = start
+    while current + window_delta <= end + pd.Timedelta(seconds=1):
+        win_start = current
+        win_end = current + window_delta
+
+        df_window = df_met[win_start:win_end]
+        observed_slots = df_window.shape[0]
+        observed_good_count = df_window[
+            (df_window['WindDir(deg)'].between(285, 330)) # | (df_window['WindDir(deg)'].between(105, 150))
+        ].shape[0]
+
+        observed_pct = 100.0 * observed_good_count / observed_slots if observed_slots > 0 else np.nan
+        results.append({
+            'window_start': win_start,
+            'window_end': win_end,
+            'observed_good_count': int(observed_good_count),
+            'observed_slots': int(observed_slots),
+            'observed_pct': float(observed_pct)
+        })
+        current += step_delta
+
+    df_res = pd.DataFrame(results).set_index('window_start')
+    if plot:
+        fig, ax = plt.subplots(figsize=(10, 3))
+        ax.plot(df_res.index, df_res['observed_pct'], label='Good % (of observed slots)', marker='x')
+        ax.set_ylabel('Percent good wind (%)')
+        ax.set_xlabel('Window start')
+        ax.legend()
+        ax.xaxis.set_major_locator(mdates.AutoDateLocator())
+        ax.xaxis.set_major_formatter(mdates.DateFormatter('%Y-%m-%d'))
+        fig.autofmt_xdate()
+        plt.tight_layout()
+        plt.show()
+
+    # print(df_res[df_res['observed_pct'] == 0.0])
+    df_res = df_res[df_res['observed_pct'] >= 33.0]
+    print(df_res)
+    # df_res.to_csv('./results/checkpoints/wind_percentages.csv')
+
+
 if __name__ == "__main__":
     daily = False
     m = 5
@@ -384,4 +577,8 @@ if __name__ == "__main__":
     
     # plot_waverider_csv('./results/checkpoints/hpg_wave.csv', plot_daily=daily)
     # plot_met_csv('./results/checkpoints/hpg_met.csv', plot_daily=daily)
-    plot_combined_weather(plot_daily=daily, plot_storms=False, t_start=d0, t_end=d1)
+    # plot_combined_weather(plot_daily=daily, plot_storms=False, t_start=d0, t_end=d1)
+    
+    # plot_waverider_direction(daily=daily, arrow_every_days=7)
+    # get_good_wind_periods(daily)
+    rolling_good_wind_coverage(plot=False)

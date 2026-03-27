@@ -1,89 +1,85 @@
-import sys
-sys.path.append("../src")
-sys.path.append("../DASstore")
-
-import os
-import time
-from pathlib import Path
-from datetime import datetime, timedelta
-from dateutil.parser import parse
-
-import obspy
-from obspy.io.segy.core import _read_segy
-import numpy as np
-import pandas as pd
+from mpl_toolkits.axes_grid1.inset_locator import inset_axes
+from matplotlib_map_utils.core.scale_bar import scale_bar
+from matplotlib_scalebar.scalebar import ScaleBar
 import matplotlib.pyplot as plt
-from tqdm import tqdm
-import dascore as dc
+import cartopy
+import cartopy.crs as ccrs
+import cartopy.io.img_tiles as cimgt
+from shapely.geometry import box as shapely_box
+import pandas as pd
+import geopandas as gpd
 
-def read_das_dir(dir_path):
-    tdms_spool = dc.spool(dir_path).update()
+
+def deployment_map():
+    crs = ccrs.PlateCarree()
+    # os_request = cimgt.OSM()
+    os_request = cimgt.StadiaMapsTiles(apikey='c3e0a719-1e2c-4797-9276-16a7292f91a8', 
+    style='stamen_terrain')
     
-    contents = tdms_spool.get_contents()
-    print(contents)
+    fig_w = 10.0
+    fig_h = 8.0
+    rel_im_size = 0.4
     
-    patch = tdms_spool[0]
-    patch.viz.waterfall(show=True, scale=(-50, 50))
-
-
-def read_das_file(file_path):
-    tdms = dc.spool(file_path)
-    contents = tdms.get_contents()
-    pd.set_option('display.max_columns', None)
-    print(contents)
-    pd.reset_option('display.max_columns')
-    # tdms[0].viz.waterfall(show=True, scale=(-50, 50))
-
-
-def obspy_read_segy(file_path):
-    # st = obspy.read(file_path)
-    st = _read_segy(file_path)
-    st[0].plot()
-    print(st)
-
-
-def tdms_folder_converter(dir_path, out_dir_path):
-    tdms_spool = dc.spool(dir_path).update()
+    fig, ax = plt.subplots(figsize=(fig_w,fig_h), subplot_kw={'projection': os_request.crs})
     
-    file_names = []
-    for file in os.listdir(dir_path):
-        if file.endswith(".tdms"):
-            file_names.append(file)
+    # min_lon, max_lon, min_lat, max_lat
+    ext = [1.365, 1.390, 52.895, 52.910]
+    ax.set_extent(ext)
+    ax.add_image(os_request, 15)
     
-    for i, patch in enumerate(tdms_spool):
-        file_name = file_names[i][:-8]
-        out_path = out_dir_path + file_name + "su"
-        # patch.io.write(out_path, "dasdae")
-        st = patch.io.to_obspy()
-        for tr in st:
-            tr.data = np.require(tr.data, dtype=np.float32)
-        st.write(out_path, format="SU", data_encoding=5)
+    fig_w = ext[1] - ext[0]
+    fig_h = ext[3] - ext[2]
+    
+    # offset_x = (fig_h-fig_w)/fig_h * rel_im_size/2 if fig_h > fig_w else 0
+    # offset_y = (fig_w-fig_h)/fig_w * rel_im_size/2 if fig_w > fig_h else 0
+    
+    # axins = inset_axes(ax, width=f'{rel_im_size*100}%', height=f'{rel_im_size*100}%', borderpad=0, bbox_to_anchor=(0 + offset_x, 0 + offset_y, 1, 1), bbox_transform=ax.transAxes, axes_class=cartopy.mpl.geoaxes.GeoAxes, axes_kwargs=dict(projection=crs))
+    
+    fig.subplots_adjust(left=0.06, right=0.98, top=0.98, bottom=0.06)
+    bbox = ax.get_position()
+    inset_size = min(bbox.width, bbox.height) * rel_im_size
+    x0 = bbox.x1 - inset_size
+    y0 = bbox.y1 - inset_size
+    axins = fig.add_axes([x0, y0, inset_size, inset_size], projection=crs)
+    
+    axins.add_feature(cartopy.feature.LAND, facecolor='lightgrey', zorder=0)
+    axins.coastlines(edgecolor='black', lw=0.7, zorder=3)
+    # axins.gridlines(draw_labels=True, dms=True, x_inline=False, y_inline=False, alpha=0.65, lw=0.1, zorder=-1)
+    inset_extent = [-10, 2, 50, 59]
+    axins.set_extent(inset_extent)
+    axins.tick_params(top=False, right=False, left=False, bottom=False)
+    axins.tick_params(labelleft=False, labelbottom=False, labelright=False, labeltop=False)
+    
+    bbox = shapely_box(ext[0]-0.1, ext[2]-0.1, ext[1]+0.1, ext[3]+0.1)
+    axins.add_geometries([bbox], ccrs.PlateCarree(), facecolor='none', edgecolor='red', linewidth=2, zorder=5)
 
-# tdms_folder_converter("/home/harry/Documents/0. PhD/DiSTANS/temp_data_store/", "/home/harry/Documents/0. PhD/DiSTANS/su_das/")
-# obspy_read_segy("/home/harry/Documents/0. PhD/DiSTANS/segy_das/FirstData_UTC_20231109_134257.segy")
-# obspy_read_segy("/home/harry/Documents/0. PhD/DiSTANS/su_das/FirstData_UTC_20231109_134257.su")
-# read_das_dir("/home/harry/Documents/0. PhD/DiSTANS/segy_das/")
-# read_das_file("/home/harry/Documents/0. PhD/DiSTANS/temp_data_store/FirstData_UTC_20231109_134257.573.tdms")
+    das_gps = pd.read_csv('./results/checkpoints/interp_ch_pts.csv', index_col=2)
+    geometry = gpd.points_from_xy(das_gps.lon, das_gps.lat)
+    gdf = gpd.GeoDataFrame(das_gps, geometry=geometry, crs='EPSG:4326')
+    ax.plot(gdf.geometry.x.values, gdf.geometry.y.values, transform=ccrs.PlateCarree(), color='blue', linewidth=1.5, zorder=6)
+    for cha in [750, 788, 875, 1475]:
+        row = das_gps.loc[cha*4]
+        ax.scatter(row['lon'], row['lat'], transform=ccrs.PlateCarree(), color='blue', s=12, zorder=7)
+        ax.text(row['lon'], row['lat'], str(cha), transform=ccrs.PlateCarree(),
+                fontsize=8, ha='right', va='top', color='blue', zorder=9)
+    
+    nodes_gps = pd.read_csv('./results/checkpoints/nodes.csv', index_col=0, header=0)
+    ax.scatter(nodes_gps['Lon'].values, nodes_gps['Lat'].values, transform=ccrs.PlateCarree(), color='black', s=12, zorder=7)
+    for i, row in nodes_gps.iterrows():
+        ax.text(row['Lon'], row['Lat'], str(row.name)[-5:], transform=ccrs.PlateCarree(),
+                fontsize=8, ha='right', va='top', color='black', zorder=9)
+    
+    wacr_lat, wacr_lon = 52.725, 0.627
+    axins.scatter(wacr_lon, wacr_lat, c='k', transform=ccrs.PlateCarree(), s=15, zorder=10, marker='o')
+    axins.text(wacr_lon, wacr_lat, 'WACR', transform=ccrs.PlateCarree(), fontsize=8, ha='right', va='top', color='black', zorder=9)
+    
+    bedf_lat, bedf_lon = 52.25, 1.259
+    axins.scatter(bedf_lon, bedf_lat, c='k', transform=ccrs.PlateCarree(), s=15, zorder=10, marker='o')
+    axins.text(bedf_lon, bedf_lat, 'BEDF', transform=ccrs.PlateCarree(), fontsize=8, ha='right', va='top', color='black', zorder=9)
+    
+    # scale_bar(ax, style='boxes', location='upper left', bar={"projection": 'EPSG:4326'})
+    ax.add_artist(ScaleBar(dx=1, location='upper left'))
+    
+    plt.show()
 
-
-from obspy.clients.fdsn import Client
-from obspy import UTCDateTime
-
-client = Client('http://eida.bgs.ac.uk')
-
-# Download station list
-inventory = client.get_stations(network="GB")
-# print(inventory)
-
-# Save and plot data
-# t = UTCDateTime("2025-01-26T04:00:00.0")      # UK
-# t = UTCDateTime("2025-02-08T23:30:00.0")      # Cayman
-# t = UTCDateTime("2025-01-12T19:45:00.0")      # Norway
-# t = UTCDateTime("2025-03-28T06:30:00.0")      # Myanmar
-# t = UTCDateTime("2025-03-30T12:15:00.0")      # Tonga
-# t = UTCDateTime("2024-06-08T00:00:00.0")       # idk
-t = UTCDateTime("2025-07-29T23:30:00.0")       # kamchatka
-
-st = client.get_waveforms("GB", "BEDF", "00", "HH?", t, t + (3600*2),
-                          attach_response=True)
-st.plot()
+deployment_map()

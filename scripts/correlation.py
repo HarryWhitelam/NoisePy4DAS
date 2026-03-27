@@ -52,7 +52,7 @@ def stack_length_experiment():
 
 def spatial_res_experiment():
     corrs = []
-    spatial_res_range = [10, 60, 120, 360]
+    spatial_res_range = [1, 5, 10, 20]
     
     for spatial_res in spatial_res_range:
         print(f'Spatial resolution experiment: {spatial_res}')
@@ -62,33 +62,26 @@ def spatial_res_experiment():
 
     plot_multiple_correlations(corrs, prepro_para, spatial_res_range, 'spatial_res', save_corr=False)
 
-# dir_path = "../../temp_data_store/FirstData/"
 
-# dir_path = "../../../../gpfs/scratch/gfs19eku/20240308/"
-dir_path = "/data/localraid/20240205/"
-task_t0 = datetime(year = 2024, month = 2, day = 5, 
-                   hour = 12, minute = 1, second = 0, microsecond = 0)
+dir_path = "/data/QNAP1_Data/Data/"
+task_t0 = datetime(year = 2025, month = 2, day = 4, 
+                   hour = 0, minute = 0, second = 0, microsecond = 0)
 
-# frequency_experiment()
-
-
-## SINGLE RUN: 
-# cha pairings: 3850, 5750 [straight section]
-#               3850, 8050 [cable from out of forest] 
-#               3300, 3750 [forest]
-
-# IF PASSING ALLOWED_TIMES, n_minute is the number of days you'd like to span, n_minute in terms fo the data will be calculated within correlation() 
-prepro_para = set_prepro_parameters(dir_path, task_t0, target_spatial_res=1, cha1=1000, cha2=8050, n_minute=4320, freqmin=0.01, freqmax=50.0)
-# prepro_para = set_prepro_parameters(dir_path, task_t0, target_spatial_res=1, cha1=7280, cha2=7680, n_minute=4320, freqmin=0.01, freqmax=50.0)
-# prepro_para = set_prepro_parameters(dir_path, task_t0, target_spatial_res=0.25, cha1=962, cha2=1437, n_minute=30)      # adapted for segy files at 1 m spacings therefore cha_num / 4
-
-# spec_prepro_para = prepro_para.copy()           # copy bc python dicts are mutable so (effectively) passed by ref
-# spec_prepro_para.update({'freqmax':5.0})
-# ts_spectrogram(dir_path, spec_prepro_para, task_t0)
-
-# times = {dt_time(20, 0, 0): dt_time(2, 0, 0), 
-#          dt_time(12, 0, 0): dt_time(18, 0, 0)}
-
-# corr_full = correlation(dir_path, prepro_para)
-corr_full = parallel_xcorr(dir_path, prepro_para)
-plot_correlation(corr_full, prepro_para, save_corr=True)
+for stack_method in ['linear', 'pws']:
+    # for chas in [[900, 1200, 1000], [1000, 1400, 1000], [1200, 1600, 1400]]:
+    for chas in [[1000, 1400, 1000]]:
+        # prepro_para = set_prepro_parameters(dir_path, task_t0, target_spatial_res=10, cha1=chas[0], cha2=chas[1], n_minute=1440, freqmin=0.01, freqmax=25.0, stack_method=stack_method, src_ch=chas[2])
+        # corr_full = parallel_xcorr(dir_path, prepro_para)
+        # plot_correlation(corr_full, prepro_para, save_corr=True)
+        
+        # prepro_para = set_prepro_parameters(dir_path, task_t0, target_spatial_res=10, cha1=chas[0], cha2=chas[1], n_minute=1440, freqmin=1.0, freqmax=25.0, stack_method=stack_method, src_ch=chas[2])
+        # corr_full = parallel_xcorr(dir_path, prepro_para)
+        # plot_correlation(corr_full, prepro_para, save_corr=True)
+        
+        prepro_para = set_prepro_parameters(dir_path, task_t0, target_spatial_res=10, cha1=chas[0], cha2=chas[1], n_minute=20160, freqmin=0.1, freqmax=25.0, stack_method=stack_method, src_ch=chas[2])
+        corr_full = parallel_xcorr(dir_path, prepro_para)
+        plot_correlation(corr_full, prepro_para, save_corr=True)
+        
+        prepro_para = set_prepro_parameters(dir_path, task_t0, target_spatial_res=10, cha1=chas[0], cha2=chas[1], n_minute=20160, freqmin=2.0, freqmax=25.0, stack_method=stack_method, src_ch=chas[2])
+        corr_full = parallel_xcorr(dir_path, prepro_para)
+        plot_correlation(corr_full, prepro_para, save_corr=True)
