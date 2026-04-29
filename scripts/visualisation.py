@@ -393,8 +393,8 @@ def ts_spectrogram(dir_path:str, prepro_para:dict, t_start:datetime, save_spec=F
 
 def ppsd(dir_path:str, prepro_para:dict, t_start:datetime, save_ppsd=False, data=None, window_length=3600):
     cha1, sps, f1, f2, n_minute = prepro_para.get('cha1'), prepro_para.get('samp_freq'), prepro_para.get('freqmin'), prepro_para.get('freqmax'), prepro_para.get('n_minute')
-    # out_dir = f"./results/figures/PSD_Experiments/{window_length}s_window/ppsds/"
-    out_dir = f"./results/figures/PSD_Experiments/smoothing_check/ppsds/"
+    out_dir = f"./results/figures/PSD_Experiments/{window_length}s_window/ppsds/"
+    # out_dir = f"./results/figures/PSD_Experiments/smoothing_check/ppsds/"
     
     if type(data)==type(None):
         reader_array, timestamps = get_reader_array(dir_path)
@@ -404,24 +404,24 @@ def ppsd(dir_path:str, prepro_para:dict, t_start:datetime, save_ppsd=False, data
     nfft = 2 ** 17
     nr = 201        # number of amplitude bins, changed from 501
     hn = nfft // 2
-    
-    # # First pass: collect sample of PSD values to determine range     COMMENTED WHEN SPECIFYING LIMITS BELOW
-    sample_fd_values = []
     seg_length = int(window_length * sps)
     n_segs = len(data) // seg_length
-    sample_segs =  n_segs // 10 # Sample first 10% of segments
     
-    for i in range(sample_segs):
-        d = data[i*seg_length:(i+1)*seg_length]
-        if len(d) == seg_length:
-            fft_d = np.fft.fft(d, nfft)
-            psd_lin = (np.abs(fft_d) ** 2) / (nfft * sps)
-            fd = 10 * np.log10(psd_lin + 1e-12)
-            sample_fd_values.extend(fd[:hn].flatten())
-    fd_min = np.nanpercentile(sample_fd_values, 0.01)
-    fd_max = np.nanpercentile(sample_fd_values, 99.99)
+    # # Precheck of PSD values to determine range     COMMENTED WHEN SPECIFYING LIMITS BELOW
+    # sample_fd_values = []
+    # sample_segs =  n_segs // 10 # Sample first 10% of segments
+    
+    # for i in range(sample_segs):
+    #     d = data[i*seg_length:(i+1)*seg_length]
+    #     if len(d) == seg_length:
+    #         fft_d = np.fft.fft(d, nfft)
+    #         psd_lin = (np.abs(fft_d) ** 2) / (nfft * sps)
+    #         fd = 10 * np.log10(psd_lin + 1e-12)
+    #         sample_fd_values.extend(fd[:hn].flatten())
+    # fd_min = np.nanpercentile(sample_fd_values, 0.01)
+    # fd_max = np.nanpercentile(sample_fd_values, 99.99)
 
-    # fd_min, fd_max = [-30, 50]
+    fd_min, fd_max = [-40, 50]
     # print(f'fd_min: {fd_min}; fd_max: {fd_max}')
     
     # Create adaptive binning
@@ -429,12 +429,14 @@ def ppsd(dir_path:str, prepro_para:dict, t_start:datetime, save_ppsd=False, data
     scale = (nr - 1) / db_range
     offset = -fd_min
     
-    # Second pass: bin with adaptive scaling
     psd = np.zeros((nr, hn))
     p = np.zeros(hn)
     
-    f = np.arange(nfft) * sps / (nfft)
-    fn1 = int(f1*nfft/sps); fn2 = int(f2*nfft/sps)
+    f_full = np.arange(nfft) * sps / float(nfft)
+    f_pos = f_full[:hn]
+    fn1 = np.searchsorted(f_pos, f1, side='left')
+    fn2 = np.searchsorted(f_pos, f2, side='right') - 1
+    fn1 = np.clip(fn1, 0, hn - 1); fn2 = np.clip(fn2, 0, hn - 1)
     
     for i in range(n_segs):
         d = data[i*seg_length:(i+1)*seg_length]
@@ -443,7 +445,8 @@ def ppsd(dir_path:str, prepro_para:dict, t_start:datetime, save_ppsd=False, data
             fft_d = np.fft.fft(d, nfft)
             psd_lin = (np.abs(fft_d) ** 2) / (nfft * sps)
             fd = 10 * np.log10(psd_lin + 1e-12)
-            fd_sm = octave_smooth(fd[:hn], f[:hn])     # octave smoothing            
+            # fd_sm = octave_smooth(fd[:hn], f[:hn])     # octave smoothing
+            fd_sm = octave_smooth_gpu(fd[:hn], f[:hn])     # octave smoothing gpu
             p += fd_sm
             for j in range(hn):
                 index = int((fd_sm[j] + offset) * scale)
@@ -465,22 +468,23 @@ def ppsd(dir_path:str, prepro_para:dict, t_start:datetime, save_ppsd=False, data
     P = P[::1, ::nrf]
     sl = 2
     P = convolve2d(P, np.ones((sl, sl))/sl**2, 'same')
-    for i in range(len(P[0])):
-        P[:, i] /= np.sum(P[:, i])
-    print(f'PPSD peak percentage after smoothing+renorm: {P.max()*100.0:.2f}%')
+    for i in range(P.shape[1]):
+        s = np.sum(P[:, i])
+        if s > 0.0:
+            P[:, i] /= s
+        else:
+            P[:, i] = 0.0
+    # print(f'PPSD peak percentage after smoothing+renorm: {P.max()*100.0:.2f}%')
 
     plt.figure()
     plt.pcolormesh(f, db, P*100, cmap='viridis')
     plt.xscale('log')
     plt.grid(which='both')
-    plt.colorbar(shrink=0.75, aspect=30, pad=0.05, extend='both', label=r'Probability (%)')
-    # cbar.ax.tick_params(labelsize=16)
+    plt.colorbar(aspect=30, pad=0.05, label='Probability (%)')
     plt.semilogx(f, pp, lw=1.2, color='#888888')
     plt.xlabel('Frequency (Hz)')
-    plt.ylabel('Nano strainrate PSD (dB)')
+    plt.ylabel('Amplitude (dB rel. $(nm/m/s)^2/Hz$)')
     plt.xlim([0.01, 50])
-    # plt.xticks(fontsize=20)
-    # plt.yticks(fontsize=20)
     t_end = t_start+timedelta(minutes=n_minute) - timedelta(hours=1)
     plt.title(rf"{t_start.date()} to {t_end.date()} at channel {cha1}")
     plt.tight_layout()

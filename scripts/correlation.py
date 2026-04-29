@@ -5,9 +5,8 @@ import sys
 sys.path.append("./src")
 sys.path.append("./DASstore")
 
-from datetime import datetime, time as dt_time
+from datetime import datetime
 from correlation_funcs import *
-from visualisation import ts_spectrogram
 
 
 def channels_experiment():

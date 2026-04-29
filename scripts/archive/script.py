@@ -61,21 +61,21 @@ def deployment_map():
         row = das_gps.loc[cha*4]
         ax.scatter(row['lon'], row['lat'], transform=ccrs.PlateCarree(), color='blue', s=12, zorder=7)
         ax.text(row['lon'], row['lat'], str(cha), transform=ccrs.PlateCarree(),
-                fontsize=8, ha='right', va='top', color='blue', zorder=9)
+                fontsize=14, ha='left', va='bottom', color='blue', zorder=9)
     
     nodes_gps = pd.read_csv('./results/checkpoints/nodes.csv', index_col=0, header=0)
     ax.scatter(nodes_gps['Lon'].values, nodes_gps['Lat'].values, transform=ccrs.PlateCarree(), color='black', s=12, zorder=7)
     for i, row in nodes_gps.iterrows():
         ax.text(row['Lon'], row['Lat'], str(row.name)[-5:], transform=ccrs.PlateCarree(),
-                fontsize=8, ha='right', va='top', color='black', zorder=9)
+                fontsize=14, ha='right', va='top', color='black', zorder=9)
     
-    wacr_lat, wacr_lon = 52.725, 0.627
-    axins.scatter(wacr_lon, wacr_lat, c='k', transform=ccrs.PlateCarree(), s=15, zorder=10, marker='o')
-    axins.text(wacr_lon, wacr_lat, 'WACR', transform=ccrs.PlateCarree(), fontsize=8, ha='right', va='top', color='black', zorder=9)
+    # wacr_lat, wacr_lon = 52.725, 0.627
+    # axins.scatter(wacr_lon, wacr_lat, c='k', transform=ccrs.PlateCarree(), s=15, zorder=10, marker='o')
+    # axins.text(wacr_lon, wacr_lat, 'WACR', transform=ccrs.PlateCarree(), fontsize=8, ha='right', va='top', color='black', zorder=9)
     
-    bedf_lat, bedf_lon = 52.25, 1.259
-    axins.scatter(bedf_lon, bedf_lat, c='k', transform=ccrs.PlateCarree(), s=15, zorder=10, marker='o')
-    axins.text(bedf_lon, bedf_lat, 'BEDF', transform=ccrs.PlateCarree(), fontsize=8, ha='right', va='top', color='black', zorder=9)
+    # bedf_lat, bedf_lon = 52.25, 1.259
+    # axins.scatter(bedf_lon, bedf_lat, c='k', transform=ccrs.PlateCarree(), s=15, zorder=10, marker='o')
+    # axins.text(bedf_lon, bedf_lat, 'BEDF', transform=ccrs.PlateCarree(), fontsize=8, ha='right', va='top', color='black', zorder=9)
     
     # scale_bar(ax, style='boxes', location='upper left', bar={"projection": 'EPSG:4326'})
     ax.add_artist(ScaleBar(dx=1, location='upper left'))

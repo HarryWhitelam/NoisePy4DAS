@@ -268,9 +268,9 @@ task_t0 = datetime(year = 2025, month = 2, day = 5,
 
 stack_method = 'linear'
 
-ccf = daily_pair_xcorr(dir_path, cha1=1000, cha2=1200, task_t0=task_t0, n_days=14, target_spatial_res=10, save_path=save_path, stack_method=stack_method, freqmin=0.1, freqmax=25.0)
+# ccf = daily_pair_xcorr(dir_path, cha1=1000, cha2=1200, task_t0=task_t0, n_days=14, target_spatial_res=10, save_path=save_path, stack_method=stack_method, freqmin=0.1, freqmax=25.0)
 
-# ccf = np.load('/data/localraid/dv_v_corrs/2025-02-16_2025-02-19_f0.1:25.0_1000:1200_10m_pws.npy')
+ccf = np.load('/data/localraid/dv_v_corrs/2025-02-05_2025-02-19_f0.1:25.0_1000:1200_10m_pws.npy')
 
 
 from obspy import Stream, Trace
@@ -286,4 +286,7 @@ for i in range(0, ccf.shape[0]):
 # print(ccf_stream[0])
 for i in range(0, len(ccf_stream)):
     ccf_stream[i].stats.distance = i*100
+ccf_stream.plot(type='section', recordstart=0, recordlength=8, fillcolors=('k', None), orientation='horizontal')
+
+ccf_stream.filter("bandpass", freqmin=0.1, freqmax=1.0)
 ccf_stream.plot(type='section', recordstart=0, recordlength=8, fillcolors=('k', None), orientation='horizontal')

@@ -563,12 +563,25 @@ def rolling_good_wind_coverage(window_days: int = 3,
     # df_res.to_csv('./results/checkpoints/wind_percentages.csv')
 
 
+def get_rainfall_windows():
+    df_met = plot_era5_csv('./results/checkpoints/combined_weather.csv', get_df=True)
+    print(df_met.columns)
+    df_rain = df_met['rainfall(mm)']
+    
+    df_rain = df_rain[df_rain >= 2.0]
+    print(df_rain.shape)
+    df_rain.hist()
+    plt.show()
+    for i in df_rain.index:
+        print(i)
+
+
 if __name__ == "__main__":
     daily = False
     m = 5
     d0 = datetime(year=2025, month=m, day=1)
     d1 = datetime(year=2025, month=(m+1)%12, day=1)
-    d0 = datetime(year=2024, month=12, day=8); d1 = datetime(year=2024, month=12, day=14)
+    # d0 = datetime(year=2024, month=12, day=8); d1 = datetime(year=2024, month=12, day=14)
     # plot_weather()
     # plot_rain_storms()
     # era5_data_to_csv('era5_final.grib')
@@ -581,4 +594,5 @@ if __name__ == "__main__":
     
     # plot_waverider_direction(daily=daily, arrow_every_days=7)
     # get_good_wind_periods(daily)
-    rolling_good_wind_coverage(plot=False)
+    # rolling_good_wind_coverage(plot=False)
+    get_rainfall_windows()
