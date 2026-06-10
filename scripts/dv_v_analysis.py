@@ -21,7 +21,11 @@ import multiprocessing
 from warnings import warn
 import scipy
 from scipy.signal import hilbert
+from scipy.interpolate import interp1d
 import matplotlib.pyplot as plt
+import matplotlib.dates as mdates
+from obspy import Stream, Trace
+from obspy.core.trace import Stats
 
 import DAS_module
 from correlation_funcs import set_prepro_parameters
@@ -246,47 +250,132 @@ def daily_pair_xcorr(dir_path: str, cha1: int, cha2: int, task_t0: datetime, n_d
     return ccf_matrix
 
 
-def stretch_trace(trace, dt, eps, kind='cubic', fill_value=0.0):
-    """
-    Return trace stretched by factor (1+eps): test_stretched(t) = trace(t / (1+eps))
-    - trace: 1D array
-    - dt: sample interval (s)
-    - eps: fractional stretch (e.g. 0.01 => +1% stretch)
-    """
-    n = len(trace)
-    t = np.arange(n) * dt
-    f = scipy.interpolate.interp1d(t, trace, kind=kind, bounds_error=False, fill_value=fill_value)
-    # sample original trace at scaled times t/(1+eps)
-    t_sample = t / (1.0 + eps)
-    return f(t_sample)
+def stretching_dvv(ccf_ref, ccf, dt, tmin, tmax, eps_range, side='causal'):
+    '''Stretching Technique following Sens-Schonfelder & Wegler
+    For this, ccf_ref is the day before our 'current' ccf
+    Stretching is applied to reference trace, therefore, dv/v = -max(eps)
+    
+    Side can be 'causal', 'acausal' or 'both' for average
+    '''
+    mid = int(len(ccf_ref)/2)
+    if side == 'causal':
+        ccf_ref = ccf_ref[mid:]
+        ccf = ccf[mid:]
+    elif side == 'acausal':
+        ccf_ref = ccf_ref[:mid+1][::-1]
+        ccf = ccf[:mid+1][::-1]
+    elif side == 'both':
+        ccf_ref = (ccf_ref[mid:] + ccf_ref[:mid+1]) / 2
+        ccf = (ccf[mid:] + ccf[:mid+1]) / 2
+    
+    n = len(ccf_ref)
+    t = (np.arange(n) * dt)
+    mask = (t >= tmin) & (t <= tmax)
+    
+    t_win = t[mask]
+    cur_win = ccf[mask]
+
+    interp_ref = interp1d(t, ccf_ref, kind='cubic', bounds_error=False, fill_value=0.0)
+
+    corr_coeff = []
+    for eps in eps_range:
+        t_stretch = (1 + eps) * t_win
+        ref_stretched = interp_ref(t_stretch)
+
+        num = np.sum(cur_win * ref_stretched)
+        den = np.sqrt(np.sum(cur_win**2) * np.sum(ref_stretched**2))
+
+        if den == 0:
+            corr_coeff.append(0)
+        else:
+            corr_coeff.append(num / den)
+
+    corr_coeff = np.array(corr_coeff)
+
+    idx = np.argmax(corr_coeff)
+    eps_best_corr = np.max(corr_coeff)
+
+    dvv = -eps_range[idx]
+
+    return dvv, eps_best_corr, corr_coeff
+
+
+def plot_dv_v(stream, task_t0, n_days, nlag_s=8, bandpass:list=None):
+    ccf_stream = stream.copy()
+    fig, ax = plt.subplots(1,1)
+    if bandpass:
+        ccf_stream.filter("bandpass", freqmin=bandpass[0], freqmax=bandpass[1])
+    fig = ccf_stream.plot(type='section', recordstart=0, recordlength=nlag_s, fillcolors=('k', None), orientation='horizontal', fig=fig)
+    ax.set_xticklabels([i-(nlag_s/2) for i in range(0,nlag_s+1)])
+    ax.set_xlabel('Time lag (s)')
+    ax.set_yticks([i*0.1 for i in range(0,n_days)])
+    ax.set_yticklabels(np.arange(str(task_t0.date()), str((task_t0 + timedelta(days=n_days)).date()), dtype='datetime64[D]'))
+    ax.yaxis.minorticks_off()
+    plt.show()
 
 
 dir_path = "/data/QNAP1_Data/Data/"
 save_path='/data/localraid/dv_v_corrs/'
-task_t0 = datetime(year = 2025, month = 2, day = 5, 
+task_t0 = datetime(year = 2025, month = 2, day = 1, 
                    hour = 0, minute = 0, second = 0, microsecond = 0)
 
-stack_method = 'linear'
-
+stack_method = 'pws'
 # ccf = daily_pair_xcorr(dir_path, cha1=1000, cha2=1200, task_t0=task_t0, n_days=14, target_spatial_res=10, save_path=save_path, stack_method=stack_method, freqmin=0.1, freqmax=25.0)
+# ccf = np.load('/data/localraid/dv_v_corrs/2025-02-05_2025-02-19_f0.1:25.0_1000:1200_10m_pws.npy')
 
-ccf = np.load('/data/localraid/dv_v_corrs/2025-02-05_2025-02-19_f0.1:25.0_1000:1200_10m_pws.npy')
+n_days = 14
+ch = 19
+npts = 40
 
-
-from obspy import Stream, Trace
-from obspy.core.trace import Stats
 ccf_stream = Stream()
-stats = Stats()
-stats.delta = 1/100; stats.npts = ccf.shape[1]
-for i in range(0, ccf.shape[0]):
-    ccf_stream.append(Trace(ccf[i, :], stats))
+t = task_t0
+for i in range(1,n_days+1):
+    cc = np.loadtxt(f'/data/localraid/saved_corrs/{t}_1440mins_100f0.01:25.0_1000:1400_10m_1000src_pws.txt', delimiter=',', dtype=np.float64)
+    stats = Stats()
+    stats.delta = 1/100; stats.npts = cc.shape[0]
+    ccf_stream.append(Trace(cc[:, ch], stats))
+    t += timedelta(days=1)
 
-# from obspy import read, UTCDateTime, Stream
-# ccf_stream.filter("bandpass", freqmin=5, freqmax=50)
-# print(ccf_stream[0])
 for i in range(0, len(ccf_stream)):
     ccf_stream[i].stats.distance = i*100
-ccf_stream.plot(type='section', recordstart=0, recordlength=8, fillcolors=('k', None), orientation='horizontal')
 
-ccf_stream.filter("bandpass", freqmin=0.1, freqmax=1.0)
-ccf_stream.plot(type='section', recordstart=0, recordlength=8, fillcolors=('k', None), orientation='horizontal')
+# plot_dv_v(ccf_stream, task_t0, n_days)
+# plot_dv_v(ccf_stream, task_t0, n_days, bandpass=[0.1, 1.0])
+# plot_dv_v(ccf_stream, task_t0, n_days, bandpass=[1.0, 20.0])
+
+# for f0, f1 in [[0.1, 0.5], [0.5, 1.0], [1.0, 5.0], [5.0, 10.0], [10.0, 20.0]]:
+# for f0, f1 in [[4, 15]]:
+#     print(f'\n--- dv/v between {f0}-{f1} Hz')
+#     ccf_copy = ccf_stream.copy()
+#     ccf_copy.filter("bandpass", freqmin=f0, freqmax=f1)
+#     ccf_0, ccf_1 = ccf_copy[0].data, ccf_copy[1].data
+#     dvv, eps_best_corr, corr_coeff = stretching_dvv(ccf_0, ccf_1, 0.01, 0.8, 2.0, np.linspace(-0.05, 0.05, 201), side='causal')
+#     print(f'dv/v: {dvv}')
+#     print(f'corr value: {eps_best_corr}')
+
+
+### BANDPASSING STREAM
+ccf_stream_cp = ccf_stream.copy()
+f_bands = [[0.01, 0.5], [0.5, 1.0], [1.0, 5.0], [5.0, 10.0], [10.0, 15.0]]
+for f_band in f_bands:
+    ccf_stream = ccf_stream_cp.copy()
+    ccf_stream.filter("bandpass", freqmin=f_band[0], freqmax=f_band[1])
+    dvvs = [0]
+    eps_corrs = [0]
+    for i in range(1,n_days):
+        ccf_0, ccf_1 = ccf_stream[i-1].data, ccf_stream[i].data
+        dvv, eps_best_corr, corr_coeff = stretching_dvv(ccf_0, ccf_1, 0.01, 0.8, 1.3, np.linspace(-0.05, 0.05, 201), side='causal')
+        dvvs.append(dvv * 100)
+        eps_corrs.append(eps_best_corr)
+
+    dates = np.arange(task_t0.date(), (task_t0 + timedelta(days=n_days)).date())
+    fig, axs = plt.subplots(2,1, sharex=True)
+    axs[0].plot(dates, np.cumsum(dvvs))
+    axs[0].set_ylabel('dv/v (%)')
+    axs[1].plot(dates, eps_corrs)
+    axs[1].set_ylabel('Stretch correlation value')
+    axs[0].set_title(f'dv/v between {f_band[0]} - {f_band[1]} Hz [causal]')
+    axs[0].grid(); axs[1].grid()
+    axs[0].set_ylim(-8.5, 5.0)
+    axs[1].set_ylim(0, 1.0)
+    plt.show()

@@ -590,9 +590,12 @@ if __name__ == "__main__":
     
     # plot_waverider_csv('./results/checkpoints/hpg_wave.csv', plot_daily=daily)
     # plot_met_csv('./results/checkpoints/hpg_met.csv', plot_daily=daily)
-    # plot_combined_weather(plot_daily=daily, plot_storms=False, t_start=d0, t_end=d1)
+    task_t0 = datetime(year = 2025, month = 2, day = 1, 
+                   hour = 0, minute = 0, second = 0, microsecond = 0)
+    task_t1 = task_t0 + timedelta(days=14)
+    plot_combined_weather(plot_daily=daily, plot_storms=False, t_start=task_t0, t_end=task_t1)
     
     # plot_waverider_direction(daily=daily, arrow_every_days=7)
     # get_good_wind_periods(daily)
     # rolling_good_wind_coverage(plot=False)
-    get_rainfall_windows()
+    # get_rainfall_windows()

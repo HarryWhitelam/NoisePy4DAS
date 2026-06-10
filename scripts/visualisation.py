@@ -221,10 +221,17 @@ def octave_smooth_gpu(psd, freqs, width_octaves=0.5, axis=0, eps=1e-12, chunk_si
 
         # get block flat on GPU
         if is_cupy_input:
-            flat_block = moved[:, c0:c1]            # cupy slice, no extra copy if already on device
+            # moved may be 1D (n_freq,) for single-column input; treat temporarily as (n_freq,1)
+            if moved.ndim == 1:
+                flat_block = moved[:, None][:, c0:c1]
+            else:
+                flat_block = moved[:, c0:c1]            # cupy slice, no extra copy if already on device
             flat_block_cp = flat_block.astype(cp.float64, copy=False)
         else:
-            flat_block = moved[:, c0:c1]            # numpy slice
+            if moved.ndim == 1:
+                flat_block = moved[:, None][:, c0:c1]
+            else:
+                flat_block = moved[:, c0:c1]            # numpy slice
             flat_block_cp = cp.asarray(flat_block, dtype=cp.float64)
 
         # linear power and sorted weighted cumsum (GPU)
@@ -268,11 +275,20 @@ def octave_smooth_gpu(psd, freqs, width_octaves=0.5, axis=0, eps=1e-12, chunk_si
 
 def parallel_spectral_analysis():
     dir_list = ['/data/QNAP1_Data/Data/']
-    for y, ms in [[2024, [4,5,6,7,8,9,10,11,12]], [2025, [1,2,3,4,5,6,7]]]:
+    
+    # nodes period 2025 Apr 01-10
+    # storm (and not) periods 2024 12 08-11, 11-14
+    # 2024 12 whole month
+    
+    # for y, ms in [[2024, [4,5,6,7,8,9,10,11,12]], [2025, [1,2,3,4,5,6,7]]]:
+    for y, ms in [[2025, [3,4,5,6,7]]]:
         for m in ms:
+    # for y, m, d, ds in [[2024, 8, 1, None]]:     # ds == None uses a month
             t_start = datetime(year=y, month=m, day=1)
+            # if ds == None:
             t_end = t_start + relativedelta(months=1)
-            # t_end = t_start + relativedelta(days=3)
+            # else:
+            #     t_end = t_start + relativedelta(days=ds)
             n_minutes = (t_end - t_start).total_seconds() // 60
             
             channels = [750, 788, 875, 1475]
@@ -283,13 +299,13 @@ def parallel_spectral_analysis():
                     'target_spatial_res': 1,
                     'n_minute': n_minutes,
                     'freqmin': 0.01,
-                    'freqmax': 49.9,
+                    'freqmax': 50.0,
                 }
                 
                 filepath_array, timestamps = get_filepath_array(dir_path, t_start, t_end)
                 t_start = timestamps[0].replace(microsecond=0)
                 print(f'Data running from {t_start} to {timestamps[-1].replace(microsecond=0)}')
-                data = get_data_from_array(filepath_array, prepro_para, t_start, timestamps, duration=timedelta(minutes=n_minutes), channels=channels)
+                data = get_data_from_array(filepath_array, prepro_para, t_start, duration=timedelta(minutes=n_minutes), channels=channels, filter=False)
             
                 for i, channel in enumerate(channels):
                     run_prepro_para = prepro_para.copy()
@@ -300,17 +316,18 @@ def parallel_spectral_analysis():
                     #                 dir_path, prepro_para, t_start, save_ppsd, data, window_length
                     args_list.append((dir_path, run_prepro_para, t_start, False, channel_data))
             
-                p = multiprocessing.Pool(multiprocessing.cpu_count())
-                with tqdm(total=len(args_list), desc=f"{dir_path} spectrograms", position=0) as pbar:
-                    for _ in p.starmap(ts_spectrogram, args_list, chunksize=1):
-                        pbar.update(1)
-                p.close()
+                # p = multiprocessing.Pool(multiprocessing.cpu_count())
+                # with tqdm(total=len(args_list), desc=f"{dir_path} spectrograms", position=0) as pbar:
+                #     for _ in p.starmap(ts_spectrogram, args_list, chunksize=1):
+                #         pbar.update(1)
+                # p.close()
                 
                 p = multiprocessing.Pool(multiprocessing.cpu_count())
                 with tqdm(total=len(args_list), desc=f"{dir_path} PPSDs", position=0) as pbar:
                     for _ in p.starmap(ppsd, args_list, chunksize=1):
                         pbar.update(1)
                 p.close()
+
 
 def ts_spectrogram(dir_path:str, prepro_para:dict, t_start:datetime, save_spec=False, data=None, window_length=600, plot_tides=None):
     cha1, sps, freqmin, freqmax, n_minute = prepro_para.get('cha1'), prepro_para.get('samp_freq'), prepro_para.get('freqmin'), prepro_para.get('freqmax'), prepro_para.get('n_minute')
@@ -446,7 +463,7 @@ def ppsd(dir_path:str, prepro_para:dict, t_start:datetime, save_ppsd=False, data
             psd_lin = (np.abs(fft_d) ** 2) / (nfft * sps)
             fd = 10 * np.log10(psd_lin + 1e-12)
             # fd_sm = octave_smooth(fd[:hn], f[:hn])     # octave smoothing
-            fd_sm = octave_smooth_gpu(fd[:hn], f[:hn])     # octave smoothing gpu
+            fd_sm = octave_smooth_gpu(fd[:hn], f_pos)     # octave smoothing gpu
             p += fd_sm
             for j in range(hn):
                 index = int((fd_sm[j] + offset) * scale)
@@ -461,7 +478,8 @@ def ppsd(dir_path:str, prepro_para:dict, t_start:datetime, save_ppsd=False, data
     # print(f'down: {down_clip}; up: {up_clip}')
     
     nrf = 10
-    f = f[fn1: fn2+1]; f = f[::nrf]
+    f = f_pos[fn1:fn2+1]
+    f = f[::nrf]
     P = psd[:, fn1: fn2+1]
     pp = savgol_filter(p, 11, 2)
     pp = pp[fn1: fn2+1] / n_segs; pp = pp[::nrf]
@@ -477,13 +495,13 @@ def ppsd(dir_path:str, prepro_para:dict, t_start:datetime, save_ppsd=False, data
     # print(f'PPSD peak percentage after smoothing+renorm: {P.max()*100.0:.2f}%')
 
     plt.figure()
-    plt.pcolormesh(f, db, P*100, cmap='viridis')
+    plt.pcolormesh(f, db, P*100, cmap='viridis', vmax=12.0)
     plt.xscale('log')
     plt.grid(which='both')
-    plt.colorbar(aspect=30, pad=0.05, label='Probability (%)')
+    plt.colorbar(aspect=30, pad=0.05, label='Probability (%)', extend='neither')
     plt.semilogx(f, pp, lw=1.2, color='#888888')
     plt.xlabel('Frequency (Hz)')
-    plt.ylabel('Amplitude (dB rel. $(nm/m/s)^2/Hz$)')
+    plt.ylabel(r'Amplitude (dB rel. $(nm/m/s)^2/Hz$)')
     plt.xlim([0.01, 50])
     t_end = t_start+timedelta(minutes=n_minute) - timedelta(hours=1)
     plt.title(rf"{t_start.date()} to {t_end.date()} at channel {cha1}")
@@ -734,7 +752,6 @@ def plot_weather_spec(target_cha, t0, t1, window_len=3600, c_range=None, octave_
     weather_df = pd.concat([df_wave, df_met, df_era5], axis=1)[t0.date():t1.date()]
     weather_df = weather_df.resample(timedelta(hours=1)).mean()
     
-    
     fig, ax = plt.subplots(1,1, figsize=(12,4))
     
     time_bin_counts = []; spec_min = 0; spec_max = 0
@@ -932,7 +949,7 @@ def sensitivity_analysis(gps_track:pd.DataFrame, target_ch, plot=True):
 
 
 if __name__ == '__main__':
-    # parallel_spectral_analysis()
+    parallel_spectral_analysis()
     
     markers_arr = [
         # datetime(2024, 5, 30),
@@ -975,13 +992,13 @@ if __name__ == '__main__':
     #         plot_spectrogram(target_cha=cha, t0=t0, t1=t1, window_len=window_len); pbar.update(1)
     #         plot_spectrogram(target_cha=cha, t0=t0, t1=t1, window_len=window_len, norm=True, markers=markers_arr, weather=weather_arr, c_range=c_range_norm_arr); pbar.update(1)
     
-    for y, ms in [[2024, [4,5,6,7,8,9,10,11,12]], [2025, [1,2,3,4,5,6,7]]]:
-        for m in ms:
-            t0 = datetime(year=y, month=m, day=1)
-            t1 = t0 + relativedelta(months=1)
-            with tqdm(total=4, desc=f"Spectrograms - {y}/{m}", position=0) as pbar:
-                for cha in [750, 788, 875, 1475]:
-                    plot_weather_spec(cha, t0, t1, window_len=600, c_range=c_range_nodes_arr); pbar.update(1)
+    # for y, ms in [[2024, [4,5,6,7,8,9,10,11,12]], [2025, [1,2,3,4,5,6,7]]]:
+    #     for m in ms:
+    #         t0 = datetime(year=y, month=m, day=1)
+    #         t1 = t0 + relativedelta(months=1)
+    #         with tqdm(total=4, desc=f"Spectrograms - {y}/{m}", position=0) as pbar:
+    #             for cha in [750, 788, 875, 1475]:
+    #                 plot_weather_spec(cha, t0, t1, window_len=600, c_range=c_range_nodes_arr); pbar.update(1)
             
     # with tqdm(total=8, desc="Spec time series", position=0) as pbar_outer:
     #     f_ranges_low = [[0.01, 0.05], [0.1, 0.6], [0.7, 1.1]]
@@ -1034,14 +1051,6 @@ if __name__ == '__main__':
     # acausal.trim(endtime=UTCDateTime("19700101T00:00:08"))
     # for tr in acausal: tr.data = np.flip(tr.data)
     # acausal.plot(type='section', recordlength=2, fillcolors=('k', None))
-    
-    # plot_weather()
-    # plot_rain_storms()
-    # plot_era5_data('era5_rainfall.grib')
-    # plot_era5_data('./results/checkpoints/daily_rainfall.csv')
-    # plot_era5_data('era5_windspeed.grib')
-    # plot_era5_data('./results/checkpoints/daily_windspeed.csv')
-    # plot_tidal_data('./results/checkpoints/2024CRO.txt')
     
     # gps_coords = pd.read_csv('results/checkpoints/interp_ch_pts.csv', sep=',', index_col=2)
     # long_max, trans_max = 0, 0

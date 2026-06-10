@@ -243,7 +243,10 @@ def get_data_from_array(data_array:list, prepro_para:dict, start_time:datetime, 
             spatial_ratio = int(target_spatial_res/props.get('SpatialResolution[m]'))
             if channels:
                 file_channels = [int(channel/spatial_ratio) for channel in channels]
-                data = data_file.get_data(file_channels[0], file_channels[-1])[:,np.array(file_channels)-file_channels[0]]
+                try:
+                    data = data_file.get_data(file_channels[0], file_channels[-1])[:,np.array(file_channels)-file_channels[0]]
+                except:
+                    print(f"Failed at {props_ts}! File_channels: {file_channels}")
             else:
                 c1, c2 = int(cha1/props.get('SpatialResolution[m]')), int(cha2/props.get('SpatialResolution[m]'))   # get channels for each file
                 data = data_file.get_data(c1, c2)
