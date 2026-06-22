@@ -64,16 +64,37 @@ def spatial_res_experiment():
 
 
 dir_path = "/data/QNAP1_Data/Data/"
-task_t0 = datetime(year = 2025, month = 2, day = 1, 
-                   hour = 0, minute = 0, second = 0, microsecond = 0)
 
-for i in range(0, 15):
-    # for chas in [[900, 1200, 1000], [1000, 1400, 1000], [1200, 1600, 1400]]:
-    prepro_para = set_prepro_parameters(dir_path, task_t0, target_spatial_res=10, cha1=1000, cha2=1400, n_minute=1440, freqmin=0.01, freqmax=25.0, stack_method='pws', src_ch=1000)
-    corr_full = parallel_xcorr(dir_path, prepro_para)
-    plot_correlation(corr_full, prepro_para, save_corr=True)
-    
-    prepro_para = set_prepro_parameters(dir_path, task_t0, target_spatial_res=10, cha1=1000, cha2=1400, n_minute=1440, freqmin=1.0, freqmax=25.0, stack_method='pws', src_ch=1000)
-    corr_full = parallel_xcorr(dir_path, prepro_para)
-    plot_correlation(corr_full, prepro_para, save_corr=True)
-    task_t0 += relativedelta(days=1)
+# dates = [[2025,2], [2024,7], [2024, 10], [2024,11], [2024,12], [2025,1], [2025,5]]
+dates = [[2024,11], [2024,12], [2025,1], [2024, 10]]
+for y, m in dates:
+    task_t0 = datetime(year = y, month = m, day = 1, 
+                    hour = 0, minute = 0, second = 0, microsecond = 0)
+    task_t1 = task_t0 + relativedelta(months=1)
+    n_days = (task_t1 - task_t0).days
+    print(f"\n\nSTARTING XCORR FOR: {task_t0.date()} [{n_days} days]")
+
+    for i in range(0, n_days):
+        for chas in [[800, 1000], [1000, 1200], [1200, 1400]]:  # [500, 700], 
+            prepro_para = set_prepro_parameters(dir_path, task_t0, target_spatial_res=10, cha1=chas[0], cha2=chas[1], n_minute=1440, freqmin=0.01, freqmax=25.0, stack_method='robust', src_ch=chas[0])
+            corr_full = parallel_xcorr(dir_path, prepro_para)
+            if type(corr_full) == np.ndarray:
+                save_correlation(corr_full, prepro_para)
+            else:
+                warn(f'{task_t0} failed!')
+            
+            prepro_para = set_prepro_parameters(dir_path, task_t0, target_spatial_res=10, cha1=chas[0], cha2=chas[1], n_minute=1440, freqmin=0.01, freqmax=25.0, stack_method='linear', src_ch=chas[0])
+            corr_full = parallel_xcorr(dir_path, prepro_para)
+            if type(corr_full) == np.ndarray:
+                save_correlation(corr_full, prepro_para)
+            else:
+                warn(f'{task_t0} failed!')
+            
+            prepro_para = set_prepro_parameters(dir_path, task_t0, target_spatial_res=10, cha1=chas[0], cha2=chas[1], n_minute=1440, freqmin=0.01, freqmax=25.0, stack_method='pws', src_ch=chas[0])
+            corr_full = parallel_xcorr(dir_path, prepro_para)
+            if type(corr_full) == np.ndarray:
+                save_correlation(corr_full, prepro_para)
+            else:
+                warn(f'{task_t0} failed!')
+            
+        task_t0 += relativedelta(days=1)

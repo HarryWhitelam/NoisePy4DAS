@@ -36,31 +36,32 @@ gps_path = '../../Deployment/gps_coords.csv'
 
 
 ### Location Interpolation
-track_pt = np.loadtxt('results/checkpoints/track_pts.csv', delimiter=',', skiprows=1, usecols=(2,1), comments='#') # read in the track points and swap the two columns (let longitude precede latitude)
-new_track_pt = np.loadtxt('results/checkpoints/trim_walk_20250613.csv', delimiter=',', skiprows=1, usecols=(0,1), comments='#') # read in the track points and swap the two columns (let longitude precede latitude)
-known_pt = np.loadtxt('results/checkpoints/trim_walk_20250613_known.csv', delimiter=',', skiprows=1, usecols=(1,0,2), comments='#')
-# print(track_pt)
-# print(known_pt)
+# track_pt = np.loadtxt('results/checkpoints/track_pts.csv', delimiter=',', skiprows=1, usecols=(2,1), comments='#') # read in the track points and swap the two columns (let longitude precede latitude)
+# new_track_pt = np.loadtxt('results/checkpoints/trim_walk_20250613.csv', delimiter=',', skiprows=1, usecols=(0,1), comments='#') # read in the track points and swap the two columns (let longitude precede latitude)
+# known_pt = np.loadtxt('results/checkpoints/trim_walk_20250613_known.csv', delimiter=',', skiprows=1, usecols=(1,0,2), comments='#')
+# # print(track_pt)
+# # print(known_pt)
 
-# known_pt = known_pt[[2], :]
-track_pt = track_pt[::-1]       # upside down :(
+# # known_pt = known_pt[[2], :]
+# track_pt = track_pt[::-1]       # upside down :(
 # print(test_track_pt.shape)
 
-interp_ch = location_interpolation(known_pt, track_pt=new_track_pt, dx=1.0)
-print(interp_ch) # longitude, latitude, and channel number
-interp_ch_df = pd.DataFrame(interp_ch, columns=['lon', 'lat', 'channel_no'])[['lat', 'lon', 'channel_no']]      # rearranged for lat, lon, ch_no
-interp_ch_df.to_csv('results/checkpoints/new_interp_ch_pts.csv', index=False)
+# interp_ch = location_interpolation(known_pt, track_pt=new_track_pt, dx=1.0)
+# print(interp_ch) # longitude, latitude, and channel number
+# interp_ch_df = pd.DataFrame(interp_ch, columns=['lon', 'lat', 'channel_no'])[['lat', 'lon', 'channel_no']]      # rearranged for lat, lon, ch_no
+# interp_ch_df.to_csv('results/checkpoints/new_interp_ch_pts.csv', index=False)
 
-interp_ch = pd.read_csv()
+interp_ch = pd.read_csv('results/checkpoints/new_interp_ch_pts.csv')
+print(interp_ch)
 
-plt.scatter(interp_ch[:, 0], interp_ch[:, 1], c='r', s=2)
+plt.scatter(interp_ch['lon'], interp_ch['lat'], c='r', s=2)
 # plt.scatter(new_track_pt[:, 0], new_track_pt[:, 1], c='b', s=1)
 # plt.scatter(track_pt[:, 0], track_pt[:, 1], c='k', s=1)
 
 ### HIGHLIGHTS
-highlight_mask = np.isin(interp_ch[:, 2], [3000, 3150, 3500, 5900, 6200])
-highlight_ch = interp_ch[highlight_mask, :]
-plt.scatter(highlight_ch[:, 0], highlight_ch[:, 1], c='b', s=30)
+highlight_mask = np.isin(interp_ch['channel_no'], [250, 451, 500, 701, 800, 1001, 1000, 1201, 1200, 1401])
+highlight_ch = interp_ch[highlight_mask]
+plt.scatter(highlight_ch['lon'], highlight_ch['lat'], c='b', s=30)
 print(highlight_ch)
 
 ### distance highlight attempt - see above for less messy layout

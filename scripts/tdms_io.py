@@ -56,7 +56,8 @@ def get_filepath_array(root_dir:str, t_start:datetime=None, t_end:datetime=None)
                     continue
                 files.append((os.path.join(dir_path, file), timestamp))
     if len(files) == 0:
-        print(f'No files found between {t_start} and {t_end}!')
+        warnings.warn(f'No files found between {t_start} and {t_end}!')
+        return 0
     files.sort(key=lambda x: x[1])
     reader_array, timestamps = zip(*files)
     return list(reader_array), np.asarray(timestamps, dtype=datetime)

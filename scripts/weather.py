@@ -185,11 +185,10 @@ def era5_data_to_csv(file_path:str):
     df.to_csv('./results/combined_weather.csv')
     
 
-def plot_era5_csv(file_path, plot_daily=False, plot_storms=False, get_df=False):
-    df = pd.read_csv(file_path, index_col=0, parse_dates=True)
-    
+def plot_era5_csv(file_path='./results/checkpoints/combined_weather.csv', plot_daily=False, plot_storms=False, get_df=False):
+    df = pd.read_csv(file_path, index_col=0, parse_dates=True)    
     if plot_daily:
-        df = df.groupby(pd.to_datetime(df.index).date).agg({'V(m/s)': 'mean', 'rainfall(mm)': 'mean'})
+        df = df.groupby(pd.to_datetime(df.index).date).agg({'V(m/s)': 'mean', 'rainfall(mm)': 'sum'})
     if get_df: return df
     
     fig, ax = plt.subplots()
@@ -313,7 +312,7 @@ def plot_met_csv(file_path:str, plot_daily=False, get_df=False):
     df.loc[df.Flag == 7, ['Solar(W/m^2)', 'UV(W/m^2)']] = np.NaN
     df.loc[df.Flag == 8, ['RH(%)']] = np.NaN
     df.loc[df.Flag == 9, ['Wind(m/s)', 'WindDir(deg)', 'Gust(m/s)', 'Baro(hPa)', 'Tair(degC)', 'Rainfall(mm)', 'Solar(W/m^2)', 'UV(W/m^2)', 'RH(%)']] = np.NaN
-    # below are all undrecoreded parameters
+    # below are all unrecoreded parameters
     df = df.drop(columns=['Rainfall(mm)', 'Solar(W/m^2)', 'UV(W/m^2)', 'RH(%)'], axis=1)
     df = df.dropna(axis=0)
     
@@ -331,6 +330,12 @@ def plot_met_csv(file_path:str, plot_daily=False, get_df=False):
     ax.xaxis.set_minor_locator(mdates.MonthLocator(bymonth=(2, 3, 5, 6, 8, 9, 11, 12)))
     plt.tight_layout()
     plt.savefig(f"./results/figures/{'daily' if plot_daily else 'hourly'}_windspeed.png")
+
+
+def plot_nwalsham_rain_csv(get_df=False):
+    df = pd.read_csv('results/checkpoints/North-Walsham-rainfall-daily.csv', index_col=2, parse_dates=True)
+    df = df[['value']]
+    return df
 
 
 def plot_combined_weather(plot_daily=False, plot_storms=False, t_start=None, t_end=None): 
