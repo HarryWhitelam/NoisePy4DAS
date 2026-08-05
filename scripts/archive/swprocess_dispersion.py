@@ -126,7 +126,7 @@ print(data_array)
 fig, ax = data_array.plot()
 print('finished plot')
 print(type(fig), type(ax))
-fig.savefig('test_fig.png')
+fig.savefig('test_fig.eps')
 fig.show()
 # _ = data_array.waterfall()
 ### end of longshot

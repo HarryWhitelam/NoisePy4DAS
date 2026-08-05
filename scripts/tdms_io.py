@@ -161,50 +161,6 @@ def get_time_subset(reader_array:np.ndarray, start_time:datetime, timestamps:np.
     return reader_array[start_idx:end_idx-1]
 
 
-# returns a duration of data (default is 60s)
-# def get_data_from_array(data_array:list, prepro_para:dict, start_time:datetime, timestamps:np.ndarray, duration:timedelta, channels=False):
-#     cha1, cha2, sps, spatial_ratio = prepro_para.get('cha1'), prepro_para.get('cha2'), prepro_para.get('sps'), prepro_para.get('spatial_ratio')
-
-#     # make it so that if start_time is not a timestamp, the first minute in the array is returned
-#     current_time = 0
-#     if channels: 
-#         tdata = np.empty((int(duration.total_seconds() * sps), len(channels)))
-#     else: 
-#         tdata = np.empty((int(duration.total_seconds() * sps), ceil((cha2-cha1+1)/spatial_ratio)))
-#     data_array = get_time_subset(data_array, start_time, timestamps, delta=duration, tolerance=30)
-    
-#     with tqdm(total=(duration.total_seconds()), desc=f'[Process {os.getpid()}] Loading data (in seconds)', position=1, leave=False) as pbar:
-#         while current_time != duration.total_seconds() and len(data_array) != 0:
-#             data_file = data_array.pop(0)
-#             if type(data_file) == str:
-#                 data_file = TdmsReader(data_file)
-#             props = data_file.get_properties()
-#             if channels:
-#                 data = data_file.get_data(channels[0], channels[-1])
-#                 data = data[:,np.array(channels)-channels[0]]
-#             else:
-#                 data = data_file.get_data(cha1, cha2)
-#                 data = data[:, ::spatial_ratio]
-#             data = scale(data, props)
-#             if props.get('SamplingFrequency[Hz]') != sps:
-#                 data = decimate(data,
-#                         int(sps / props.get('SamplingFrequency[Hz]')),
-#                         ftype='iir',
-#                         zero_phase=True)
-#             current_row = current_time * sps
-#             t_size = data.shape[0]
-#             tdata[int(current_row):int(current_row+(t_size)), :] = data
-#             current_time += t_size/sps
-            
-#             # attempting to avoid issue of open file limit
-#             data_file._tdms_file.close()
-#             del data_file
-#             gc.collect()
-#             pbar.update(t_size/sps)
-    
-#     return tdata
-
-
 # adapting this so that all channel requests work off of 1m channels - as though distance along cable
 def get_data_from_array(data_array:list, prepro_para:dict, start_time:datetime, duration:timedelta, channels=None, filter=True):
     cha1                = prepro_para.get('cha1')
@@ -213,15 +169,20 @@ def get_data_from_array(data_array:list, prepro_para:dict, start_time:datetime, 
     target_spatial_res  = prepro_para.get('target_spatial_res')
     freqmin             = prepro_para.get('freqmin')
     freqmax             = prepro_para.get('freqmax')
+    rcv_ch              = prepro_para.get('rcv_ch')
+    
+    if rcv_ch:
+        channels = [cha1, rcv_ch]
+    
     current_time = 0
     if channels: 
         tdata = np.empty((int(duration.total_seconds() * samp_freq), len(channels)))
     else: 
-        tdata = np.empty((int(duration.total_seconds() * samp_freq), ceil((cha2-cha1+1)/target_spatial_res)))
+        tdata = np.empty((int(duration.total_seconds() * samp_freq), ceil(((cha2-cha1)/target_spatial_res)+1)))     # 20260723: changed from (cha2-cha1+1)/target_spatial_res
     tdata.fill(np.NaN)
     
-    with tqdm(total=(duration.total_seconds()), desc=f'[Process {os.getpid()}] Loading data (in seconds)', position=1, leave=False) as pbar:
-        while current_time != duration.total_seconds() and len(data_array) != 0:
+    with tqdm(total=(duration.total_seconds()), desc=f'[Process {os.getpid()}] Loading data (s)', position=1, leave=False) as pbar:
+        while current_time < duration.total_seconds() and len(data_array) != 0:
             data_file = data_array.pop(0)
             if type(data_file) == str:
                 try:
@@ -229,6 +190,7 @@ def get_data_from_array(data_array:list, prepro_para:dict, start_time:datetime, 
                 except: 
                     print(f'Failed at {data_file}')
             props = data_file.get_properties()
+            # print(data_file.fileinfo['n_channels'])
             
             props_ts = props.get('GPSTimeStamp').replace(microsecond=0)
             expected_ts = start_time + timedelta(seconds=current_time)
@@ -243,7 +205,7 @@ def get_data_from_array(data_array:list, prepro_para:dict, start_time:datetime, 
             
             spatial_ratio = int(target_spatial_res/props.get('SpatialResolution[m]'))
             if channels:
-                file_channels = [int(channel/spatial_ratio) for channel in channels]
+                file_channels = [int(channel/props.get('SpatialResolution[m]')) for channel in channels]
                 try:
                     data = data_file.get_data(file_channels[0], file_channels[-1])[:,np.array(file_channels)-file_channels[0]]
                 except:
@@ -290,6 +252,9 @@ def get_data_from_array(data_array:list, prepro_para:dict, start_time:datetime, 
                 tdata[current_row:current_row+t_size, :] = data
             except: 
                 print(f"Loading failed at {start_time}, current_time: {current_time}.")
+                print(data.shape)
+                print(tdata.shape)
+                print(current_row, t_size)
             current_time += t_size/samp_freq
             
             # attempting to avoid issue of open file limit

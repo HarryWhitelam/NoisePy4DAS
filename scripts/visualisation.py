@@ -1,3 +1,6 @@
+import sys
+sys.path.append("./src")
+sys.path.append("./DASstore")
 import os
 import gc
 import numpy as np
@@ -6,25 +9,27 @@ import geopandas as gpd
 import cupy as cp
 from scipy.signal import welch, ShortTimeFFT, convolve2d, savgol_filter
 from scipy.signal.windows import hamming
-from scipy.interpolate import interp1d
-from obspy.signal.spectral_estimation import get_nlnm, get_nhnm
+from obspy.imaging.util import ObsPyAutoDateFormatter
 from datetime import datetime, timedelta
 from dateutil.relativedelta import relativedelta
+from dateutil.rrule import MINUTELY, SECONDLY
 import matplotlib
-matplotlib.use('Agg')
+# matplotlib.use('Agg')
+matplotlib.rcParams['svg.fonttype'] = 'none'
 import matplotlib.pyplot as plt
 import matplotlib.dates as mdates
-import matplotlib.patches as patches
-from mpl_toolkits.axes_grid1 import host_subplot
-import mpl_toolkits.axisartist as AA
+from matplotlib.dates import AutoDateLocator
+from matplotlib.collections import LineCollection
 from matplotlib.cm import ScalarMappable
 from matplotlib.colors import Normalize
 from skimage.util import compare_images
 import contextily as cx
+import cartopy.io.img_tiles as cimgt
 from math import sin, cos, atan2, degrees, radians
 import multiprocessing
 from tqdm import tqdm
 
+from TDMS_Read import TdmsReader
 from tdms_io import get_reader_array, get_filepath_array, get_data_from_array, get_dir_properties, load_xcorr
 from weather import plot_waverider_csv, plot_met_csv, plot_era5_csv
 
@@ -274,70 +279,70 @@ def octave_smooth_gpu(psd, freqs, width_octaves=0.5, axis=0, eps=1e-12, chunk_si
 
 
 def parallel_spectral_analysis():
-    dir_list = ['/data/QNAP1_Data/Data/']
+    dir_path = '/data/QNAP1_Data/Data/'
     
     # nodes period 2025 Apr 01-10
     # storm (and not) periods 2024 12 08-11, 11-14
     # 2024 12 whole month
     
     # for y, ms in [[2024, [4,5,6,7,8,9,10,11,12]], [2025, [1,2,3,4,5,6,7]]]:
-    for y, ms in [[2025, [3,4,5,6,7]]]:
-        for m in ms:
-    # for y, m, d, ds in [[2024, 8, 1, None]]:     # ds == None uses a month
-            t_start = datetime(year=y, month=m, day=1)
-            # if ds == None:
+        # for m in ms:
+    for y, m, d, ds in [[2024, 8, 1, 1], [2025, 4, 1, 13560], [2024, 12, 1, None], [2024, 12, 8, 3], [2024, 12, 11, 3]]:
+        t_start = datetime(year=y, month=m, day=d)
+        if ds == None:
             t_end = t_start + relativedelta(months=1)
-            # else:
-            #     t_end = t_start + relativedelta(days=ds)
-            n_minutes = (t_end - t_start).total_seconds() // 60
-            
-            channels = [750, 788, 875, 1475]
-            for dir_path in dir_list:
-                args_list = []
-                prepro_para = {
-                    'samp_freq': 100,
-                    'target_spatial_res': 1,
-                    'n_minute': n_minutes,
-                    'freqmin': 0.01,
-                    'freqmax': 50.0,
-                }
-                
-                filepath_array, timestamps = get_filepath_array(dir_path, t_start, t_end)
-                t_start = timestamps[0].replace(microsecond=0)
-                print(f'Data running from {t_start} to {timestamps[-1].replace(microsecond=0)}')
-                data = get_data_from_array(filepath_array, prepro_para, t_start, duration=timedelta(minutes=n_minutes), channels=channels, filter=False)
-            
-                for i, channel in enumerate(channels):
-                    run_prepro_para = prepro_para.copy()
-                    run_prepro_para.update({'cha1':channel,
-                                            'cha2':channel+1})
-                    channel_data = data[:,i]
-                    #                 dir_path, prepro_para, t_start, save_spec, data, window_length, plot_tides
-                    #                 dir_path, prepro_para, t_start, save_ppsd, data, window_length
-                    args_list.append((dir_path, run_prepro_para, t_start, False, channel_data))
-            
-                # p = multiprocessing.Pool(multiprocessing.cpu_count())
-                # with tqdm(total=len(args_list), desc=f"{dir_path} spectrograms", position=0) as pbar:
-                #     for _ in p.starmap(ts_spectrogram, args_list, chunksize=1):
-                #         pbar.update(1)
-                # p.close()
-                
-                p = multiprocessing.Pool(multiprocessing.cpu_count())
-                with tqdm(total=len(args_list), desc=f"{dir_path} PPSDs", position=0) as pbar:
-                    for _ in p.starmap(ppsd, args_list, chunksize=1):
-                        pbar.update(1)
-                p.close()
+        elif ds == 13560:
+            t_end = t_start + relativedelta(minutes=ds)
+        else:
+            t_end = t_start + relativedelta(days=ds)
+        n_minutes = (t_end - t_start).total_seconds() / 60
+        
+        channels = [750, 788, 875, 1475]
+        args_list = []
+        prepro_para = {
+            'samp_freq': 100,
+            'target_spatial_res': 1,
+            'n_minute': n_minutes,
+            'freqmin': 0.01,
+            'freqmax': 50.0,
+        }
+        
+        filepath_array, timestamps = get_filepath_array(dir_path, t_start, t_end)
+        t_start = timestamps[0].replace(microsecond=0)
+        print(f'Data running from {t_start} to {timestamps[-1].replace(microsecond=0)}')
+        data = get_data_from_array(filepath_array, prepro_para, t_start, duration=timedelta(minutes=n_minutes), channels=channels, filter=False)
+    
+        for i, channel in enumerate(channels):
+            run_prepro_para = prepro_para.copy()
+            run_prepro_para.update({'cha1':channel,
+                                    'cha2':channel+1})
+            channel_data = data[:,i]
+            #                 dir_path, prepro_para, t_start, save_spec, data, window_length, plot_tides
+            #                 dir_path, prepro_para, t_start, save_ppsd, data, window_length
+            args_list.append((dir_path, run_prepro_para, t_start, False, channel_data))
+    
+        # p = multiprocessing.Pool(multiprocessing.cpu_count())
+        # with tqdm(total=len(args_list), desc=f"{dir_path} spectrograms", position=0) as pbar:
+        #     for _ in p.starmap(ts_spectrogram, args_list, chunksize=1):
+        #         pbar.update(1)
+        # p.close()
+        
+        p = multiprocessing.Pool(multiprocessing.cpu_count())
+        with tqdm(total=len(args_list), desc=f"{dir_path} PPSDs", position=0) as pbar:
+            for _ in p.starmap(ppsd, args_list, chunksize=1):
+                pbar.update(1)
+        p.close()
 
 
 def ts_spectrogram(dir_path:str, prepro_para:dict, t_start:datetime, save_spec=False, data=None, window_length=600, plot_tides=None):
     cha1, sps, freqmin, freqmax, n_minute = prepro_para.get('cha1'), prepro_para.get('samp_freq'), prepro_para.get('freqmin'), prepro_para.get('freqmax'), prepro_para.get('n_minute')
-    # out_dir = f"./results/figures/PSD_Experiments/{window_length}s_window/"
-    out_dir = f"./results/figures/PSD_Experiments/smoothing_check/"
+    out_dir = f"./results/figures/PSD_Experiments/{window_length}s_window/"
+    # out_dir = f"./results/figures/PSD_Experiments/smoothing_check/"
     
     if type(data)==type(None):
-        reader_array, timestamps = get_reader_array(dir_path)
+        filepath_array, timestamps = get_filepath_array(dir_path)
         if t_start == None: t_start = timestamps[0].replace(microsecond=0)
-        data = get_data_from_array(reader_array, prepro_para, t_start, timestamps, duration=timedelta(minutes=n_minute))[:, 0]
+        data = get_data_from_array(filepath_array, prepro_para, t_start, duration=timedelta(minutes=n_minute))[:, 0]
     
     N = data.shape[0]
     win = hamming(int(sps*window_length), sym=True)               # 28/10/2025 longer window, longer time averaging! Output name changed!
@@ -346,10 +351,9 @@ def ts_spectrogram(dir_path:str, prepro_para:dict, t_start:datetime, save_spec=F
     stft = ShortTimeFFT(win, hop=int(sps*(window_length*0.5)), fs=sps, scale_to='psd')
     spec = stft.spectrogram(data)
 
-    fig = plt.figure()
+    fig = plt.figure(figsize=(6.4,4.8))
     ax = fig.add_subplot(111)
-    t_min, t_max = stft.extent(N)[:2]
-    ax.set_title(rf"{t_start} at channel {cha1}")
+    ax.set_title(rf"DAS Channel {cha1}")
     spec = 10 * np.log10(spec + 1e-12)
     try:
         f_bins = np.linspace(freqmin, freqmax, stft.f_pts)
@@ -357,7 +361,11 @@ def ts_spectrogram(dir_path:str, prepro_para:dict, t_start:datetime, save_spec=F
     except:
         print(f'octave smoothing failed!!!')
     
-    ext = stft.extent(N)
+    # ext = stft.extent(N)
+    ext = list(stft.extent(N))
+    stft_duration = ext[1] - ext[0]
+    ext[0] = mdates.date2num(t_start)
+    ext[1] = mdates.date2num(t_start + timedelta(seconds=stft_duration))
     im1 = ax.imshow(spec, origin='lower', aspect='auto', 
                      extent=ext, cmap='jet', vmin=np.nanpercentile(spec,1), vmax=np.nanpercentile(spec,99))
     ax.set_yscale('log')
@@ -372,40 +380,53 @@ def ts_spectrogram(dir_path:str, prepro_para:dict, t_start:datetime, save_spec=F
         plt.sca(ax=ax)
     
     if n_minute > 1440:
-        n_days = int(n_minute / 1440) + 1
-        midnight_start = t_start.replace(hour=0, minute=0, second=0, microsecond=0)
-        try:
-            tick_dates = pd.date_range(midnight_start, periods=n_days, freq=timedelta(days=(n_days//6)))
-        except:
-            tick_dates = pd.date_range(midnight_start, periods=n_days, freq=timedelta(days=1))
-        tick_positions = []
-        for tick_date in tick_dates:
-            minutes_from_start = (tick_date - t_start).total_seconds() / 60
-            tick_positions.append((minutes_from_start / n_minute) * ext[1])
+        # n_days = int(n_minute / 1440) + 1
+        # midnight_start = t_start.replace(hour=0, minute=0, second=0, microsecond=0)
+        # try:
+        #     tick_dates = pd.date_range(midnight_start, end=midnight_start+timedelta(days=n_days), periods=5)
+        # except:
+        #     tick_dates = pd.date_range(midnight_start, periods=n_days, freq=timedelta(days=1))
+        # tick_positions = []
+        # for tick_date in tick_dates:
+        #     minutes_from_start = (tick_date - t_start).total_seconds() / 60
+        #     tick_positions.append((minutes_from_start / n_minute) * ext[1])
         
-        valid_ticks = [(pos, date) for pos, date in zip(tick_positions, tick_dates) 
-                    if 0 <= pos <= ext[1]]
-        if valid_ticks:
-            positions, dates = zip(*valid_ticks)
-            _ = plt.xticks(positions, [d.strftime('%Y-%m-%d') for d in dates], rotation=30)
+        # valid_ticks = [(pos, date) for pos, date in zip(tick_positions, tick_dates) 
+        #             if 0 <= pos <= ext[1]]
+        # if valid_ticks:
+        #     positions, dates = zip(*valid_ticks)
+        #     _ = plt.xticks(positions, [d.strftime('%Y-%m-%d') for d in dates], rotation=30)
         
-        minor_tick_interval = 1440 / n_minute * ext[1]
-        minor_positions = np.arange(0, ext[1], minor_tick_interval)
-        _ = plt.xticks(minor_positions, minor=True)
+        # minor_tick_interval = 1440 / n_minute * ext[1]
+        # minor_positions = np.arange(0, ext[1], minor_tick_interval)
+        # _ = plt.xticks(minor_positions, minor=True)
+        ax.xaxis_date()
+        locator = AutoDateLocator(minticks=3, maxticks=6)
+        locator.intervald[MINUTELY] = [1, 2, 5, 10, 15, 30]
+        locator.intervald[SECONDLY] = [1, 2, 5, 10, 15, 30]
+        ax.xaxis.set_major_formatter(ObsPyAutoDateFormatter(locator))
+        ax.xaxis.set_major_locator(locator)
+        
+        # ticks = ax.get_xticks()     # forcing first date to appear
+        # ticks = np.concatenate(([mdates.date2num(t_start)], ticks))
+        # ticks = np.unique(ticks)
+        
+        # ax.set_xticks(ticks)
+        plt.setp(ax.get_xticklabels(), rotation=30, ha='right')
     else: 
         _ = plt.xticks(np.linspace(0, ext[1], 4), pd.date_range(t_start, t_start+timedelta(minutes=n_minute), periods=4), rotation=30)
         _ = plt.xticks(np.linspace(0, ext[1], 16), minor=True)
-    ax.set_ylabel('Frequency (Hz)')
-    ax.set_xlim(t_min, t_max)
+    ax.set_ylabel('Frequency [Hz]')
     ax.set_ylim(freqmin, freqmax)
     
-    fig.colorbar(im1, label='Nano strainrate PSD (dB)')
+    fig.colorbar(im1, label=r'Amplitude [$n\epsilon^2/Hz$] [dB]')
     # plt.tight_layout()
+    plt.subplots_adjust(top=0.922, bottom=0.15, left=0.131, right=0.953, hspace=0.2, wspace=0.2)
     if not os.path.exists(out_dir):
         os.makedirs(out_dir)
-    plt.savefig(f'{out_dir}/{t_start}__{t_start+timedelta(minutes=n_minute)}_f{freqmin}:{freqmax}_{cha1}_spectrogram{"_tides" if plot_tides else ""}.png', bbox_inches='tight')
+    plt.savefig(f'{out_dir}/{t_start}__{t_start+timedelta(minutes=n_minute)}_f{freqmin}_{freqmax}_{cha1}_spectrogram{"_tides" if plot_tides else ""}.eps') # , bbox_inches='tight'
     if save_spec:
-        np.savetxt(f'/data/localraid/saved_specs/{window_length}s_window/{t_start}__{t_start+timedelta(minutes=n_minute)}_f{freqmin}:{freqmax}_{cha1}_spec.txt', spec, delimiter=",")
+        np.savetxt(f'/data/localraid/saved_specs/{window_length}s_window/{t_start}__{t_start+timedelta(minutes=n_minute)}_f{freqmin}_{freqmax}_{cha1}_spec.txt', spec, delimiter=",")
 
 
 def ppsd(dir_path:str, prepro_para:dict, t_start:datetime, save_ppsd=False, data=None, window_length=3600):
@@ -414,9 +435,9 @@ def ppsd(dir_path:str, prepro_para:dict, t_start:datetime, save_ppsd=False, data
     # out_dir = f"./results/figures/PSD_Experiments/smoothing_check/ppsds/"
     
     if type(data)==type(None):
-        reader_array, timestamps = get_reader_array(dir_path)
+        filepath_array, timestamps = get_filepath_array(dir_path)
         if t_start == None: t_start = timestamps[0].replace(microsecond=0)
-        data = get_data_from_array(reader_array, prepro_para, t_start, timestamps, duration=timedelta(minutes=n_minute))[:, 0]
+        data = get_data_from_array(filepath_array, prepro_para, t_start, duration=timedelta(minutes=n_minute))[:, 0]
 
     nfft = 2 ** 17
     nr = 201        # number of amplitude bins, changed from 501
@@ -494,19 +515,19 @@ def ppsd(dir_path:str, prepro_para:dict, t_start:datetime, save_ppsd=False, data
             P[:, i] = 0.0
     # print(f'PPSD peak percentage after smoothing+renorm: {P.max()*100.0:.2f}%')
 
-    plt.figure()
-    plt.pcolormesh(f, db, P*100, cmap='viridis', vmax=12.0)
+    plt.figure(figsize=(6.4,4.8))
+    plt.pcolormesh(f, db, P*100, cmap='viridis', vmax=12.0, rasterized=True)
     plt.xscale('log')
     plt.grid(which='both')
-    plt.colorbar(aspect=30, pad=0.05, label='Probability (%)', extend='neither')
+    plt.colorbar(aspect=30, pad=0.05, label='Probability [%]', extend='neither')
     plt.semilogx(f, pp, lw=1.2, color='#888888')
-    plt.xlabel('Frequency (Hz)')
-    plt.ylabel(r'Amplitude (dB rel. $(nm/m/s)^2/Hz$)')
+    plt.xlabel('Frequency [Hz]')
+    plt.ylabel(r'Amplitude [$n\epsilon^2/Hz$] [dB]')
     plt.xlim([0.01, 50])
-    t_end = t_start+timedelta(minutes=n_minute) - timedelta(hours=1)
-    plt.title(rf"{t_start.date()} to {t_end.date()} at channel {cha1}")
-    plt.tight_layout()
-    plt.savefig(f'{out_dir}/{t_start}__{t_start+timedelta(minutes=n_minute)}_f{f1}:{f2}_{cha1}_PPSD.png', bbox_inches='tight')
+    plt.title(rf"DAS Channel {cha1}")
+    # plt.tight_layout()
+    plt.subplots_adjust(top=0.922, bottom=0.131, left=0.141, right=0.977, hspace=0.2, wspace=0.2)
+    plt.savefig(f'{out_dir}/{t_start}__{t_start+timedelta(minutes=n_minute)}_f{f1}_{f2}_{cha1}_PPSD.eps') # , bbox_inches='tight'
 
 
 def get_spec_files(dir:str, t0:datetime, t1:datetime, target_cha:int):
@@ -556,13 +577,13 @@ def spectral_power_ts(f_ranges:list, window_length:timedelta, target_cha=None, t
     #     dates = storms_data.loc[storm, ['start_date', 'end_date']]
     #     ax.axvspan(np.datetime64(dates['start_date']), np.datetime64(dates['end_date'])+1, label=storm, facecolor='r', alpha=0.3)
     
-    ax.set_ylabel('Nano strainrate PSD (dB)')
+    ax.set_ylabel(r'Amplitude [$n\epsilon^2/Hz$] [dB]')
     ax.xaxis.set_major_locator(mdates.MonthLocator())
     ax.set_xlim(t0, t1)
     ax.grid(axis='x')
     plt.tight_layout()
     f_label = 'high' if f_ranges[0][0] > 1 else 'low'
-    plt.savefig(f'./results/figures/ts_spec_lines/{t0}_{t1}_{target_cha}_{f_label}_{window_length.total_seconds()/60}min_avg.png', bbox_inches='tight')
+    plt.savefig(f'./results/figures/ts_spec_lines/{t0}_{t1}_{target_cha}_{f_label}_{window_length.total_seconds()/60}min_avg.eps', bbox_inches='tight')
     # plt.show()
 
 
@@ -703,7 +724,7 @@ def plot_spectrogram(target_cha, t0, t1, window_len=3600, norm=False, tides=Fals
     ax.set_xticks(major_tick_positions, major_tick_labels)
     ax.set_xticks(minor_tick_positions, minor=True)
     ax.tick_params(axis='x', which='minor', length=3, labelsize=0)
-    ax.set_ylabel('Frequency (Hz)')
+    ax.set_ylabel('Frequency [Hz]')
     
     if len(weather) < 0:
         # axs[0].xaxis.set_ticks_position('both')
@@ -717,7 +738,7 @@ def plot_spectrogram(target_cha, t0, t1, window_len=3600, norm=False, tides=Fals
                         cmap=('bwr' if octave_smoothing and norm else ('bwr' if norm else 'jet')))
     sm.set_array([])
     fig.colorbar(sm, ax=axs[-1] if len(weather) > 0 else ax,
-                 label='Nano strainrate PSD (dB)', pad=0.40 if len(weather) > 0 else 0.2,
+                 label=r'Amplitude [$n\epsilon^2/Hz$] [dB]', pad=0.40 if len(weather) > 0 else 0.2,
                  aspect=40, orientation="horizontal")
     ax.set_title(rf"{t0.date()} to {t1.date()} at channel {target_cha}")
     plt.grid(ax, which='both' if delta <= 2419200 else 'major', linewidth=0.1, alpha=0.5)
@@ -731,8 +752,8 @@ def plot_spectrogram(target_cha, t0, t1, window_len=3600, norm=False, tides=Fals
     # else: 
     #     plt.tight_layout()
     del day_starts, months, month_days; gc.collect()
-    f_name = f'./results/figures/adapted_specs/spec_{t0}_{t1}_{target_cha}_{window_len}s_{"_tides" if tides else ""}{"_norm" if norm else ""}{"_smooth" if octave_smoothing else ""}.png'
-    plt.savefig(f_name, bbox_inches='tight', dpi=80)        # 16/01/25: reduced dpi from 120
+    f_name = f'./results/figures/adapted_specs/spec_{t0}_{t1}_{target_cha}_{window_len}s_{"_tides" if tides else ""}{"_norm" if norm else ""}{"_smooth" if octave_smoothing else ""}.eps'
+    plt.savefig(f_name, bbox_inches='tight')
     plt.close(fig); gc.collect()
 
 
@@ -868,7 +889,7 @@ def plot_weather_spec(target_cha, t0, t1, window_len=3600, c_range=None, octave_
                         cmap='bwr')
     sm.set_array([])
     # use a small fraction + pad so horizontal colorbar is placed outside axes without overlapping
-    cbar = fig.colorbar(sm, ax=ax, label='Nano strainrate PSD (dB)', pad=0.07)
+    cbar = fig.colorbar(sm, ax=ax, label=r'Amplitude [$n\epsilon^2/Hz$] [dB]', pad=0.07)
                         # pad=0.02, fraction=0.035, aspect=40)
     # fig.subplots_adjust(right=0.2)
     ax.set_title(rf"{t0.date()} to {t1.date()} at channel {target_cha}")
@@ -881,12 +902,12 @@ def plot_weather_spec(target_cha, t0, t1, window_len=3600, c_range=None, octave_
                 labelrotation=90)  # rotate x tick labels
     ax.tick_params(axis='y', which='both',
                 left=True, right=False, labelleft=True, labelright=False)
-    ax.set_ylabel('Frequency (Hz)')
+    ax.set_ylabel('Frequency [Hz]')
     # plt.setp(ax.get_xticklabels(), rotation=90)
     # plt.xticks(rotation=90)
     # plt.grid(ax, which='both' if delta <= 2419200 else 'major', linewidth=0.1, alpha=0.5)
     del day_starts, months, month_days; gc.collect()
-    f_name = f'./results/figures/adapted_specs/months_norm/spec_{t0}_{t1}_{target_cha}_{window_len}s_{"_smooth" if octave_smoothing else ""}.png'
+    f_name = f'./results/figures/adapted_specs/months_norm/spec_{t0}_{t1}_{target_cha}_{window_len}s_{"_smooth" if octave_smoothing else ""}.eps'
     plt.savefig(f_name, bbox_inches='tight')
     plt.close(fig); gc.collect()
 
@@ -937,7 +958,7 @@ def sensitivity_analysis(gps_track:pd.DataFrame, target_ch, plot=True):
         trans_sens.append(sin(2*radians(angle)) ** 2)
     
     if plot:
-        fig, axs = plt.subplots(3, 1, figsize=(15, 10))
+        fig, axs = plt.subplots(3, 1, figsize=(6.4,4.8))
         for i, arr in enumerate([relative_angles, long_sens, trans_sens]):
             im = axs[i].scatter(gps_track['lon'], gps_track['lat'], c=arr, cmap='seismic')
             fig.colorbar(im, ax=axs[i])
@@ -948,9 +969,186 @@ def sensitivity_analysis(gps_track:pd.DataFrame, target_ch, plot=True):
     return np.sum(long_sens), np.sum(trans_sens)
 
 
-if __name__ == '__main__':
-    parallel_spectral_analysis()
+def band_amp_bulk_runner():
+    dir_path = '/data/QNAP1_Data/Data/'
     
+    f_bands = [[0.01, 0.1], [0.1, 0.3], [0.3, 0.8], [1.0, 5.0], [5.0, 10.0]]
+    for y, m in [[2024, 11], [2024, 12], [2025, 1], [2025, 2], [2025, 3], [2025, 4], [2025, 5], [2025, 6]]:
+        print(f'Running {y}/{m}')
+        t_start = datetime(year=y, month=m, day=1)
+        t_end = t_start + relativedelta(months=1)
+        n_minute = (t_end - t_start).total_seconds() // 60
+        prepro_para = {
+            'samp_freq': 100,
+            'target_spatial_res': 1,
+            'n_minute': n_minute,
+            'freqmin': 0.01,
+            'freqmax': 25.0,
+            'cha1': 0,
+            'cha2': None,
+        }
+        
+        get_band_amplitudes(dir_path, prepro_para, t_start, f_bands)
+
+
+def get_band_amplitudes(dir_path, prepro_para, t_start, f_bands, chunk_minutes=60):
+    n_minute = prepro_para.get("n_minute")
+    t_end = t_start + timedelta(minutes=n_minute)
+
+    filepath_array, timestamps = get_filepath_array(dir_path, t_start, t_end)
+
+    tdms = TdmsReader(filepath_array[0])
+    props = tdms.get_properties()
+    n_chas = tdms.fileinfo["n_channels"]
+    prepro_para.update({"cha2": n_chas - 1})
+
+    running_sum = [None] * len(f_bands)
+    running_count = np.zeros(len(f_bands))
+
+    current_time = t_start
+    while current_time < t_end:
+        data = get_data_from_array(
+            filepath_array,
+            prepro_para,
+            current_time,
+            duration=timedelta(minutes=chunk_minutes),
+            filter=False,
+        )
+
+        valid_rows = ~np.isnan(data).any(axis=1)
+        data = data[valid_rows]
+
+        freqs, psd = welch(
+            data,
+            fs=prepro_para["samp_freq"],
+            axis=0,
+            nperseg=4096,
+        )
+
+        for i, (fmin, fmax) in enumerate(f_bands):
+
+            mask = (freqs >= fmin) & (freqs <= fmax)
+
+            if len(mask.shape) == 1:
+                band_power = np.sum(psd[mask, :], axis=0)
+            else:
+                print(f'broke for {fmin} at {current_time}')
+                continue
+
+            if running_sum[i] is None:
+                running_sum[i] = np.zeros_like(band_power)
+
+            running_sum[i] += band_power
+            running_count[i] += mask.sum()
+
+        current_time += timedelta(minutes=chunk_minutes)
+
+    cols = [f'{fmin}_{fmax}' for (fmin, fmax) in f_bands]
+    results_df = pd.DataFrame(index=range(0,n_chas), columns=cols)
+    for i, (fmin, fmax) in enumerate(f_bands):
+
+        mean_psd = running_sum[i] / running_count[i]
+        log_psd = 10 * np.log10(mean_psd)
+
+        results_df[f'{fmin}_{fmax}'] = log_psd
+
+        np.savetxt(f"./results/cha_spectra/{t_start.date()}_{t_end.date()}_{fmin}_{fmax}.txt", log_psd)
+
+    print(results_df)
+    results_df.to_csv(f"./results/cha_spectra/{t_start.date()}_{t_end.date()}.txt")
+
+
+def map_amplitude_plots(band_amplitudes, gps_track:pd.DataFrame, cmap='viridis', basemap=True):    
+    os_request = cimgt.StadiaMapsTiles(apikey='c3e0a719-1e2c-4797-9276-16a7292f91a8', style='stamen_terrain')
+    fig, ax = plt.subplots(figsize=(7,6), subplot_kw={'projection': os_request.crs})
+    
+    # clip exposed channels
+    gps_track = gps_track[~gps_track['channel_no'].between(1035, 1100)]
+    gps_track = gps_track[~gps_track['channel_no'].between(1515, 1570)]
+    
+    band_amplitudes = band_amplitudes[(band_amplitudes.index < 1035) | (band_amplitudes.index > 1100)]
+    band_amplitudes = band_amplitudes[(band_amplitudes.index < 1515) | (band_amplitudes.index > 1570)]
+    
+    all_values = []
+    for band in band_amplitudes:
+        amps = band_amplitudes[band]
+        vals = amps.dropna().values
+        all_values.extend(vals)
+    
+    norm = Normalize(vmin=np.nanpercentile(all_values, 1), vmax=np.nanpercentile(all_values, 99))
+
+    gps_track_cp = gps_track.copy()
+    for i, band in enumerate(band_amplitudes):
+        gps_track = gps_track_cp.copy()
+        
+        amps = band_amplitudes[band]
+        gps_track["amplitude"] = gps_track["channel_no"].map(amps)
+
+        # ensure channel ordering
+        gps_track = gps_track.sort_values("channel_no").reset_index(drop=True)
+        gps_track = gps_track[~np.isnan(gps_track).any(axis=1)]
+        
+        gps_track['lat'] = gps_track['lat'] - (i*0.002)
+
+        # project to web mercator
+        gdf = gpd.GeoDataFrame(
+            gps_track,
+            geometry=gpd.points_from_xy(gps_track["lon"], gps_track["lat"]),
+            crs="EPSG:4326",
+        ).to_crs(epsg=3857)
+
+        segments = []
+        values = []
+
+        for i in range(len(gdf) - 1):
+            p1 = gdf.geometry.iloc[i]
+            p2 = gdf.geometry.iloc[i + 1]
+
+            segments.append([(p1.x, p1.y), (p2.x, p2.y)])
+            values.append(np.nanmean([gdf["amplitude"].iloc[i], gdf["amplitude"].iloc[i + 1]]))
+        
+        lc = LineCollection(segments, cmap=cmap, norm=norm, linewidth=4)
+
+        lc.set_array(np.asarray(values))
+        ax.add_collection(lc)
+        
+        band = band.split('_')
+        ax.text(p2.x-300, p2.y, f'{band[0]}-{band[1]} Hz')
+
+    # ax.autoscale()
+    if basemap:
+        # cx.add_basemap(ax, crs=gdf.crs)
+        ext = [1.365, 1.390, 52.890, 52.907]
+        ax.set_extent(ext)
+        ax.add_image(os_request, 15)
+    
+    # gridlines = ax.gridlines(crs=ccrs.PlateCarree(), draw_labels=True)
+    # gridlines.xformatter = LONGITUDE_FORMATTER
+    # gridlines.yformatter = LATITUDE_FORMATTER
+    # gridlines.top_labels = False
+    # gridlines.right_labels = False
+
+    sm = plt.cm.ScalarMappable(cmap=cmap, norm=norm)
+    cbar = fig.colorbar(sm, ax=ax)
+    cbar.set_label(r"Mean Amplitude [$n\epsilon^2/Hz$] [dB]")
+    # ax.set_title("Cable spectral amplitude")
+    ax.set_axis_off()
+
+    plt.tight_layout()
+    plt.show()
+
+
+if __name__ == '__main__':  
+    # parallel_spectral_analysis()
+    
+    ### cable amplitude channel maps
+    # band_amp_bulk_runner()
+    m = 4
+    band_amplitudes = pd.read_csv(f'./results/cha_spectra/2025-0{m}-01_2025-0{m+1}-01.txt', index_col=0)
+    gps_track = pd.read_csv('./results/checkpoints/final_gps_track_1m.csv')
+    map_amplitude_plots(band_amplitudes, gps_track)
+    
+    ### all the weather stuff
     markers_arr = [
         # datetime(2024, 5, 30),
         datetime(2024, 4, 6),       # Kathleen
@@ -1006,62 +1204,3 @@ if __name__ == '__main__':
     #     for cha in [750, 788, 875, 1475]:
     #         spectral_power_ts(f_ranges_low, timedelta(days=5), target_cha=cha, t0=t0, t1=t1); pbar_outer.update(1)
     #         spectral_power_ts(f_ranges_high, timedelta(days=2), target_cha=cha, t0=t0, t1=t1); pbar_outer.update(1)
-    
-    ### tidal plots
-    # t0 = datetime(year=2025, month=1, day=1); t1 = datetime(year=2025, month=2, day=1)
-    # for i in range(7):
-    #     plot_spectrogram(target_cha=788, t0=t0, t1=t1, tides=True)
-    #     t0 += relativedelta(months=1)
-    #     t1 += relativedelta(months=1)
-    
-    
-    ############################ ARCHIVE ############################
-    # dir_path = "/data/localraid/20250208/"
-    # task_t0 = datetime(year = 2025, month = 2, day = 8, 
-    #                    hour = 12, minute = 7, second = 53, microsecond = 0)
-    # dir_path = "/data/localraid/20250108/"
-    # task_t0 = datetime(year = 2025, month = 1, day = 8, 
-    #                    hour = 12, minute = 0, second = 23, microsecond = 0)
-    # dir_path = "/data/localraid/20241208/"
-    # task_t0 = datetime(year = 2024, month = 12, day = 8, 
-    #                    hour = 12, minute = 7, second = 36, microsecond = 0)
-    
-    
-    # corr_path = './results/saved_corrs/2024-02-05 12:01:00_4320mins_f0.01:49.9__3850:5750_1m.txt'
-    # stream = load_xcorr(corr_path, as_stream=True)
-    # from obspy import read, UTCDateTime, Stream
-    
-    # corr_path = './results/saved_corrs/2024-02-05 12:01:00_4320mins_f0.01:49.9__3850:5750_1m.txt'
-    # stream = load_xcorr(corr_path, as_stream=True)
-    
-    # from obspy import read, UTCDateTime, Stream
-    # dx = 1.0
-    # for i in range(0, len(stream)):
-    #     stream[i].stats.distance = i*dx
-    # stream.filter("bandpass", freqmin=5, freqmax=50)
-    # stream.plot(type='section', recordstart=6, recordlength=4, fillcolors=('k', None))
-    
-    
-    ### CAUSAL | ACAUSAL SPLIT
-    # causal = stream.copy()
-    # causal.trim(starttime=UTCDateTime("19700101T00:00:08"))
-    # causal.plot(type='section', recordlength=2, fillcolors=('k', None))
-
-    # acausal = stream.copy()plt.xticks(rotation=90)
-    # acausal.trim(endtime=UTCDateTime("19700101T00:00:08"))
-    # for tr in acausal: tr.data = np.flip(tr.data)
-    # acausal.plot(type='section', recordlength=2, fillcolors=('k', None))
-    
-    # gps_coords = pd.read_csv('results/checkpoints/interp_ch_pts.csv', sep=',', index_col=2)
-    # long_max, trans_max = 0, 0
-    # long_max_ch, trans_max_ch = 0, 0
-    # for ch in gps_coords.index:
-    #     long_total, trans_total = sensitivity_analysis(gps_coords, ch, plot=False)
-    #     if long_total > long_max:
-    #         long_total = long_max
-    #         long_max_ch = ch
-    #     if trans_total > trans_max:
-    #         trans_total = trans_max
-    #         trans_max_ch = ch
-    # print(f'{long_max_ch}: {long_max}')
-    # print(f'{trans_max_ch}: {trans_max}')

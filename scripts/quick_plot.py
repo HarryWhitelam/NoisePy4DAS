@@ -47,11 +47,10 @@ def max_min_strain_rate(data, channel_bounds=None):
 dir_path =  "/data/QNAP1_Data/Data/"
 # file_path =  "/data/QNAP1_Data/Data/20241015_1m_spatial/100hz_UTC_20241017_113924.138.tdms"
 
-n_minutes = 10
-t_start = datetime(year=2025, month=2, day=16, hour=0, minute=0, second=0)
+n_minutes = 2
+t_start = datetime(year=2025, month=1, day=28, hour=0, minute=0, second=0)
 
-t_start = datetime(year = 2025, month = 3, day = 27,
-                   hour = 11, minute = 22, second = 39)
+# t_start = datetime(year = 2025, month = 3, day = 27, hour = 11, minute = 22, second = 39)
 t_end = t_start + timedelta(minutes=n_minutes)
 
 prepro_para = {
@@ -60,8 +59,8 @@ prepro_para = {
                 'n_minute': n_minutes,
                 'freqmin': 0.01,
                 'freqmax': 49.9,
-                'cha1':100,
-                'cha2':1650,
+                'cha1':0,
+                'cha2':1663,
             }
 
 filepath_array, timestamps = get_filepath_array(dir_path, t_start, t_end)
@@ -71,14 +70,15 @@ print(f'Data running from {t_start} to {t_end}')
 data = get_data_from_array(filepath_array, prepro_para, t_start, duration=timedelta(minutes=n_minutes))
 
 fig1 = plt.figure()
-img1 = plt.imshow(data, aspect='auto', interpolation='none', extent=(prepro_para.get('cha1'), prepro_para.get('cha2'), data.shape[0]/prepro_para.get('samp_freq'), 0), vmin=np.nanpercentile(data, 1), vmax=np.nanpercentile(data, 99))
+# img1 = plt.imshow(data, aspect='auto', interpolation='none', extent=(prepro_para.get('cha1'), prepro_para.get('cha2'), data.shape[0]/prepro_para.get('samp_freq'), 0), vmin=np.nanpercentile(data, 1), vmax=np.nanpercentile(data, 99))
+img1 = plt.imshow(data, aspect='auto', interpolation='none', vmin=np.nanpercentile(data, 5), vmax=np.nanpercentile(data, 95))
 plt.ylabel('Time (seconds)')
 plt.xlabel('Channel No.')
 plt.title(t_start)
 plt.set_cmap('bwr')
 fig1.colorbar(img1, label= "Nano Strain per Second [nm/m/s]")
 plt.tight_layout()
-# plt.savefig('./results/figures/kamchatka_waterfall.png')
+# plt.savefig('./results/figures/kamchatka_waterfall.eps')
 plt.show()
 
 

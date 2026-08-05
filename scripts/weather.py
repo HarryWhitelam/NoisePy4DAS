@@ -23,7 +23,7 @@ def plot_weather():
     for ax, label in zip(axs, ['Max temp (degC)', 'Min temp (degC)', 'AF (days)', 'Rainfall (mm)', 'Sun (hours)']):
         ax.set_ylabel(label)
     plt.tight_layout()
-    plt.savefig('./results/figures/weather_data.png')
+    plt.savefig('./results/figures/weather_data.eps')
     plt.show()
 
 
@@ -51,7 +51,7 @@ def plot_rain_storms():
             ax.text(np.datetime64(dates['start_date']), 20, storm, rotation=90)
         prev_storm_end = np.datetime64(dates['end_date'])
     plt.tight_layout()
-    # plt.savefig('./results/figures/rainfall_storms.png')
+    # plt.savefig('./results/figures/rainfall_storms.eps')
     plt.show()
 
 
@@ -130,7 +130,7 @@ def plot_era5_data(file_path:str):
     
     plt.tight_layout()
     # plt.show()
-    plt.savefig(f'./results/figures/{plot_time}_{var}.png')
+    plt.savefig(f'./results/figures/{plot_time}_{var}.eps')
     
     
 def era5_data_to_csv(file_path:str):
@@ -218,7 +218,7 @@ def plot_era5_csv(file_path='./results/checkpoints/combined_weather.csv', plot_d
             # prev_storm_end = np.datetime64(dates['end_date'])
     
     plt.tight_layout()
-    plt.savefig(f"./results/figures/{'daily' if plot_daily else 'hourly'}_rainfall.png")
+    plt.savefig(f"./results/figures/{'daily' if plot_daily else 'hourly'}_rainfall.eps")
 
 
 def plot_tidal_data(file_path, t_start:datetime, t_end):
@@ -247,7 +247,7 @@ def plot_tidal_data(file_path, t_start:datetime, t_end):
     ax.set_ylabel('Tidal Height (m)')
     
     plt.tight_layout()
-    # plt.savefig(f'./results/figures/Tidal_Plots/{t_start.date()}_{t_end.date()}_tidal.png')
+    # plt.savefig(f'./results/figures/Tidal_Plots/{t_start.date()}_{t_end.date()}_tidal.eps')
     plt.show()
 
 
@@ -272,29 +272,41 @@ def plot_waverider_csv(file_path:str, plot_daily=False, get_df=False):
     if get_df: return df
     
     ### Wave height
-    fig = plt.figure(); ax = fig.add_subplot(111)
-    ax.plot(mdates.date2num(df.index), df['Hs(Hm0)(m)'], label='Hs(m)', color=(0.8, 0.0, 0.0))
-    ax.set_ylabel(f"{'Mean daily' if plot_daily else 'Hourly'} wave height (m/s)", color=(0.8, 0.0, 0.0))
-    fig.autofmt_xdate()
-    ax.xaxis.set_major_formatter(mdates.DateFormatter('%m/%Y'))
-    ax.xaxis.set_major_locator(mdates.MonthLocator(bymonth=(1, 4, 7, 10)))
-    ax.xaxis.set_minor_locator(mdates.MonthLocator(bymonth=(2, 3, 5, 6, 8, 9, 11, 12)))
-    plt.tight_layout()
-    plt.savefig(f"./results/figures/{'daily' if plot_daily else 'hourly'}_wave_height.png")
+    # fig = plt.figure(); ax = fig.add_subplot(111)
+    # ax.plot(mdates.date2num(df.index), df['Hs(Hm0)(m)'], label='Hs(m)', color=(0.8, 0.0, 0.0))
+    # ax.set_ylabel(f"{'Mean daily' if plot_daily else 'Hourly'} wave height (m/s)", color=(0.8, 0.0, 0.0))
+    # fig.autofmt_xdate()
+    # ax.xaxis.set_major_formatter(mdates.DateFormatter('%m/%Y'))
+    # ax.xaxis.set_major_locator(mdates.MonthLocator(bymonth=(1, 4, 7, 10)))
+    # ax.xaxis.set_minor_locator(mdates.MonthLocator(bymonth=(2, 3, 5, 6, 8, 9, 11, 12)))
+    # plt.tight_layout()
+    # plt.savefig(f"./results/figures/{'daily' if plot_daily else 'hourly'}_wave_height.eps")
     
     ### Wave period
+    # fig = plt.figure(); ax = fig.add_subplot(111)
+    # ax.plot(mdates.date2num(df.index), df['Tp(s)'], label='Peak wave period (s)', color=(0.8, 0.0, 0.0, 0.4))
+    # ax2 = ax.twinx()
+    # ax2.plot(mdates.date2num(df.index), df['Tz(Tm)(s)'], label='Zero-crossing wave period (s)', color=(0.0, 0.0, 0.8, 0.4))
+    # ax.set_ylabel(f"{'Mean daily' if plot_daily else 'Hourly'} peak wave period (s)", color=(0.8, 0.0, 0.0))
+    # ax2.set_ylabel(f"{'Mean daily' if plot_daily else 'Hourly'} zero-crossing wave period (s)", color=(0.0, 0.0, 0.8))
+    # fig.autofmt_xdate()
+    # ax.xaxis.set_major_formatter(mdates.DateFormatter('%m/%Y'))
+    # ax.xaxis.set_major_locator(mdates.MonthLocator(bymonth=(1, 4, 7, 10)))
+    # ax.xaxis.set_minor_locator(mdates.MonthLocator(bymonth=(2, 3, 5, 6, 8, 9, 11, 12)))
+    # plt.tight_layout()
+    # plt.savefig(f"./results/figures/{'daily' if plot_daily else 'hourly'}_wave_period.eps")
+    
     fig = plt.figure(); ax = fig.add_subplot(111)
-    ax.plot(mdates.date2num(df.index), df['Tp(s)'], label='Peak wave period (s)', color=(0.8, 0.0, 0.0, 0.4))
-    ax2 = ax.twinx()
-    ax2.plot(mdates.date2num(df.index), df['Tz(Tm)(s)'], label='Zero-crossing wave period (s)', color=(0.0, 0.0, 0.8, 0.4))
-    ax.set_ylabel(f"{'Mean daily' if plot_daily else 'Hourly'} peak wave period (s)", color=(0.8, 0.0, 0.0))
-    ax2.set_ylabel(f"{'Mean daily' if plot_daily else 'Hourly'} zero-crossing wave period (s)", color=(0.0, 0.0, 0.8))
+    wave_f = 2/df['Tp(s)']
+    ax.plot(mdates.date2num(df.index), wave_f)
+    ax.set_yscale('log')
+    ax.set_ylim(0.09, 1.1)
     fig.autofmt_xdate()
     ax.xaxis.set_major_formatter(mdates.DateFormatter('%m/%Y'))
     ax.xaxis.set_major_locator(mdates.MonthLocator(bymonth=(1, 4, 7, 10)))
     ax.xaxis.set_minor_locator(mdates.MonthLocator(bymonth=(2, 3, 5, 6, 8, 9, 11, 12)))
     plt.tight_layout()
-    plt.savefig(f"./results/figures/{'daily' if plot_daily else 'hourly'}_wave_period.png")
+    plt.show()
 
 
 def plot_met_csv(file_path:str, plot_daily=False, get_df=False):
@@ -329,7 +341,7 @@ def plot_met_csv(file_path:str, plot_daily=False, get_df=False):
     ax.xaxis.set_major_locator(mdates.MonthLocator(bymonth=(1, 4, 7, 10)))
     ax.xaxis.set_minor_locator(mdates.MonthLocator(bymonth=(2, 3, 5, 6, 8, 9, 11, 12)))
     plt.tight_layout()
-    plt.savefig(f"./results/figures/{'daily' if plot_daily else 'hourly'}_windspeed.png")
+    plt.savefig(f"./results/figures/{'daily' if plot_daily else 'hourly'}_windspeed.eps")
 
 
 def plot_nwalsham_rain_csv(get_df=False):
@@ -373,7 +385,7 @@ def plot_combined_weather(plot_daily=False, plot_storms=False, t_start=None, t_e
             axs[-1].axvspan(np.datetime64(dates['start_date']), np.datetime64(dates['end_date'])+1, label=storm, facecolor='r', alpha=0.3)
     
     plt.subplots_adjust(hspace=0)
-    # plt.savefig(f"./results/figures/{'daily' if plot_daily else 'hourly'}_combined.png")
+    # plt.savefig(f"./results/figures/{'daily' if plot_daily else 'hourly'}_combined.eps")
     plt.show()
 
 
@@ -501,7 +513,7 @@ def get_good_wind_periods(daily=False):
     fig.autofmt_xdate()
     ax.legend(loc='upper right')
     plt.tight_layout()
-    # plt.savefig('./results/checkpoints/wind_windows_timeline.png', bbox_inches='tight', dpi=120)
+    # plt.savefig('./results/checkpoints/wind_windows_timeline.eps', bbox_inches='tight', dpi=120)
     plt.show()
     
 
@@ -582,7 +594,7 @@ def get_rainfall_windows():
 
 
 if __name__ == "__main__":
-    daily = False
+    daily = True
     m = 5
     d0 = datetime(year=2025, month=m, day=1)
     d1 = datetime(year=2025, month=(m+1)%12, day=1)
@@ -593,12 +605,12 @@ if __name__ == "__main__":
     # plot_era5_csv('./results/checkpoints/combined_weather.csv', plot_daily=daily, plot_storms=True)
     # plot_tidal_data('./results/checkpoints/CRO_final.csv', d0, d1)
     
-    # plot_waverider_csv('./results/checkpoints/hpg_wave.csv', plot_daily=daily)
     # plot_met_csv('./results/checkpoints/hpg_met.csv', plot_daily=daily)
     task_t0 = datetime(year = 2025, month = 2, day = 1, 
                    hour = 0, minute = 0, second = 0, microsecond = 0)
     task_t1 = task_t0 + timedelta(days=14)
-    plot_combined_weather(plot_daily=daily, plot_storms=False, t_start=task_t0, t_end=task_t1)
+    # plot_combined_weather(plot_daily=daily, plot_storms=False, t_start=task_t0, t_end=task_t1)
+    plot_waverider_csv('./results/checkpoints/hpg_wave.csv', plot_daily=daily)
     
     # plot_waverider_direction(daily=daily, arrow_every_days=7)
     # get_good_wind_periods(daily)

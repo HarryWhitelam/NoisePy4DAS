@@ -415,4 +415,4 @@ if __name__ == '__main__':
     ax.set_ylabel("Tau (s)")
     ax.set_title('Radon Transform (adjoint)')
     plt.tight_layout()
-    fig.savefig(f'./results/figures/hlrt_attempt.png')
+    fig.savefig(f'./results/figures/hlrt_attempt.eps')

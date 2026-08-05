@@ -60,7 +60,7 @@ def set_prepro_parameters(dir_path, task_t0, freqmin=1.0, freqmax=49.9, target_s
         n_pair          = int((nsta+1)*nsta/2) if src_ch == None else nsta
     else:
         effective_cha2  = 1
-        cha_list        = [cha1, cha2]
+        cha_list        = np.array([cha1, cha2])
         nsta            = 2
         n_pair          = 1
     
@@ -173,7 +173,7 @@ def process_minute(args):
                    (np.isnan(trace_stdS) == 0))[0]
     if not len(ind):
         warn(f'{minute_t0} had no valid indices :(')
-        corr_zero   = np.zeros((n_lag, n_pair), dtype=np.float32)
+        corr_zero = np.zeros((n_lag, n_pair), dtype=np.float32)
         return corr_zero
 
     sta = cha_list[ind]
@@ -184,7 +184,8 @@ def process_minute(args):
 
     if src_ch:
         sfft1 = DAS_module.smooth_source_spect(data[int((src_ch - cha1)/spatial_ratio)], prepro_para)
-        corr, tindx = DAS_module.correlate(sfft1, data, prepro_para, Nfft)
+        # rcv_idx = int((prepro_para["rcv_ch"] - cha1) / spatial_ratio)
+        corr, tindx = DAS_module.correlate(sfft1,data[1:],prepro_para,Nfft)
         corr = corr.T
         corr_full[:, :] += corr
         stack_full[:, :] += 1
@@ -206,7 +207,7 @@ def process_minute(args):
     valid = stack_full > 0
     ccf = np.zeros_like(corr_full)
     ccf[:, valid[0]] = corr_full[:, valid[0]] / stack_full[:, valid[0]]
-    
+        
     return ccf
 
 
@@ -242,6 +243,9 @@ def parallel_xcorr(dir_path, prepro_para, corr_path=None):
     with multiprocessing.Pool(multiprocessing.cpu_count()) as pool:
         with tqdm(total=len(args_list), desc=f"Parallel xcorr [{task_t0.date()}]", position=0) as pbar:
             for corr in pool.imap_unordered(process_minute, args_list, chunksize=1):
+                if np.count_nonzero(corr) == 0:
+                    continue
+                corr /= np.max(np.abs(corr))
                 buffer.append(corr)
                 
                 if len(buffer) == chunk_size:
@@ -312,6 +316,7 @@ def correlation(dir_path, prepro_para, corr_path=None, allowed_times=None):
     n_minute = prepro_para['n_minute']
     task_t0 = prepro_para['task_t0']
     src_ch = prepro_para['src_ch']
+    spatial_ratio = prepro_para['spatial_ratio']
     
     ### FIXME: these funcs require a LOT of listdir calls, could be made more efficient in the future
     file_array, timestamps = get_reader_array(dir_path, allowed_times)
@@ -355,7 +360,7 @@ def correlation(dir_path, prepro_para, corr_path=None, allowed_times=None):
 
         # loop over all stations
         if src_ch:
-            sfft1 = DAS_module.smooth_source_spect(white_spect[src_ch - cha1], prepro_para)
+            sfft1 = DAS_module.smooth_source_spect(white_spect[int((src_ch - cha1)/spatial_ratio)], prepro_para)
             corr, tindx = DAS_module.correlate(sfft1, white_spect, prepro_para, Nfft)
 
             # stacking one minute
@@ -459,7 +464,7 @@ def plot_correlation(corr, prepro_para, cmap_param='bwr', save_corr=False, norma
     plt.tight_layout()
     if not os.path.exists(out_dir):
         os.makedirs(out_dir)
-    plt.savefig(f'{out_dir}{out_name}.png')
+    plt.savefig(f'{out_dir}{out_name}.eps')
 
 
 def save_correlation(corr, prepro_para):
@@ -509,19 +514,58 @@ def plot_multiple_correlations(corrs:list, prepro_para:dict, vars, experiment_va
     # t_start = task_t0 - timedelta(minutes=n_minute)
     match experiment_var:
         case 'channels':
-            plt.savefig(f'./results/figures/{task_t0}_{n_minute}mins_{samp_freq}f{freqmin}:{freqmax}__{target_spatial_res}m__{experiment_var}_experiment.png')
+            plt.savefig(f'./results/figures/{task_t0}_{n_minute}mins_{samp_freq}f{freqmin}:{freqmax}__{target_spatial_res}m__{experiment_var}_experiment.eps')
             out_name = f'{task_t0}_{n_minute}mins_f{freqmin}:{freqmax}__{vars[0][0]}:{vars[0][1]}_{target_spatial_res}m'
         case 'frequencies':
-            plt.savefig(f'./results/figures/{task_t0}_{n_minute}mins_{samp_freq}f__{cha1}:{cha2}_{target_spatial_res}m__{experiment_var}_experiment.png')
+            plt.savefig(f'./results/figures/{task_t0}_{n_minute}mins_{samp_freq}f__{cha1}:{cha2}_{target_spatial_res}m__{experiment_var}_experiment.eps')
             out_name = f'{task_t0}_{n_minute}mins_f{vars[0][0]}:{vars[0][1]}__{cha1}:{cha2}_{target_spatial_res}m'
         case 'stack_length':
-            plt.savefig(f'./results/figures/{task_t0}_{samp_freq}f{freqmin}:{freqmax}__{cha1}:{cha2}_{target_spatial_res}m__{experiment_var}_experiment.png')
+            plt.savefig(f'./results/figures/{task_t0}_{samp_freq}f{freqmin}:{freqmax}__{cha1}:{cha2}_{target_spatial_res}m__{experiment_var}_experiment.eps')
             out_name = f'{task_t0}_{vars[0]}mins_f{freqmin}:{freqmax}__{cha1}:{cha2}_{target_spatial_res}m'
         case 'spatial_res':
-            plt.savefig(f'./results/figures/{task_t0}_{n_minute}mins_{samp_freq}f{freqmin}:{freqmax}__{cha1}:{cha2}__{experiment_var}_experiment.png')
+            plt.savefig(f'./results/figures/{task_t0}_{n_minute}mins_{samp_freq}f{freqmin}:{freqmax}__{cha1}:{cha2}__{experiment_var}_experiment.eps')
             out_name = f'{task_t0}_{n_minute}mins_f{freqmin}:{freqmax}__{cha1}:{cha2}_{vars[0]}m'
         case _:
-            plt.savefig(f'./results/figures/{task_t0}_{n_minute}mins_{samp_freq}f{freqmin}:{freqmax}__{cha1}:{cha2}_{target_spatial_res}m.png')
+            plt.savefig(f'./results/figures/{task_t0}_{n_minute}mins_{samp_freq}f{freqmin}:{freqmax}__{cha1}:{cha2}_{target_spatial_res}m.eps')
             out_name = f'{task_t0}_{n_minute}mins_f{freqmin}:{freqmax}__{cha1}:{cha2}_{target_spatial_res}m'
     if save_corr:
         np.savetxt(f'./results/saved_corrs/{out_name}.txt', corrs[0][:, :(effective_cha2 - cha1)], delimiter=",")
+
+
+def daily_correlations(dir_path, prepro_para):
+    ### do daily xcorrs, save as one file
+    # do reference at the same time? 
+    n_lag               = prepro_para['n_lag']
+    n_minute            = prepro_para['n_minute']
+    target_spatial_res  = prepro_para['target_spatial_res']
+    samp_freq           = prepro_para['samp_freq']
+    freqmin             = prepro_para['freqmin']
+    freqmax             = prepro_para['freqmax']
+    src_ch              = prepro_para['src_ch']
+    rcv_ch              = prepro_para['rcv_ch']
+    stack_method        = prepro_para['stack_method']
+    task_t0             = prepro_para['task_t0']
+    task_t1             = task_t0 + timedelta(minutes=n_minute)
+    
+    ### reference trace
+    ref_corr = parallel_xcorr(dir_path, prepro_para)
+    out_name = f'{task_t0.date()}_{task_t1.date()}mins_{samp_freq}f{freqmin}:{freqmax}_{src_ch}:{rcv_ch}_{target_spatial_res}m_{stack_method}'
+    np.savetxt(f'/data/localraid/dv_v_corrs/ref_stacks/{out_name}.txt', ref_corr, delimiter=",")
+    
+    n_days = n_minute // 1440
+    prepro_para['n_minute'] = 1440
+    
+    corr_full = np.zeros([n_lag, n_days], dtype=np.float32)
+    for day in range(0, n_days):
+        # Prepare argument list for each minute
+        day_corr = parallel_xcorr(dir_path, prepro_para)
+        if type(day_corr) != int:
+            corr_full[:, day] = day_corr[:, 0]
+        else:
+            corr_full[:, day].fill(np.nan)
+        prepro_para['task_t0'] += timedelta(days=1)
+
+    out_name = f'{task_t0.date()}_{task_t1.date()}mins_{samp_freq}f{freqmin}:{freqmax}_{src_ch}:{rcv_ch}_{target_spatial_res}m_{stack_method}'
+    np.savetxt(f'/data/localraid/dv_v_corrs/{out_name}.txt', corr_full, delimiter=",")
+    
+    return corr_full

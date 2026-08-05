@@ -13,8 +13,7 @@ import geopandas as gpd
 def deployment_map():
     crs = ccrs.PlateCarree()
     # os_request = cimgt.OSM()
-    os_request = cimgt.StadiaMapsTiles(apikey='c3e0a719-1e2c-4797-9276-16a7292f91a8', 
-    style='stamen_terrain')
+    os_request = cimgt.StadiaMapsTiles(apikey='c3e0a719-1e2c-4797-9276-16a7292f91a8', style='stamen_terrain')
     
     fig_w = 10.0
     fig_h = 8.0

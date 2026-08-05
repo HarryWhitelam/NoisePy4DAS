@@ -171,7 +171,7 @@ if __name__ == '__main__':
     ax.set_xlim(fmin, fmax)
     plt.tight_layout()
     plt.show()
-    fig.savefig(f'{out_dir}{out_name}.png')
+    fig.savefig(f'{out_dir}{out_name}.eps')
     
     
     ### max amplitude plot + line of best fit
@@ -183,7 +183,7 @@ if __name__ == '__main__':
     # plt.plot(f, ffit, color='red')
     # plt.tight_layout()
     # plt.show()
-    # fig.savefig(f'{out_dir}{out_name}_annotated.png')
+    # fig.savefig(f'{out_dir}{out_name}_annotated.eps')
     
     
     ### frequency normalisation
@@ -196,7 +196,7 @@ if __name__ == '__main__':
     bar = fig.colorbar(im, ax=ax, pad = 0.1) # if bad add in "format = lambda x, pos: '{:.1f}'.format(x*100)"
     plt.tight_layout()
     plt.show()
-    fig.savefig(f'{out_dir}{out_name}_f_norm.png')
+    fig.savefig(f'{out_dir}{out_name}_f_norm.eps')
 
     # pcolormesh attempt
     # fig, ax = plt.subplots(figsize=(7.0, 5.0))
@@ -205,6 +205,6 @@ if __name__ == '__main__':
     # ax.set_xlabel('Frequency (Hz)')
     # ax.set_ylabel('Phase velocity (m/s)')
     # plt.tight_layout()
-    # fig.savefig(f'{out_dir}pcolormesh_attempt.png')
+    # fig.savefig(f'{out_dir}pcolormesh_attempt.eps')
 
     # print_freq_c_summaries(img, c, f, step=1)
