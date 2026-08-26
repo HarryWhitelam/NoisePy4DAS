@@ -773,7 +773,7 @@ def plot_weather_spec(target_cha, t0, t1, window_len=3600, c_range=None, octave_
     weather_df = pd.concat([df_wave, df_met, df_era5], axis=1)[t0.date():t1.date()]
     weather_df = weather_df.resample(timedelta(hours=1)).mean()
     
-    fig, ax = plt.subplots(1,1, figsize=(12,4))
+    fig, ax = plt.subplots(1,1, figsize=(10,5))
     
     time_bin_counts = []; spec_min = 0; spec_max = 0
     for f in files:     # there has to be a more efficient way to do this
@@ -795,7 +795,6 @@ def plot_weather_spec(target_cha, t0, t1, window_len=3600, c_range=None, octave_
             
             f_size, t_size = spec.shape
             f_bins = np.linspace(0.01, 50.016666666666666, f_size)
-            # if octave_smoothing: spec = octave_smooth(spec, f_bins)
             if octave_smoothing: spec = octave_smooth_gpu(spec, f_bins)
             t_bin_length = (datetime.strptime(file_path.split('/')[-1].split('_')[2], '%Y-%m-%d %H:%M:%S') - t_start).total_seconds() / t_size
             time_axis = [t_start + timedelta(seconds=t_bin_length * j) for j in range(t_size)]
@@ -885,30 +884,33 @@ def plot_weather_spec(target_cha, t0, t1, window_len=3600, c_range=None, octave_
                 major_tick_positions.append(month_days.index[i])
                 major_tick_labels.append(month_days.iloc[i].strftime('%Y-%m-%d'))
     
+    plt.setp(ax.get_xticklabels(), rotation=30, ha='right')
+    
     sm = ScalarMappable(norm=Normalize(vmin=spec_min, vmax=spec_max),
                         cmap='bwr')
     sm.set_array([])
     # use a small fraction + pad so horizontal colorbar is placed outside axes without overlapping
-    cbar = fig.colorbar(sm, ax=ax, label=r'Amplitude [$n\epsilon^2/Hz$] [dB]', pad=0.07)
+    cbar = fig.colorbar(sm, ax=ax, label=r'Amplitude [$n\epsilon^2/Hz$] [dB]') # , pad=0.07
                         # pad=0.02, fraction=0.035, aspect=40)
     # fig.subplots_adjust(right=0.2)
-    ax.set_title(rf"{t0.date()} to {t1.date()} at channel {target_cha}")
+    ax.set_title(rf"Differential Spectrogram at Channel {target_cha}")
     ax.set_xticks(major_tick_positions, major_tick_labels)
     ax.set_xticks(minor_tick_positions, minor=True)
     ax.tick_params(axis='x', which='minor', length=2, labelsize=0)
     
     ax.tick_params(axis='x', which='both',
-                bottom=True, top=False, labelbottom=True,
-                labelrotation=90)  # rotate x tick labels
+                bottom=True, top=False, labelbottom=True)  # rotate x tick labels
     ax.tick_params(axis='y', which='both',
                 left=True, right=False, labelleft=True, labelright=False)
     ax.set_ylabel('Frequency [Hz]')
     # plt.setp(ax.get_xticklabels(), rotation=90)
     # plt.xticks(rotation=90)
     # plt.grid(ax, which='both' if delta <= 2419200 else 'major', linewidth=0.1, alpha=0.5)
-    del day_starts, months, month_days; gc.collect()
+    # del day_starts, months, month_days; gc.collect()
     f_name = f'./results/figures/adapted_specs/months_norm/spec_{t0}_{t1}_{target_cha}_{window_len}s_{"_smooth" if octave_smoothing else ""}.eps'
-    plt.savefig(f_name, bbox_inches='tight')
+    plt.subplots_adjust(top=0.925, bottom=0.154, left=0.091, right=1.0, hspace=0.2, wspace=0.2)
+    plt.savefig(f_name)
+    plt.show()
     plt.close(fig); gc.collect()
 
 
@@ -1143,10 +1145,10 @@ if __name__ == '__main__':
     
     ### cable amplitude channel maps
     # band_amp_bulk_runner()
-    m = 4
-    band_amplitudes = pd.read_csv(f'./results/cha_spectra/2025-0{m}-01_2025-0{m+1}-01.txt', index_col=0)
-    gps_track = pd.read_csv('./results/checkpoints/final_gps_track_1m.csv')
-    map_amplitude_plots(band_amplitudes, gps_track)
+    # m = 4
+    # band_amplitudes = pd.read_csv(f'./results/cha_spectra/2025-0{m}-01_2025-0{m+1}-01.txt', index_col=0)
+    # gps_track = pd.read_csv('./results/checkpoints/final_gps_track_1m.csv')
+    # map_amplitude_plots(band_amplitudes, gps_track)
     
     ### all the weather stuff
     markers_arr = [
@@ -1177,26 +1179,26 @@ if __name__ == '__main__':
     c_range_nodes_arr = [-32.7434695431312, 33.040064418459345]
     c_range_norm_nodes_arr = [-23.176340627918208, 24.762160092331]
     
-    t0 = datetime(year=2024, month=4, day=1); t1 = datetime(year=2025, month=4, day=1)
-    window_len = 3600
+    # t0 = datetime(year=2024, month=4, day=1); t1 = datetime(year=2025, month=4, day=1)
+    # window_len = 3600
     # with tqdm(total=8, desc=f"Spectrograms - Aprils", position=0) as pbar:
     #     for cha in [750, 788, 875, 1475]:
     #         plot_spectrogram(target_cha=cha, t0=t0, t1=t1, window_len=window_len); pbar.update(1)
     #         plot_spectrogram(target_cha=cha, t0=t0, t1=t1, window_len=window_len, norm=True, markers=markers_arr, weather=weather_arr, c_range=c_range_norm_arr); pbar.update(1)
     
-    t0 = datetime(year=2024, month=7, day=1); t1 = datetime(year=2025, month=7, day=1)
+    # t0 = datetime(year=2024, month=7, day=1); t1 = datetime(year=2025, month=7, day=1)
     # with tqdm(total=8, desc=f"Spectrograms - Julys", position=0) as pbar:
     #     for cha in [750, 788, 875, 1475]:
     #         plot_spectrogram(target_cha=cha, t0=t0, t1=t1, window_len=window_len); pbar.update(1)
     #         plot_spectrogram(target_cha=cha, t0=t0, t1=t1, window_len=window_len, norm=True, markers=markers_arr, weather=weather_arr, c_range=c_range_norm_arr); pbar.update(1)
     
-    # for y, ms in [[2024, [4,5,6,7,8,9,10,11,12]], [2025, [1,2,3,4,5,6,7]]]:
-    #     for m in ms:
-    #         t0 = datetime(year=y, month=m, day=1)
-    #         t1 = t0 + relativedelta(months=1)
-    #         with tqdm(total=4, desc=f"Spectrograms - {y}/{m}", position=0) as pbar:
-    #             for cha in [750, 788, 875, 1475]:
-    #                 plot_weather_spec(cha, t0, t1, window_len=600, c_range=c_range_nodes_arr); pbar.update(1)
+    for y, m in [[2024, 12], [2025, 5]]:
+        t0 = datetime(year=y, month=m, day=1)
+        t1 = t0 + relativedelta(months=1)
+        with tqdm(total=8, desc=f"Spectrograms - {y}/{m}", position=0) as pbar:
+            for cha in [750, 1475]:
+                plot_weather_spec(cha, t0, t1, window_len=600, c_range=c_range_nodes_arr); pbar.update(1)
+                plot_weather_spec(cha, t0, t1, window_len=3600, c_range=c_range_nodes_arr); pbar.update(1)
             
     # with tqdm(total=8, desc="Spec time series", position=0) as pbar_outer:
     #     f_ranges_low = [[0.01, 0.05], [0.1, 0.6], [0.7, 1.1]]

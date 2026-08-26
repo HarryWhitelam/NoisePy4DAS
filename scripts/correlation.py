@@ -65,23 +65,26 @@ def spatial_res_experiment():
 
 dir_path = "/data/QNAP1_Data/Data/"
 
+
 # dates = [[2025,2], [2024,7], [2024, 10], [2024,11], [2024,12], [2025,1], [2025,5]]
-dates = [[2024, 11], [2024, 12], [2025, 1], [2025, 2], [2025, 3]]
-for y, m in dates:
-    task_t0 = datetime(year = y, month = m, day = 1, 
-                    hour = 0, minute = 0, second = 0, microsecond = 0)
-    task_t1 = task_t0 + relativedelta(months=1)
-    ### new dv/v big stacks yay
-    n_minute = int((task_t1 - task_t0).total_seconds() / 60)
-    for chas in [[800, 1000], [1000, 1200], [1200, 1400]]:
-        prepro_para = set_prepro_parameters(dir_path, task_t0, target_spatial_res=10, cha1=chas[0], cha2=chas[1], n_minute=n_minute, freqmin=0.01, freqmax=25.0, stack_method='pws', src_ch=chas[0], rcv_ch=chas[1])
+for stack_method in ['pws', 'robust', 'linear']:
+    dates = [[2024, 6], [2024, 7], [2024, 8], [2024, 9], [2024, 10], [2024, 11], [2024, 12], [2025, 1], [2025, 2], [2025, 3], [2025, 4], [2025, 5]]
+    for y, m in dates:
+        task_t0 = datetime(year = y, month = m, day = 1, 
+                           hour = 0, minute = 0, second = 0, microsecond = 0)
+        task_t1 = task_t0 + relativedelta(months=1)
+        ### new dv/v big stacks yay
+        n_minute = int((task_t1 - task_t0).total_seconds() / 60)
+        # for chas in [[800, 1000], [1000, 1200], [1200, 1400]]:
+        chas = [1000, 1200]
+        prepro_para = set_prepro_parameters(dir_path, task_t0, target_spatial_res=10, cha1=chas[0], cha2=chas[1], n_minute=n_minute, freqmin=0.01, freqmax=25.0, stack_method=stack_method, src_ch=chas[0], rcv_ch=chas[1])
         _ = daily_correlations(dir_path, prepro_para)
         
-        prepro_para = set_prepro_parameters(dir_path, task_t0, target_spatial_res=10, cha1=chas[0], cha2=chas[1], n_minute=n_minute, freqmin=0.01, freqmax=25.0, stack_method='robust', src_ch=chas[0], rcv_ch=chas[1])
-        _ = daily_correlations(dir_path, prepro_para)
+        # prepro_para = set_prepro_parameters(dir_path, task_t0, target_spatial_res=10, cha1=chas[0], cha2=chas[1], n_minute=n_minute, freqmin=0.01, freqmax=25.0, stack_method='robust', src_ch=chas[0], rcv_ch=chas[1])
+        # _ = daily_correlations(dir_path, prepro_para)
         
-        prepro_para = set_prepro_parameters(dir_path, task_t0, target_spatial_res=10, cha1=chas[0], cha2=chas[1], n_minute=n_minute, freqmin=0.01, freqmax=25.0, stack_method='linear', src_ch=chas[0], rcv_ch=chas[1])
-        _ = daily_correlations(dir_path, prepro_para)
+        # prepro_para = set_prepro_parameters(dir_path, task_t0, target_spatial_res=10, cha1=chas[0], cha2=chas[1], n_minute=n_minute, freqmin=0.01, freqmax=25.0, stack_method='linear', src_ch=chas[0], rcv_ch=chas[1])
+        # _ = daily_correlations(dir_path, prepro_para)
     
     
     ### old processing

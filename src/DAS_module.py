@@ -458,7 +458,7 @@ def whiten(data, fft_para):
         freqmin: The lower frequency bound
         freqmax: The upper frequency bound
         smooth_N: integer, it defines the half window length to smooth
-        freq_norm: whitening method between 'one-bit' and 'RMA'
+        freq_norm: whitening method between 'one_bit' and 'RMA'
     RETURNS:
     ----------------------
     FFTRawSign: numpy.ndarray contains the FFT of the whitened input trace between the frequency bounds

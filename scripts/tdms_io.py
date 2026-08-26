@@ -64,9 +64,10 @@ def get_filepath_array(root_dir:str, t_start:datetime=None, t_end:datetime=None)
 
 
 # def get_subset_paths(t0, dir_path, dir_list, timestamps, delta=timedelta(minutes=1)):
-def get_subset_paths(t0, paths, timestamps, delta=timedelta(minutes=1)):
-    tpf = (timestamps[1] - timestamps[0]).total_seconds()
+def get_subset_paths(t0, paths, timestamps, delta=timedelta(minutes=1), tolerance=timedelta(minutes=1)):
     start_idx = get_closest_index_before(timestamps, t0)
+    if (t0 - timestamps[start_idx]) > tolerance:
+        return [], []
     
     end_time = t0 + delta
     end_idx = get_closest_index_before(timestamps, end_time)

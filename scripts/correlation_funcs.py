@@ -37,7 +37,7 @@ def set_prepro_parameters(dir_path, task_t0, freqmin=1.0, freqmax=49.9, target_s
     spatial_res     = properties.get('SpatialResolution[m]')
     spatial_ratio   = int(target_spatial_res/spatial_res)           # both values in m
 
-    time_norm       = 'rma'                 # 'no' for no normalization, or 'rma', 'one_bit' for normalization in time domain
+    time_norm       = 'one_bit'                 # 'no' for no normalization, or 'rma', 'one_bit' for normalization in time domain
     freq_norm       = 'rma'                 # 'no' for no whitening, or 'rma' for running-mean average, 'phase_only' for sign-bit normalization in freq domain.
     cc_method       = 'xcorr'               # 'xcorr' for pure cross correlation, 'deconv' for deconvolution; FOR "COHERENCY" PLEASE set freq_norm to "rma", time_norm to "no" and cc_method to "xcorr"
     stack_method    = stack_method          # 'pws' for phase-weighted stack, 'robust' for robust stack, 'linear' for linear stack
@@ -160,6 +160,9 @@ def process_minute(args):
     src_ch          = prepro_para.get('src_ch')
     
     # file_array = [TdmsReader(path) for path in file_paths]
+    if len(file_paths) == 0:
+        return np.zeros((n_lag, n_pair), dtype=np.float32)
+    
     tdata = get_data_from_array(file_paths, prepro_para, minute_t0, duration=timedelta(seconds=60), filter=False)
     trace_stdS, dataS = DAS_module.preprocess_raw_make_stat(tdata, prepro_para)
     white_spect = DAS_module.noise_processing(dataS, prepro_para)
@@ -172,9 +175,8 @@ def process_minute(args):
                    (trace_stdS > 0) &
                    (np.isnan(trace_stdS) == 0))[0]
     if not len(ind):
-        warn(f'{minute_t0} had no valid indices :(')
-        corr_zero = np.zeros((n_lag, n_pair), dtype=np.float32)
-        return corr_zero
+        # warn(f'{minute_t0} had no valid indices :(')
+        return np.zeros((n_lag, n_pair), dtype=np.float32)
 
     sta = cha_list[ind]
     white_spect = data[ind]
@@ -239,11 +241,14 @@ def parallel_xcorr(dir_path, prepro_para, corr_path=None):
     buffer = []
     corr_full = np.zeros([n_lag, n_pair], dtype=np.float32)
     stack_count = 0
+    failed_mins = 0
     
     with multiprocessing.Pool(multiprocessing.cpu_count()) as pool:
         with tqdm(total=len(args_list), desc=f"Parallel xcorr [{task_t0.date()}]", position=0) as pbar:
             for corr in pool.imap_unordered(process_minute, args_list, chunksize=1):
                 if np.count_nonzero(corr) == 0:
+                    failed_mins += 1
+                    pbar.update(1)
                     continue
                 corr /= np.max(np.abs(corr))
                 buffer.append(corr)
@@ -294,6 +299,7 @@ def parallel_xcorr(dir_path, prepro_para, corr_path=None):
         stack_count += 1
     
     corr_full /= max(stack_count, 1)
+    print(f'Valid data: {((n_minute - failed_mins) / n_minute)*100:.2f}%')
     print(f'corr_full max: {np.nanmax(corr_full)}; min: {np.nanmin(corr_full)}')
 
     if corr_path:
@@ -549,7 +555,7 @@ def daily_correlations(dir_path, prepro_para):
     
     ### reference trace
     ref_corr = parallel_xcorr(dir_path, prepro_para)
-    out_name = f'{task_t0.date()}_{task_t1.date()}mins_{samp_freq}f{freqmin}:{freqmax}_{src_ch}:{rcv_ch}_{target_spatial_res}m_{stack_method}'
+    out_name = f'{task_t0.date()}_{task_t1.date()}_{samp_freq}f{freqmin}:{freqmax}_{src_ch}:{rcv_ch}_{target_spatial_res}m_{stack_method}'
     np.savetxt(f'/data/localraid/dv_v_corrs/ref_stacks/{out_name}.txt', ref_corr, delimiter=",")
     
     n_days = n_minute // 1440
@@ -565,7 +571,7 @@ def daily_correlations(dir_path, prepro_para):
             corr_full[:, day].fill(np.nan)
         prepro_para['task_t0'] += timedelta(days=1)
 
-    out_name = f'{task_t0.date()}_{task_t1.date()}mins_{samp_freq}f{freqmin}:{freqmax}_{src_ch}:{rcv_ch}_{target_spatial_res}m_{stack_method}'
+    out_name = f'{task_t0.date()}_{task_t1.date()}_{samp_freq}f{freqmin}:{freqmax}_{src_ch}:{rcv_ch}_{target_spatial_res}m_{stack_method}'
     np.savetxt(f'/data/localraid/dv_v_corrs/{out_name}.txt', corr_full, delimiter=",")
     
     return corr_full
